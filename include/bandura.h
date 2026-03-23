@@ -153,6 +153,12 @@ typedef struct {
   body_handle body_a, body_b;
 } contact_t;
 
+typedef struct {
+  body_handle bodies[2];
+  v3 relative_contact_positions[2];
+  float max_error;
+} joint;
+
 typedef struct physics_world_t physics_world;
 typedef struct collision_debug_state_t collision_debug_state;
 
