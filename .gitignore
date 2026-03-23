@@ -4,3 +4,5 @@ zig-out
 
 compile_commands.json
 bandura.prof.csv
+
+*.png
