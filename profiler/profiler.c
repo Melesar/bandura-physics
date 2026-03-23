@@ -26,6 +26,7 @@ uint32_t frame_offset;
 uint32_t max_frame_size;
 
 profiler_frame_header *frame_headers;
+profiler_frame_metadata *metadata;
 uint32_t frame_header_index;
 uint32_t frame_headers_capacity;
 uint32_t frame_headers_mask;
@@ -61,7 +62,7 @@ static void update_header_atomic(uint32_t offset, uint16_t count) {
   memcpy(&new_header, &updated_header, sizeof(uint64_t));
 
   uint64_t *current_header = (uint64_t*)&frame_headers[frame_header_index];
-  __atomic_store_n(current_header, new_header, __ATOMIC_RELAXED);
+  __atomic_store_n(current_header, new_header, __ATOMIC_RELEASE);
 }
 
 static label marker_label(profiler_marker marker) {
@@ -119,6 +120,7 @@ void profiler_init(profiler_config config) {
     frame_headers_capacity <<= 1;
   frame_headers_mask = frame_headers_capacity - 1;
   frame_headers = calloc(frame_headers_capacity, sizeof(profiler_frame_header));
+  metadata = calloc(frame_headers_capacity, sizeof(profiler_frame_metadata));
 
   monitors.count = 0;
   monitors.mask = 0;
@@ -150,6 +152,7 @@ void profiler_teardown() {
   free(markers_stack);
   free(samples);
   free(frame_headers);
+  free(metadata);
 }
 
 void profiler_start_frame() {
@@ -157,13 +160,15 @@ void profiler_start_frame() {
   markers_count = 0;
 }
 
-void profiler_end_frame() {
+void profiler_end_frame(profiler_frame_metadata frame_metadata) {
   max_frame_size = frame_offset > max_frame_size ? frame_offset : max_frame_size;
 
+  metadata[frame_header_index] = frame_metadata;
   update_header_atomic(frame_start, frame_offset);
   notify_monitors();
 
   frame_start += frame_offset;
+  frame_header_index = (frame_header_index + 1) & frame_headers_mask;
 
   if (samples_capacity < frame_start || samples_capacity - frame_start < max_frame_size) {
     frame_start = 0;
@@ -242,6 +247,7 @@ bool profiler_monitor_read_next_frame(profiler_monitor *monitor) {
   uint8_t disable_mask = ~monitor_mask;
   uint8_t frame_mask = frame->mask;
 
+
   if ((frame_mask & monitor_mask) == 0) {
     return false;
   }
@@ -253,6 +259,9 @@ bool profiler_monitor_read_next_frame(profiler_monitor *monitor) {
   }
 
   monitor->samples_available = frame->count;
+  monitor->frame_metadata = metadata[monitor->frame_index];
+  monitor->frame_index = (monitor->frame_index + 1) & frame_headers_mask;
+
   memcpy(monitor->framebuffer, &samples[frame->offset], frame->count * sizeof(profiler_sample));
 
   uint8_t new_frame_mask;

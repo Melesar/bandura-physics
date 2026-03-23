@@ -13,6 +13,11 @@ typedef struct {
   bool auto_enable_monitors;
 } profiler_config;
 
+typedef struct {
+  uint16_t body_count;
+  uint16_t contacts_count;
+} profiler_frame_metadata;
+
 #ifndef BND_PROFILING
 
 #define PROFILE_BLOCK(name)
@@ -24,7 +29,7 @@ static void profiler_init(profiler_config config) {}
 static void profiler_teardown() {}
 
 static void profiler_start_frame() {}
-static void profiler_end_frame() {}
+static void profiler_end_frame(profiler_frame_metadata meta) {}
 
 #else
 
@@ -48,6 +53,7 @@ typedef struct {
 
 typedef struct {
   profiler_sample *framebuffer;
+  profiler_frame_metadata frame_metadata;
   uint32_t frame_index;
   uint32_t samples_available;
   uint8_t id;
@@ -89,7 +95,7 @@ void profiler_init(profiler_config config);
 void profiler_teardown();
 
 void profiler_start_frame();
-void profiler_end_frame();
+void profiler_end_frame(profiler_frame_metadata meta);
 
 profiler_marker profiler_start_block(const char *name);
 void profiler_end_block(profiler_marker *marker);

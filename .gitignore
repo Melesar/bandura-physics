@@ -1,8 +1,11 @@
+# Build caches and artifacts
 .cache/
 .zig-cache/
 zig-out
 
 compile_commands.json
-bandura.prof.csv
 
+# Other artifacts
+*.csv
 *.png
+*.pdf

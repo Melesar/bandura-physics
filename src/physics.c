@@ -592,7 +592,13 @@ void physics_step(physics_world* world, float dt) {
     update_awake_statuses(world, dt);
     clear_forces(world);
   }
-  profiler_end_frame();
+
+  profiler_frame_metadata metadata = {
+    .body_count = world->dynamics.count + world->statics.count,
+    .contacts_count = world->collisions.count,
+  };
+
+  profiler_end_frame(metadata);
  }
 
 void physics_awaken_body(physics_world* world, body_handle handle) {

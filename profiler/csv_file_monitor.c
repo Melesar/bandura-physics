@@ -149,7 +149,7 @@ void* csv_file_monitor_run(void *data) {
     return NULL;
   }
 
-  fprintf(f, "Frame index,Label,Call count,Total time\n");
+  fprintf(f, "Frame index,Label,Call count,Total time,Body count,Contacts count\n");
 
   uint32_t running_count = 0;
   while(profiler_monitor_should_run(&monitor)) {
@@ -165,7 +165,7 @@ void* csv_file_monitor_run(void *data) {
         uint64_t time_ns = sample.total_time;
         double time_ms = time_ns / 1000000.0;
 
-        fprintf(f, "%d,%s,%d,%.5f\n", running_count, label, sample.call_count, time_ms);
+        fprintf(f, "%d,%s,%d,%.5f,%d,%d\n", running_count, label, sample.call_count, time_ms, monitor.frame_metadata.body_count, monitor.frame_metadata.contacts_count);
       }
 
       running_count += 1;

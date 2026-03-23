@@ -73,7 +73,7 @@
   },
   {
     "label": "Plot profiling data",
-    "command": "python3 $ZED_WORKTREE_ROOT/scripts/plot_bandura_profile.py && zed $ZED_WORKTREE_ROOT/bandura_profiling.png",
+    "command": "python3 $ZED_WORKTREE_ROOT/scripts/plot_bandura_profile.py",
     "use_new_terminal": false,
     "allow_concurrent_runs": false,
     "reveal": "never",
