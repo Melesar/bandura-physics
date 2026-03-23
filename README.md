@@ -69,7 +69,7 @@ int main(void) {
 
 ## Demo Scenarios
 
-The `runner/scenarios` folder contains ready-to-run examples and is a good starting
+The `demos/scenarios` folder contains ready-to-run examples and is a good starting
 point for writing your own scenes.
 
 ## License
