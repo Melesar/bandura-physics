@@ -15,7 +15,7 @@ void update_desired_velocity_delta(physics_world *world, count_t contact_index, 
   }
 
   float acceleration_velocity = dot(sub(accelerations[0], accelerations[1]), contact->normal) * dt;
-  float restitution = fabsf(contact->local_velocity.y) >= world->config.restitution_damping_limit ? world->config.restitution : 0.0f;
+  float restitution = fabsf(contact->local_velocity.y) >= world->config.restitution_damping_limit ? contact->restitution : 0.0f;
   float desired_delta = -contact->local_velocity.y - restitution * (contact->local_velocity.y - acceleration_velocity);
 
   contact->desired_delta_velocity = desired_delta;
@@ -247,18 +247,18 @@ void resolve_velocity_contact(physics_world *world, count_t contact_index, v3 *d
   v3 contact_space_impulse = matrix_rotate(velocity_to_kill, impulse_matrix);
   float planar_impulse = sqrtf(contact_space_impulse.x * contact_space_impulse.x + contact_space_impulse.z * contact_space_impulse.z);
 
-  if (planar_impulse > contact_space_impulse.y * world->config.friction) {
+  if (planar_impulse > contact_space_impulse.y * contact->friction) {
     contact_space_impulse.x /= planar_impulse;
     contact_space_impulse.z /= planar_impulse;
 
     float desired_delta_velocity = contact->desired_delta_velocity;
     contact_space_impulse.y =
-      delta_velocity.m1[0] * world->config.friction * contact_space_impulse.x +
+      delta_velocity.m1[0] * contact->friction * contact_space_impulse.x +
       delta_velocity.m1[1] +
-      delta_velocity.m1[2] * world->config.friction * contact_space_impulse.z;
+      delta_velocity.m1[2] * contact->friction * contact_space_impulse.z;
     contact_space_impulse.y = desired_delta_velocity / contact_space_impulse.y;
-    contact_space_impulse.x *= world->config.friction * contact_space_impulse.y;
-    contact_space_impulse.z *= world->config.friction * contact_space_impulse.y;
+    contact_space_impulse.x *= contact->friction * contact_space_impulse.y;
+    contact_space_impulse.z *= contact->friction * contact_space_impulse.y;
   }
 
   v3 world_space_impulse = matrix_rotate(contact_space_impulse, contact->basis);

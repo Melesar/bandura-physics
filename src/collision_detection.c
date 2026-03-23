@@ -18,13 +18,15 @@ typedef struct {
   v3 axis[3];
 } collision_box;
 
-typedef struct {
-  const physics_world *world;
-  const common_data *data_a;
-  const common_data *data_b;
-  count_t body_a, body_b;
-  body_shape shape_a, shape_b;
-} collision_detection_context;
+contact *new_contact(physics_world *world, const collision_detection_context *ctx) {
+  contact *c = &world->collisions.contacts[world->collisions.count++];
+  c->index_a = ctx->body_a;
+  c->index_b = ctx->body_b;
+  c->friction = world->config.friction;
+  c->restitution = world->config.restitution;
+
+  return c;
+}
 
 typedef count_t(*collision_func)(physics_world *world, const collision_detection_context *ctx);
 
@@ -217,9 +219,7 @@ static count_t box_box_collision(physics_world *world, const collision_detection
   collisions *collisions = &world->collisions;
   ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->count + 1, collisions->capacity, contact);
 
-  contact *contact = &collisions->contacts[collisions->count++];
-  contact->index_a = ctx->body_a;
-  contact->index_b = ctx->body_b;
+  contact *contact = new_contact(world, ctx);
 
   if (best_axis < 3) {
     // We've got a vertex of box two on a face of box one.
@@ -307,26 +307,19 @@ static count_t box_plane_collision(physics_world *world, const collision_detecti
   ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->count + max_contacts, collisions->capacity, contact)
 
   count_t contact_count = 0;
-  contact *contacts = collisions->contacts + collisions->count;
   for (count_t i = 0; i < 8 && contact_count < max_contacts; ++i) {
     v3 corner = add(box_center, rotate(rotate(corners[i], shape_rotation), box_rotation));
     float distance = dot(sub(corner, plane_point), plane_normal);
     if (distance > 0)
       continue;
 
-    contact *new_contact = &contacts[contact_count++];
+    contact *c = new_contact(world, ctx);
+    c->normal = plane_normal;
+    c->point = add(corner, scale(plane_normal, -0.5 * distance));
+    c->depth = -distance;
 
-    new_contact->index_a = ctx->body_a;
-    new_contact->index_b = ctx->body_b;
-    new_contact->normal = plane_normal;
-    new_contact->point = add(corner, scale(plane_normal, -0.5 * distance));
-    new_contact->depth = -distance;
+    contact_count += 1;
   }
-
-  if (contact_count == 0)
-    return 0;
-
-  collisions->count += contact_count;
 
   return contact_count;
 }
@@ -370,9 +363,7 @@ count_t box_sphere_collision(physics_world *world, const collision_detection_con
   collisions *collisions = &world->collisions;
   ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->count + 1, collisions->capacity, contact);
 
-  contact *contact = &collisions->contacts[collisions->count++];
-  contact->index_a = ctx->body_a;
-  contact->index_b = ctx->body_b;
+  contact *contact = new_contact(world, ctx);
   contact->point = closest_point;
   contact->normal = normalize(sub(closest_point, sphere_center));
   contact->depth = sphere_radius - sqrtf(distance);
@@ -521,9 +512,7 @@ count_t cylinder_box_collision(physics_world *world, const collision_detection_c
   collisions *collisions = &world->collisions;
   ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->count + 1, collisions->capacity, contact);
 
-  contact *contact = &collisions->contacts[collisions->count++];
-  contact->index_a = ctx->body_a;
-  contact->index_b = ctx->body_b;
+  contact *contact = new_contact(world, ctx);
   contact->point = add(point_on_box, scale(sub(point_on_cylinder, point_on_box), 0.5f));
   contact->normal = normal;
   contact->depth = depth;
@@ -595,9 +584,7 @@ count_t cylinder_sphere_collision(physics_world *world, const collision_detectio
   collisions *collisions = &world->collisions;
   ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->count + 1, collisions->capacity, contact);
 
-  contact *contact = &collisions->contacts[collisions->count++];
-  contact->index_a = ctx->body_a;
-  contact->index_b = ctx->body_b;
+  contact *contact = new_contact(world, ctx);
   contact->point = transform(contact_point_local, cylinder_transform);
   contact->normal = normalize(rotate(normal_local, cylinder_rotation));
   contact->depth = depth;
@@ -622,15 +609,10 @@ count_t sphere_sphere_collision(physics_world *world, const collision_detection_
   collisions *collisions = &world->collisions;
   ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->count + 1, collisions->capacity, contact);
 
-  contact contact = {
-    .index_a = ctx->body_a,
-    .index_b = ctx->body_b,
-    .point = add(p1, scale(offset, 0.5)),
-    .normal = normalize(offset),
-    .depth = radii - distance
-  };
-
-  collisions->contacts[collisions->count++] = contact;
+  contact *contact = new_contact(world, ctx);
+  contact->point = add(p1, scale(offset, 0.5));
+  contact->normal = normalize(offset);
+  contact->depth = radii - distance;
 
   return 1;
 }
@@ -649,14 +631,10 @@ static count_t sphere_plane_collision(physics_world *world, const collision_dete
   collisions *collisions = &world->collisions;
   ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->count + 1, collisions->capacity, contact);
 
-  contact *contact = &collisions->contacts[collisions->count];
-  contact->index_a = ctx->body_a;
-  contact->index_b = ctx->body_b;
+  contact *contact = new_contact(world, ctx);
   contact->normal = plane_normal;
   contact->point = add(sphere_center, scale(plane_normal, -plane_sphere_distance));
   contact->depth = sphere_radius - plane_sphere_distance;
-
-  collisions->count++;
 
   return 1;
 }
@@ -687,11 +665,6 @@ static count_t cylinder_plane_collision(physics_world *world, const collision_de
   collisions *collisions = &world->collisions;
   ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->count + 1, collisions->capacity, contact);
 
-  contact *contact = &collisions->contacts[collisions->count];
-
-  contact->index_a = ctx->body_a;
-  contact->index_b = ctx->body_b;
-
   float cap_sign = axis_projection > 0.0f ? -1.0f : 1.0f;
   v3 cap_offset = scale(cylinder_axis, cap_sign * cylinder_half_height);
 
@@ -703,11 +676,10 @@ static count_t cylinder_plane_collision(physics_world *world, const collision_de
 
   v3 deepest_point = add(cylinder_center, add(cap_offset, radial_offset));
 
+  contact *contact = new_contact(world, ctx);
   contact->normal = plane_normal;
   contact->point = add(deepest_point, scale(plane_normal, -min_distance));
   contact->depth = -min_distance;
-
-  collisions->count++;
 
   return 1;
 }

@@ -9,6 +9,7 @@ typedef struct {
   v3 normal;
   float depth;
   count_t index_a, index_b;
+  float friction, restitution;
 
   m3 basis;
   v3 relative_position[2];
@@ -23,6 +24,7 @@ typedef struct {
 
   count_t dynamic_contacts_count;
 } collisions;
+
 
 #define COMMON_FIELDS \
   count_t capacity; \
@@ -57,6 +59,14 @@ typedef struct {
 typedef struct {
   COMMON_FIELDS
 } common_data;
+
+typedef struct {
+  const physics_world *world;
+  const common_data *data_a;
+  const common_data *data_b;
+  count_t body_a, body_b;
+  body_shape shape_a, shape_b;
+} collision_detection_context;
 
 typedef struct {
   COMMON_FIELDS
@@ -169,6 +179,8 @@ void update_velocity_deltas_ex(physics_world *world, count_t worst_collision_ind
 void resolve_collisions(physics_world *world, float dt);
 void collisions_detect(physics_world *world);
 void update_awake_statuses(physics_world *world, float dt);
+
+contact *new_contact(physics_world *world, const collision_detection_context *ctx);
 
 void shapes_init(physics_world *world);
 void shapes_teardown(physics_world *world);
