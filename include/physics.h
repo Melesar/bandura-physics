@@ -18,13 +18,22 @@ typedef struct {
 } contact;
 
 typedef struct {
+  joint *values;
+  count_t *ids;
+
+  count_t capacity;
+  count_t count;
+
+  count_t next_id;
+} joints;
+
+typedef struct {
   count_t capacity;
   count_t count;
   contact *contacts;
 
   count_t dynamic_contacts_count;
 } collisions;
-
 
 #define COMMON_FIELDS \
   count_t capacity; \
@@ -99,6 +108,7 @@ struct physics_world_t {
   static_bodies statics;
 
   collisions collisions;
+  joints joints;
 
   shapes_bracket shape_brackets[BRACKET_COUNT];
 
@@ -181,6 +191,10 @@ void collisions_detect(physics_world *world);
 void update_awake_statuses(physics_world *world, float dt);
 
 contact *new_contact(physics_world *world, const collision_detection_context *ctx);
+
+void joints_init(physics_world *world);
+void joints_teardown(physics_world *world);
+void joints_produce_contacts(physics_world *world);
 
 void shapes_init(physics_world *world);
 void shapes_teardown(physics_world *world);

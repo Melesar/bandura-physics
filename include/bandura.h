@@ -127,6 +127,7 @@ typedef struct {
   count_t dynamics_capacity;
   count_t statics_capacity;
   count_t collisions_capacity;
+  count_t joints_capacity;
   count_t shapes_brackets_capacity[5];
 
   float linear_damping;
@@ -181,6 +182,9 @@ body physics_add_cylinder_static(physics_world *world, float radius, float heigh
 body physics_add_cylinder_dynamic(physics_world *world, float mass, float radius, float height);
 body physics_add_compound_body_static(physics_world *world, body_shape *shapes, float *masses, count_t shapes_count);
 body physics_add_compound_body_dynamic(physics_world *world, body_shape *shapes, float *masses, count_t shapes_count);
+
+count_t physics_add_joint(physics_world *world, body_handle body_a, body_handle body_b, v3 contact_offset_a, v3 contact_offset_b, float max_distance);
+void physics_remove_joint(physics_world *world, count_t id);
 
 void physics_apply_force(physics_world *world, body_handle handle, v3 force);
 void physics_apply_force_at(physics_world *world, body_handle handle, v3 force, v3 position);

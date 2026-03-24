@@ -101,6 +101,7 @@ physics_config physics_default_config() {
     .dynamics_capacity = 32,
     .statics_capacity = 8,
     .collisions_capacity = 64,
+    .joints_capacity = 64,
     .shapes_brackets_capacity = { 64, 1, 1, 1, 1 },
     .linear_damping = 0.95,
     .angular_damping = 0.8,
@@ -229,6 +230,7 @@ physics_world* physics_init(const physics_config *config) {
   world->config = *config;
   world->collisions = collisions_init(config);
 
+  joints_init(world);
   shapes_init(world);
 
   world->generation = 0;
@@ -586,7 +588,10 @@ void physics_step(physics_world* world, float dt) {
   {
     PROFILE_FUNCTION
 
+    world->collisions.count = 0;
+
     integrate_bodies(world, dt);
+    joints_produce_contacts(world);
     collisions_detect(world);
     resolve_collisions(world, dt);
     update_awake_statuses(world, dt);
@@ -624,12 +629,12 @@ void physics_reset(physics_world *world) {
 
   world->statics.count = 0;
 
+  world->joints.count = 0;
   world->collisions.dynamic_contacts_count = 0;
   world->collisions.count = 0;
 
   shapes_reset(world);
 }
-
 
 void physics_teardown(physics_world* world) {
   teardown_commons((common_data*) &world->dynamics);
@@ -649,6 +654,7 @@ void physics_teardown(physics_world* world) {
   free(world->dynamics.motion_avgs);
 
   shapes_teardown(world);
+  joints_teardown(world);
   collisions_teardown(world->collisions);
 
   free(world);

@@ -1,3 +1,4 @@
+#include "bandura.h"
 #include "profiler.h"
 #include "physics.h"
 #include <math.h>
@@ -447,6 +448,116 @@ static bool try_axis_box_cylinder(
   return true;
 }
 
+static bool try_axis_cylinder_cylinder(
+  v3 axis_a,
+  float half_height_a,
+  float radius_a,
+  v3 axis_b,
+  float half_height_b,
+  float radius_b,
+  v3 axis,
+  v3 offset,
+  float *min_penetration,
+  v3 *best_axis,
+  bool *has_axis) {
+
+  if (lensq(axis) < 0.0001f)
+    return true;
+
+  axis = normalize(axis);
+
+  float project_a = cylinder_transform_to_axis(axis, axis_a, half_height_a, radius_a);
+  float project_b = cylinder_transform_to_axis(axis, axis_b, half_height_b, radius_b);
+
+  float distance = fabsf(dot(offset, axis));
+  float penetration = project_a + project_b - distance;
+
+  if (penetration < 0.0f)
+    return false;
+
+  if (penetration < *min_penetration) {
+    *min_penetration = penetration;
+    *best_axis = axis;
+    *has_axis = true;
+  }
+
+  return true;
+}
+
+static v3 support_point_on_cylinder(v3 center, v3 axis, float half_height, float radius, v3 direction) {
+  float axis_sign = dot(direction, axis) >= 0.0f ? 1.0f : -1.0f;
+  v3 point = add(center, scale(axis, axis_sign * half_height));
+
+  v3 radial = sub(direction, scale(axis, dot(direction, axis)));
+  float radial_len_sq = lensq(radial);
+  if (radial_len_sq > 0.000001f)
+    point = add(point, scale(radial, radius / sqrtf(radial_len_sq)));
+
+  return point;
+}
+
+static void closest_points_on_segment_segment(v3 p1, v3 q1, v3 p2, v3 q2, v3 *c1, v3 *c2) {
+  v3 d1 = sub(q1, p1);
+  v3 d2 = sub(q2, p2);
+  v3 r = sub(p1, p2);
+  float a = dot(d1, d1);
+  float e = dot(d2, d2);
+  float f = dot(d2, r);
+
+  float s;
+  float t;
+  const float eps = 0.000001f;
+
+  if (a <= eps && e <= eps) {
+    *c1 = p1;
+    *c2 = p2;
+    return;
+  }
+
+  if (a <= eps) {
+    s = 0.0f;
+    t = f / e;
+    if (t < 0.0f) t = 0.0f;
+    else if (t > 1.0f) t = 1.0f;
+  } else {
+    float c = dot(d1, r);
+
+    if (e <= eps) {
+      t = 0.0f;
+      s = -c / a;
+      if (s < 0.0f) s = 0.0f;
+      else if (s > 1.0f) s = 1.0f;
+    } else {
+      float b = dot(d1, d2);
+      float denom = a * e - b * b;
+
+      if (denom != 0.0f) {
+        s = (b * f - c * e) / denom;
+        if (s < 0.0f) s = 0.0f;
+        else if (s > 1.0f) s = 1.0f;
+      } else {
+        s = 0.0f;
+      }
+
+      t = (b * s + f) / e;
+      if (t < 0.0f) {
+        t = 0.0f;
+        s = -c / a;
+        if (s < 0.0f) s = 0.0f;
+        else if (s > 1.0f) s = 1.0f;
+      } else if (t > 1.0f) {
+        t = 1.0f;
+        s = (b - c) / a;
+        if (s < 0.0f) s = 0.0f;
+        else if (s > 1.0f) s = 1.0f;
+      }
+    }
+  }
+
+  *c1 = add(p1, scale(d1, s));
+  *c2 = add(p2, scale(d2, t));
+}
+
 count_t cylinder_box_collision(physics_world *world, const collision_detection_context *ctx) {
   v3 cylinder_center = body_a_center(ctx);
   quat cylinder_rotation = ctx->data_a->rotations[ctx->body_a];
@@ -516,6 +627,66 @@ count_t cylinder_box_collision(physics_world *world, const collision_detection_c
   contact->point = add(point_on_box, scale(sub(point_on_cylinder, point_on_box), 0.5f));
   contact->normal = normal;
   contact->depth = depth;
+
+  return 1;
+}
+
+count_t cylinder_cylinder_collision(physics_world *world, const collision_detection_context *ctx) {
+  quat rotation_a = qmul(ctx->data_a->rotations[ctx->body_a], ctx->shape_a.rotation);
+  quat rotation_b = qmul(ctx->data_b->rotations[ctx->body_b], ctx->shape_b.rotation);
+
+  v3 center_a = body_a_center(ctx);
+  v3 center_b = body_b_center(ctx);
+
+  v3 axis_a = rotate(up(), rotation_a);
+  v3 axis_b = rotate(up(), rotation_b);
+
+  float radius_a = ctx->shape_a.cylinder.radius;
+  float radius_b = ctx->shape_b.cylinder.radius;
+  float half_height_a = ctx->shape_a.cylinder.height * 0.5f;
+  float half_height_b = ctx->shape_b.cylinder.height * 0.5f;
+
+  v3 offset = sub(center_a, center_b);
+  v3 segment_start_a = sub(center_a, scale(axis_a, half_height_a));
+  v3 segment_end_a = add(center_a, scale(axis_a, half_height_a));
+  v3 segment_start_b = sub(center_b, scale(axis_b, half_height_b));
+  v3 segment_end_b = add(center_b, scale(axis_b, half_height_b));
+  v3 axis_point_a;
+  v3 axis_point_b;
+  closest_points_on_segment_segment(segment_start_a, segment_end_a, segment_start_b, segment_end_b, &axis_point_a, &axis_point_b);
+
+  v3 axis_delta = sub(axis_point_a, axis_point_b);
+  v3 radial_offset_a = sub(offset, scale(axis_a, dot(offset, axis_a)));
+  v3 radial_offset_b = sub(offset, scale(axis_b, dot(offset, axis_b)));
+
+  float penetration = INFINITY;
+  v3 best_axis = zero();
+  bool has_axis = false;
+
+  if (!try_axis_cylinder_cylinder(axis_a, half_height_a, radius_a, axis_b, half_height_b, radius_b, axis_a, offset, &penetration, &best_axis, &has_axis)) return 0;
+  if (!try_axis_cylinder_cylinder(axis_a, half_height_a, radius_a, axis_b, half_height_b, radius_b, axis_b, offset, &penetration, &best_axis, &has_axis)) return 0;
+  if (!try_axis_cylinder_cylinder(axis_a, half_height_a, radius_a, axis_b, half_height_b, radius_b, cross(axis_a, axis_b), offset, &penetration, &best_axis, &has_axis)) return 0;
+  if (!try_axis_cylinder_cylinder(axis_a, half_height_a, radius_a, axis_b, half_height_b, radius_b, axis_delta, offset, &penetration, &best_axis, &has_axis)) return 0;
+  if (!try_axis_cylinder_cylinder(axis_a, half_height_a, radius_a, axis_b, half_height_b, radius_b, radial_offset_a, offset, &penetration, &best_axis, &has_axis)) return 0;
+  if (!try_axis_cylinder_cylinder(axis_a, half_height_a, radius_a, axis_b, half_height_b, radius_b, radial_offset_b, offset, &penetration, &best_axis, &has_axis)) return 0;
+
+  if (!has_axis)
+    return 0;
+
+  v3 normal = best_axis;
+  if (dot(normal, offset) < 0.0f)
+    normal = scale(normal, -1.0f);
+
+  v3 point_on_a = support_point_on_cylinder(center_a, axis_a, half_height_a, radius_a, scale(normal, -1.0f));
+  v3 point_on_b = support_point_on_cylinder(center_b, axis_b, half_height_b, radius_b, normal);
+
+  collisions *collisions = &world->collisions;
+  ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->count + 1, collisions->capacity, contact);
+
+  contact *contact = new_contact(world, ctx);
+  contact->point = add(point_on_b, scale(sub(point_on_a, point_on_b), 0.5f));
+  contact->normal = normal;
+  contact->depth = penetration;
 
   return 1;
 }
@@ -711,8 +882,6 @@ void collisions_detect(physics_world *world) {
   const common_data *dynamics =(common_data*) &world->dynamics;
   const common_data *statics = (common_data*)&world->statics;
 
-  collisions->count = 0;
-
   collision_detection_context ctx = { .world = world };
   ctx.data_a = dynamics;
   ctx.data_b = dynamics;
@@ -786,6 +955,10 @@ void collisions_detect(physics_world *world) {
 
                 case SHAPE_BOX:
                   dyn_count += cylinder_box_collision(world, &ctx);
+                  break;
+
+                case SHAPE_CYLINDER:
+                  dyn_count += cylinder_cylinder_collision(world, &ctx);
                   break;
 
                 default:

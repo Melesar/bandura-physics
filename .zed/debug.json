@@ -25,6 +25,18 @@
     "request": "launch",
     "adapter": "CodeLLDB",
   },
+
+  {
+    "label": "Debug ragdolls",
+    "build": {
+      "command": "zig",
+      "args": ["build"],
+      "cwd": "$ZED_WORKTREE_ROOT",
+    },
+    "program": "$ZED_WORKTREE_ROOT/zig-out/bin/ragdolls",
+    "request": "launch",
+    "adapter": "CodeLLDB",
+  },
   {
     "label": "Debug vortex (with profiling)",
     "build": {
