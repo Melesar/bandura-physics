@@ -19,7 +19,7 @@ typedef struct {
   v3 axis[3];
 } collision_box;
 
-contact *new_contact(physics_world *world, const collision_detection_context *ctx) {
+static contact *new_contact(physics_world *world, const collision_detection_context *ctx) {
   contact *c = &world->collisions.contacts[world->collisions.count++];
   c->index_a = ctx->body_a;
   c->index_b = ctx->body_b;
@@ -855,6 +855,11 @@ static count_t cylinder_plane_collision(physics_world *world, const collision_de
   return 1;
 }
 
+void collisions_reset(physics_world *world) {
+  world->collisions.count = 0;
+  world->collisions.dynamic_contacts_count = 0;
+}
+
 collisions collisions_init(const physics_config *config) {
   collisions result = {};
   result.capacity = config->collisions_capacity;
@@ -888,7 +893,7 @@ void collisions_detect(physics_world *world) {
 
   collision_detection_context inv_ctx = ctx;
 
-  count_t dyn_count = 0;
+  count_t dyn_count = collisions->dynamic_contacts_count;
   for (count_t i = 0; i < dynamics->count; ++i) {
     for (count_t j = 0; j < i; ++j) {
       ctx.body_a = i;

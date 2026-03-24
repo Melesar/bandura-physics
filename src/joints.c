@@ -1,6 +1,19 @@
-#include "bandura.h"
 #include "physics.h"
 #include <stdlib.h>
+
+static inline contact *new_contact(physics_world *world) {
+  collisions *collisions = &world->collisions;
+
+  if (collisions->count >= collisions->capacity) {
+    while (collisions->count >= collisions->capacity) {
+      collisions->capacity *= 2;
+    }
+
+    collisions->contacts = realloc(collisions->contacts, collisions->capacity * sizeof(contact));
+  }
+
+  return &collisions->contacts[collisions->count++];
+}
 
 static inline void resize_if_needed(joints *joints) {
   if (joints->count < joints->capacity) {
@@ -75,31 +88,40 @@ void joints_produce_contacts(physics_world *world) {
 
   for(count_t i = 0; i < joints->count; ++i) {
     joint j = joints->values[i];
+    bool is_dynamic = j.bodies[1].type == BODY_DYNAMIC;
 
-    v3 world_points[2];
     const common_data *data[2];
     data[0] = (common_data*) dynamics;
-    data[1] = j.bodies[1].type == BODY_DYNAMIC ? (common_data*) dynamics : statics;
+    data[1] = is_dynamic ? (common_data*) dynamics : statics;
 
+    v3 world_points[2];
+    count_t indices[2];
     for(count_t k = 0; k < 2; ++k) {
       count_t index = handle_to_inner_index(world, j.bodies[k]);
       world_points[k] = rotate(j.relative_contact_positions[k], data[k]->rotations[index]);
       world_points[k] = add(world_points[k], data[k]->positions[index]);
+      indices[k] = index;
     }
 
-    v3 offset = sub(world_points[0], world_points[1]);
+    v3 offset = sub(world_points[1], world_points[0]);
     float distance = len(offset);
     if (distance <= j.max_error) {
       continue;
     }
 
-    // TODO: resize if needed.
-    contact *contact = &collisions->contacts[collisions->count++];
-    contact->point = add(world_points[1], scale(offset, 0.5));
+    contact *contact = new_contact(world);
+    contact->index_a = indices[0];
+    contact->index_b = indices[1];
+    contact->point = scale(add(world_points[0], world_points[1]), 0.5);
     contact->normal = scale(offset, 1.0 / distance);
-    contact->depth = distance;
+    contact->depth = distance - j.max_error;
     contact->friction = 1.0;
     contact->restitution = 0;
+
+    // TODO: must preserve the order: dynamic contacts -> static contacts. Both across joints and collisions.
+    if (is_dynamic) {
+      collisions->dynamic_contacts_count += 1;
+    }
   }
 }
 

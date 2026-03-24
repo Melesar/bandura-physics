@@ -588,9 +588,8 @@ void physics_step(physics_world* world, float dt) {
   {
     PROFILE_FUNCTION
 
-    world->collisions.count = 0;
-
     integrate_bodies(world, dt);
+    collisions_reset(world);
     joints_produce_contacts(world);
     collisions_detect(world);
     resolve_collisions(world, dt);

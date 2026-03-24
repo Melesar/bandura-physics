@@ -175,6 +175,8 @@ const common_data* as_common_const(const physics_world *world, body_type type);
 
 collisions collisions_init(const physics_config *config);
 void collisions_teardown(collisions collisions);
+void collisions_reset(physics_world *world);
+void collisions_detect(physics_world *world);
 
 void clear_forces(physics_world *world);
 void integrate_bodies(physics_world *world, float dt);
@@ -187,10 +189,7 @@ bool find_worst_velocity(physics_world *world, count_t *out_contact_index);
 void update_awake_status_for_collision(physics_world *world, count_t collision_index);
 void update_velocity_deltas_ex(physics_world *world, count_t worst_collision_index, const v3 *deltas, float dt, velocity_update_record *records, count_t *record_count);
 void resolve_collisions(physics_world *world, float dt);
-void collisions_detect(physics_world *world);
 void update_awake_statuses(physics_world *world, float dt);
-
-contact *new_contact(physics_world *world, const collision_detection_context *ctx);
 
 void joints_init(physics_world *world);
 void joints_teardown(physics_world *world);
