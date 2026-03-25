@@ -126,7 +126,7 @@ typedef struct {
 
   count_t dynamics_capacity;
   count_t statics_capacity;
-  count_t collisions_capacity;
+  count_t contacts_capacity;
   count_t joints_capacity;
   count_t shapes_brackets_capacity[5];
 
@@ -204,7 +204,7 @@ v3 physics_get_velocity(const physics_world *world, body_handle handle);
 v3 physics_get_angular_velocity(const physics_world *world, body_handle handle);
 v3 physics_get_angular_momentum(const physics_world *world, body_handle handle);
 float physics_get_motion_avg(const physics_world *world, body_handle handle);
-count_t physics_get_collisions(const physics_world *world, contact_t *contacts, count_t max_contacts);
+count_t physics_get_contacts(const physics_world *world, contact_t *contacts, count_t max_contacts);
 
 void physics_enumerate_bodies_typed(const physics_world *world, body_type type, body_enumerator_typed *enumerator);
 bool physics_body_next_typed(const physics_world *world, body_enumerator_typed *enumerator);

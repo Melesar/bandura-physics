@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+static void swap_bodies(physics_world *world, count_t index_a, count_t index_b);
+
 static v3 cylinder_inertia(float radius, float height, float mass) {
   float principal =  mass * (3 * radius * radius + height * height) / 12.0;
   return (v3){ principal, mass * radius * radius / 2.0, principal };
@@ -39,6 +41,80 @@ static v3 inertia_vector(body_shape shape, float mass) {
     default:
       return one();
   }
+}
+
+static void clear_forces(physics_world *world) {
+  dynamic_bodies *dynamics = &world->dynamics;
+
+  const count_t size = sizeof(v3) * dynamics->count;
+  memset(dynamics->forces, 0, size);
+  memset(dynamics->torques, 0, size);
+  memset(dynamics->impulses, 0, size);
+  memset(dynamics->angular_impulses, 0, size);
+  memset(dynamics->accelerations, 0, size);
+}
+
+static void update_awake_statuses(physics_world *world, float dt) {
+  dynamic_bodies *dynamics = &world->dynamics;
+  if (dynamics->count == 0)
+    return;
+
+  const float sleep_threshold = world->config.sleep_threshold;
+  count_t awake_count = dynamics->awake_count;
+  for (count_t i = 0; i < awake_count; ++i) {
+    v3 angular_velocity = matrix_rotate(dynamics->angular_momenta[i], dynamics->inv_intertias[i]);
+
+    float current_motion = dynamics->motion_avgs[i];
+    float new_motion = lensq(dynamics->velocities[i]) + lensq(angular_velocity);
+    float bias = powf(world->config.sleep_base_bias, dt);
+
+    float motion = current_motion * bias + new_motion * (1 - bias);
+    motion = fminf(motion, 10 * sleep_threshold);
+
+    dynamics->motion_avgs[i] = motion;
+  }
+
+  count_t left = 0;
+  count_t right = dynamics->count - 1;
+  while(left < awake_count && right >= awake_count) {
+    while(dynamics->motion_avgs[left] > sleep_threshold) {
+      left += 1;
+    }
+
+    while (dynamics->motion_avgs[right] <= sleep_threshold && right >= awake_count) {
+      right -= 1;
+    }
+
+    if (left >= awake_count || right <= awake_count - 1)
+      break;
+
+    swap_bodies(world, left, right);
+  }
+
+  for (count_t i = awake_count - 1; i >= left && i != (count_t)-1; --i) {
+    if (dynamics->motion_avgs[i] >= sleep_threshold)
+      continue;
+
+    count_t target_index = awake_count - 1;
+    if (i != target_index)
+      swap_bodies(world, i, target_index);
+
+    dynamics->velocities[target_index] = dynamics->angular_momenta[target_index] = zero();
+    awake_count -= 1;
+  }
+
+  for (count_t i = awake_count; i <= right; ++i) {
+    if (dynamics->motion_avgs[i] < sleep_threshold)
+      continue;
+
+    count_t target_index = awake_count;
+    if (i != target_index)
+      swap_bodies(world, i, target_index);
+
+    awake_count += 1;
+  }
+
+  dynamics->awake_count = awake_count;
 }
 
 static void calculate_compound_shape_static(body_shape *shapes, float *masses, count_t count, float *total_mass) {
@@ -100,7 +176,7 @@ physics_config physics_default_config() {
     .gravity = (v3) { 0, -9.81f, 0 },
     .dynamics_capacity = 32,
     .statics_capacity = 8,
-    .collisions_capacity = 64,
+    .contacts_capacity = 64,
     .joints_capacity = 64,
     .shapes_brackets_capacity = { 64, 1, 1, 1, 1 },
     .linear_damping = 0.95,
@@ -226,15 +302,13 @@ physics_world* physics_init(const physics_config *config) {
   world->dynamics.inv_intertias = malloc(matrices);
   world->dynamics.motion_avgs = malloc(floats);
   world->dynamics.awake_count = 0;
-
-  world->config = *config;
-  world->collisions = collisions_init(config);
-
-  joints_init(world);
-  shapes_init(world);
-
   world->generation = 0;
 
+  world->config = *config;
+
+  contacts_init(world);
+  joints_init(world);
+  shapes_init(world);
   profiler_init_default();
 
   return world;
@@ -429,7 +503,7 @@ count_t physics_awake_count(const physics_world *world) {
 }
 
 count_t physics_collisions_count(const physics_world *world) {
-  return world->collisions.count;
+  return world->contacts.count;
 }
 
 
@@ -488,11 +562,11 @@ float physics_get_motion_avg(const physics_world *world, body_handle handle) {
   return world->dynamics.motion_avgs[handle_to_inner_index(world, handle)];
 }
 
-count_t physics_get_collisions(const physics_world *world, contact_t *contacts, count_t max_contacts) {
-  count_t count = world->collisions.count < max_contacts ? world->collisions.count : max_contacts;
+count_t physics_get_contacts(const physics_world *world, contact_t *contacts, count_t max_contacts) {
+  count_t count = world->contacts.count < max_contacts ? world->contacts.count : max_contacts;
   for(count_t i = 0; i < count; ++i) {
-    contact full_contact = world->collisions.contacts[i];
-    body_type type = i < world->collisions.dynamic_contacts_count ? BODY_DYNAMIC : BODY_STATIC;
+    contact full_contact = world->contacts.values[i];
+    body_type type = i < world->contacts.dynamic_count ? BODY_DYNAMIC : BODY_STATIC;
 
     contacts[i] = (contact_t) {
       .point = full_contact.point,
@@ -589,17 +663,17 @@ void physics_step(physics_world* world, float dt) {
     PROFILE_FUNCTION
 
     integrate_bodies(world, dt);
-    collisions_reset(world);
+    contacts_reset(world);
     joints_produce_contacts(world);
     collisions_detect(world);
-    resolve_collisions(world, dt);
+    contacts_resolve(world, dt);
     update_awake_statuses(world, dt);
     clear_forces(world);
   }
 
   profiler_frame_metadata metadata = {
     .body_count = world->dynamics.count + world->statics.count,
-    .contacts_count = world->collisions.count,
+    .contacts_count = world->contacts.count,
   };
 
   profiler_end_frame(metadata);
@@ -629,8 +703,8 @@ void physics_reset(physics_world *world) {
   world->statics.count = 0;
 
   world->joints.count = 0;
-  world->collisions.dynamic_contacts_count = 0;
-  world->collisions.count = 0;
+  world->contacts.dynamic_count = 0;
+  world->contacts.count = 0;
 
   shapes_reset(world);
 }
@@ -654,85 +728,11 @@ void physics_teardown(physics_world* world) {
 
   shapes_teardown(world);
   joints_teardown(world);
-  collisions_teardown(world->collisions);
+  contacts_teardown(world);
 
   free(world);
 
   profiler_teardown();
-}
-
-void clear_forces(physics_world *world) {
-  dynamic_bodies *dynamics = &world->dynamics;
-
-  const count_t size = sizeof(v3) * dynamics->count;
-  memset(dynamics->forces, 0, size);
-  memset(dynamics->torques, 0, size);
-  memset(dynamics->impulses, 0, size);
-  memset(dynamics->angular_impulses, 0, size);
-  memset(dynamics->accelerations, 0, size);
-}
-
-void update_awake_statuses(physics_world *world, float dt) {
-  dynamic_bodies *dynamics = &world->dynamics;
-  if (dynamics->count == 0)
-    return;
-
-  const float sleep_threshold = world->config.sleep_threshold;
-  count_t awake_count = dynamics->awake_count;
-  for (count_t i = 0; i < awake_count; ++i) {
-    v3 angular_velocity = matrix_rotate(dynamics->angular_momenta[i], dynamics->inv_intertias[i]);
-
-    float current_motion = dynamics->motion_avgs[i];
-    float new_motion = lensq(dynamics->velocities[i]) + lensq(angular_velocity);
-    float bias = powf(world->config.sleep_base_bias, dt);
-
-    float motion = current_motion * bias + new_motion * (1 - bias);
-    motion = fminf(motion, 10 * sleep_threshold);
-
-    dynamics->motion_avgs[i] = motion;
-  }
-
-  count_t left = 0;
-  count_t right = dynamics->count - 1;
-  while(left < awake_count && right >= awake_count) {
-    while(dynamics->motion_avgs[left] > sleep_threshold) {
-      left += 1;
-    }
-
-    while (dynamics->motion_avgs[right] <= sleep_threshold && right >= awake_count) {
-      right -= 1;
-    }
-
-    if (left >= awake_count || right <= awake_count - 1)
-      break;
-
-    swap_bodies(world, left, right);
-  }
-
-  for (count_t i = awake_count - 1; i >= left && i != (count_t)-1; --i) {
-    if (dynamics->motion_avgs[i] >= sleep_threshold)
-      continue;
-
-    count_t target_index = awake_count - 1;
-    if (i != target_index)
-      swap_bodies(world, i, target_index);
-
-    dynamics->velocities[target_index] = dynamics->angular_momenta[target_index] = zero();
-    awake_count -= 1;
-  }
-
-  for (count_t i = awake_count; i <= right; ++i) {
-    if (dynamics->motion_avgs[i] < sleep_threshold)
-      continue;
-
-    count_t target_index = awake_count;
-    if (i != target_index)
-      swap_bodies(world, i, target_index);
-
-    awake_count += 1;
-  }
-
-  dynamics->awake_count = awake_count;
 }
 
 static void swap_bodies(physics_world *world, count_t index_a, count_t index_b) {

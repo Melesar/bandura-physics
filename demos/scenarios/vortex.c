@@ -95,7 +95,7 @@ static v3 random_upward_cone_direction(float cone_angle) {
 static void collect_grounded_bodies(const physics_world *world) {
   memset(grounded_bodies_lookup, 0, GROUNDED_BODIES_BUFFER_SIZE * sizeof(uint64_t));
 
-  count_t contacts_count = physics_get_collisions(world, contacts_buffer, MAX_CONTACTS);
+  count_t contacts_count = physics_get_contacts(world, contacts_buffer, MAX_CONTACTS);
   for(count_t i = 0; i < contacts_count; ++i) {
     contact_t contact = contacts_buffer[i];
 

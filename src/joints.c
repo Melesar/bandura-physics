@@ -2,17 +2,17 @@
 #include <stdlib.h>
 
 static inline contact *new_contact(physics_world *world) {
-  collisions *collisions = &world->collisions;
+  contacts *contacts = &world->contacts;
 
-  if (collisions->count >= collisions->capacity) {
-    while (collisions->count >= collisions->capacity) {
-      collisions->capacity *= 2;
+  if (contacts->count >= contacts->capacity) {
+    while (contacts->count >= contacts->capacity) {
+      contacts->capacity *= 2;
     }
 
-    collisions->contacts = realloc(collisions->contacts, collisions->capacity * sizeof(contact));
+    contacts->values = realloc(contacts->values, contacts->capacity * sizeof(contact));
   }
 
-  return &collisions->contacts[collisions->count++];
+  return &contacts->values[contacts->count++];
 }
 
 static inline void resize_if_needed(joints *joints) {
@@ -84,7 +84,7 @@ void joints_produce_contacts(physics_world *world) {
   const dynamic_bodies *dynamics = &world->dynamics;
   const static_bodies *statics = &world->statics;
 
-  collisions *collisions = &world->collisions;
+  contacts *contacts = &world->contacts;
 
   for(count_t i = 0; i < joints->count; ++i) {
     joint j = joints->values[i];
@@ -118,9 +118,9 @@ void joints_produce_contacts(physics_world *world) {
     contact->friction = 1.0;
     contact->restitution = 0;
 
-    // TODO: must preserve the order: dynamic contacts -> static contacts. Both across joints and collisions.
+    // TODO: must preserve the order: dynamic contacts -> static contacts. Both across joints and contacts.
     if (is_dynamic) {
-      collisions->dynamic_contacts_count += 1;
+      contacts->dynamic_count += 1;
     }
   }
 }

@@ -20,7 +20,7 @@ typedef struct {
 } collision_box;
 
 static contact *new_contact(physics_world *world, const collision_detection_context *ctx) {
-  contact *c = &world->collisions.contacts[world->collisions.count++];
+  contact *c = &world->contacts.values[world->contacts.count++];
   c->index_a = ctx->body_a;
   c->index_b = ctx->body_b;
   c->friction = world->config.friction;
@@ -60,7 +60,7 @@ static m4 body_a_transform(const collision_detection_context *ctx) {
   return body_transform(ctx->shape_a.offset, ctx->shape_a.rotation, ctx->data_a->positions[ctx->body_a], ctx->data_a->rotations[ctx->body_a]);
 }
 
-collision_box collision_box_make(const physics_world *world, const common_data *data, count_t index, body_shape shape) {
+static collision_box collision_box_make(const physics_world *world, const common_data *data, count_t index, body_shape shape) {
   quat rotation = qmul(data->rotations[index], shape.rotation);
 
   return (collision_box) {
@@ -70,7 +70,7 @@ collision_box collision_box_make(const physics_world *world, const common_data *
   };
 }
 
-m4 collision_box_transform(const collision_box *box) {
+static m4 collision_box_transform(const collision_box *box) {
   m4 transform = { 0 };
 
   transform.m0 = box->axis[0].x;
@@ -131,7 +131,7 @@ static void fill_point_face_box_box(
   v3 offset,
   count_t best_axis,
   float penetration,
-  collisions *collisions) {
+  contacts *contacts) {
 
   v3 normal = box_a->axis[best_axis];
   if (dot(box_a->axis[best_axis], offset) > 0)
@@ -142,7 +142,7 @@ static void fill_point_face_box_box(
   if (dot(box_b->axis[1], normal) < 0) vertex.y = -vertex.y;
   if (dot(box_b->axis[2], normal) < 0) vertex.z = -vertex.z;
 
-  contact *contact = &collisions->contacts[collisions->count - 1];
+  contact *contact = &contacts->values[contacts->count - 1];
   contact->point = transform(vertex, collision_box_transform(box_b));
   contact->normal = normal;
   contact->depth = penetration;
@@ -217,20 +217,20 @@ static count_t box_box_collision(physics_world *world, const collision_detection
     return 0;
   }
 
-  collisions *collisions = &world->collisions;
-  ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->count + 1, collisions->capacity, contact);
+  contacts *contacts = &world->contacts;
+  ARRAY_RESIZE_IF_NEEDED(contacts->values, contacts->count + 1, contacts->capacity, contact);
 
   contact *contact = new_contact(world, ctx);
 
   if (best_axis < 3) {
     // We've got a vertex of box two on a face of box one.
-    fill_point_face_box_box(&box_a, &box_b, offset, best_axis, penetration, collisions);
+    fill_point_face_box_box(&box_a, &box_b, offset, best_axis, penetration, contacts);
   } else if (best_axis < 6) {
     // We've got a vertex of box one on a face of box two.
     // We use the same algorithm as above, but swap around
     // one and two (and therefore also the vector between their
     // centres).
-    fill_point_face_box_box(&box_b, &box_a, scale(offset, -1), best_axis - 3, penetration, collisions);
+    fill_point_face_box_box(&box_b, &box_a, scale(offset, -1), best_axis - 3, penetration, contacts);
     *switched_bodies = true;
   } else {
     // We've got an edge-edge contact. Find out which axes
@@ -304,8 +304,8 @@ static count_t box_plane_collision(physics_world *world, const collision_detecti
 
   const count_t max_contacts = 4;
 
-  collisions *collisions = &world->collisions;
-  ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->count + max_contacts, collisions->capacity, contact)
+  contacts *contacts = &world->contacts;
+  ARRAY_RESIZE_IF_NEEDED(contacts->values, contacts->count + max_contacts, contacts->capacity, contact)
 
   count_t contact_count = 0;
   for (count_t i = 0; i < 8 && contact_count < max_contacts; ++i) {
@@ -325,7 +325,7 @@ static count_t box_plane_collision(physics_world *world, const collision_detecti
   return contact_count;
 }
 
-count_t box_sphere_collision(physics_world *world, const collision_detection_context *ctx) {
+static count_t box_sphere_collision(physics_world *world, const collision_detection_context *ctx) {
   v3 sphere_center = body_b_center(ctx);
   float sphere_radius = ctx->shape_b.sphere.radius;
 
@@ -361,8 +361,8 @@ count_t box_sphere_collision(physics_world *world, const collision_detection_con
 
   closest_point = transform(closest_point, box_transform);
 
-  collisions *collisions = &world->collisions;
-  ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->count + 1, collisions->capacity, contact);
+  contacts *contacts = &world->contacts;
+  ARRAY_RESIZE_IF_NEEDED(contacts->values, contacts->count + 1, contacts->capacity, contact);
 
   contact *contact = new_contact(world, ctx);
   contact->point = closest_point;
@@ -558,7 +558,7 @@ static void closest_points_on_segment_segment(v3 p1, v3 q1, v3 p2, v3 q2, v3 *c1
   *c2 = add(p2, scale(d2, t));
 }
 
-count_t cylinder_box_collision(physics_world *world, const collision_detection_context *ctx) {
+static count_t cylinder_box_collision(physics_world *world, const collision_detection_context *ctx) {
   v3 cylinder_center = body_a_center(ctx);
   quat cylinder_rotation = ctx->data_a->rotations[ctx->body_a];
   quat shape_rotation = ctx->shape_a.rotation;
@@ -620,8 +620,8 @@ count_t cylinder_box_collision(physics_world *world, const collision_detection_c
     depth = penetration;
   }
 
-  collisions *collisions = &world->collisions;
-  ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->count + 1, collisions->capacity, contact);
+  contacts *contacts = &world->contacts;
+  ARRAY_RESIZE_IF_NEEDED(contacts->values, contacts->count + 1, contacts->capacity, contact);
 
   contact *contact = new_contact(world, ctx);
   contact->point = add(point_on_box, scale(sub(point_on_cylinder, point_on_box), 0.5f));
@@ -631,7 +631,7 @@ count_t cylinder_box_collision(physics_world *world, const collision_detection_c
   return 1;
 }
 
-count_t cylinder_cylinder_collision(physics_world *world, const collision_detection_context *ctx) {
+static count_t cylinder_cylinder_collision(physics_world *world, const collision_detection_context *ctx) {
   quat rotation_a = qmul(ctx->data_a->rotations[ctx->body_a], ctx->shape_a.rotation);
   quat rotation_b = qmul(ctx->data_b->rotations[ctx->body_b], ctx->shape_b.rotation);
 
@@ -680,8 +680,8 @@ count_t cylinder_cylinder_collision(physics_world *world, const collision_detect
   v3 point_on_a = support_point_on_cylinder(center_a, axis_a, half_height_a, radius_a, scale(normal, -1.0f));
   v3 point_on_b = support_point_on_cylinder(center_b, axis_b, half_height_b, radius_b, normal);
 
-  collisions *collisions = &world->collisions;
-  ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->count + 1, collisions->capacity, contact);
+  contacts *contacts = &world->contacts;
+  ARRAY_RESIZE_IF_NEEDED(contacts->values, contacts->count + 1, contacts->capacity, contact);
 
   contact *contact = new_contact(world, ctx);
   contact->point = add(point_on_b, scale(sub(point_on_a, point_on_b), 0.5f));
@@ -691,7 +691,7 @@ count_t cylinder_cylinder_collision(physics_world *world, const collision_detect
   return 1;
 }
 
-count_t cylinder_sphere_collision(physics_world *world, const collision_detection_context *ctx) {
+static count_t cylinder_sphere_collision(physics_world *world, const collision_detection_context *ctx) {
   quat cylinder_rotation = qmul(ctx->data_a->rotations[ctx->body_a], ctx->shape_a.rotation);
   float cylinder_radius = ctx->shape_a.cylinder.radius;
   float cylinder_half_height = ctx->shape_a.cylinder.height * 0.5f;
@@ -752,8 +752,8 @@ count_t cylinder_sphere_collision(physics_world *world, const collision_detectio
     depth = sphere_radius - distance;
   }
 
-  collisions *collisions = &world->collisions;
-  ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->count + 1, collisions->capacity, contact);
+  contacts *contacts = &world->contacts;
+  ARRAY_RESIZE_IF_NEEDED(contacts->values, contacts->count + 1, contacts->capacity, contact);
 
   contact *contact = new_contact(world, ctx);
   contact->point = transform(contact_point_local, cylinder_transform);
@@ -763,7 +763,7 @@ count_t cylinder_sphere_collision(physics_world *world, const collision_detectio
   return 1;
 }
 
-count_t sphere_sphere_collision(physics_world *world, const collision_detection_context *ctx) {
+static count_t sphere_sphere_collision(physics_world *world, const collision_detection_context *ctx) {
   v3 p1 = body_a_center(ctx);
   v3 p2 = body_b_center(ctx);
 
@@ -777,8 +777,8 @@ count_t sphere_sphere_collision(physics_world *world, const collision_detection_
     return 0;
   }
 
-  collisions *collisions = &world->collisions;
-  ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->count + 1, collisions->capacity, contact);
+  contacts *contacts = &world->contacts;
+  ARRAY_RESIZE_IF_NEEDED(contacts->values, contacts->count + 1, contacts->capacity, contact);
 
   contact *contact = new_contact(world, ctx);
   contact->point = add(p1, scale(offset, 0.5));
@@ -799,8 +799,8 @@ static count_t sphere_plane_collision(physics_world *world, const collision_dete
   if (plane_sphere_distance > sphere_radius)
     return 0;
 
-  collisions *collisions = &world->collisions;
-  ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->count + 1, collisions->capacity, contact);
+  contacts *contacts = &world->contacts;
+  ARRAY_RESIZE_IF_NEEDED(contacts->values, contacts->count + 1, contacts->capacity, contact);
 
   contact *contact = new_contact(world, ctx);
   contact->normal = plane_normal;
@@ -833,8 +833,8 @@ static count_t cylinder_plane_collision(physics_world *world, const collision_de
   if (min_distance > 0.0f)
     return 0;
 
-  collisions *collisions = &world->collisions;
-  ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->count + 1, collisions->capacity, contact);
+  contacts *contacts = &world->contacts;
+  ARRAY_RESIZE_IF_NEEDED(contacts->values, contacts->count + 1, contacts->capacity, contact);
 
   float cap_sign = axis_projection > 0.0f ? -1.0f : 1.0f;
   v3 cap_offset = scale(cylinder_axis, cap_sign * cylinder_half_height);
@@ -855,24 +855,10 @@ static count_t cylinder_plane_collision(physics_world *world, const collision_de
   return 1;
 }
 
-void collisions_reset(physics_world *world) {
-  world->collisions.count = 0;
-  world->collisions.dynamic_contacts_count = 0;
-}
-
-collisions collisions_init(const physics_config *config) {
-  collisions result = {};
-  result.capacity = config->collisions_capacity;
-  result.count = 0;
-  result.contacts = malloc(config->collisions_capacity * sizeof(contact));
-
-  return result;
-}
-
 static void invert_static_collision(physics_world *world, collision_func func, const collision_detection_context *ctx) {
-  collisions *collisions = &world->collisions;
+  contacts *contacts = &world->contacts;
   if (func(world, ctx)) {
-    contact *contact = &collisions->contacts[collisions->count - 1];
+    contact *contact = &contacts->values[contacts->count - 1];
     contact->index_a = ctx->body_b;
     contact->index_b = ctx->body_a;
     contact->normal = negate(contact->normal);
@@ -882,7 +868,7 @@ static void invert_static_collision(physics_world *world, collision_func func, c
 void collisions_detect(physics_world *world) {
   PROFILE_FUNCTION
 
-  collisions *collisions = &world->collisions;
+  contacts *contacts = &world->contacts;
 
   const common_data *dynamics =(common_data*) &world->dynamics;
   const common_data *statics = (common_data*)&world->statics;
@@ -893,7 +879,7 @@ void collisions_detect(physics_world *world) {
 
   collision_detection_context inv_ctx = ctx;
 
-  count_t dyn_count = collisions->dynamic_contacts_count;
+  count_t dyn_count = contacts->dynamic_count;
   for (count_t i = 0; i < dynamics->count; ++i) {
     for (count_t j = 0; j < i; ++j) {
       ctx.body_a = i;
@@ -922,7 +908,7 @@ void collisions_detect(physics_world *world) {
                   bool did_switch_bodies;
                   dyn_count += box_box_collision(world, &ctx, &did_switch_bodies);
                   if (did_switch_bodies) {
-                    contact *contact = &collisions->contacts[collisions->count - 1];
+                    contact *contact = &contacts->values[contacts->count - 1];
                     contact->index_a = j;
                     contact->index_b = i;
                   }
@@ -979,7 +965,7 @@ void collisions_detect(physics_world *world) {
     }
   }
 
-  collisions->dynamic_contacts_count = dyn_count;
+  contacts->dynamic_count = dyn_count;
 
   ctx.data_b = statics;
   inv_ctx.data_a = statics;
@@ -1031,7 +1017,7 @@ void collisions_detect(physics_world *world) {
                   bool did_switch_bodies;
                   box_box_collision(world, &ctx, &did_switch_bodies);
                   if (did_switch_bodies) {
-                    contact *contact = &collisions->contacts[collisions->count - 1];
+                    contact *contact = &contacts->values[contacts->count - 1];
                     contact->normal = negate(contact->normal);
                   }
                   break;
@@ -1066,8 +1052,4 @@ void collisions_detect(physics_world *world) {
       }
     }
   }
-}
-
-void collisions_teardown(collisions collisions) {
-  free(collisions.contacts);
 }
