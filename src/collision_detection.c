@@ -1,5 +1,4 @@
 #include "bandura.h"
-#include "profiler.h"
 #include "physics.h"
 #include <math.h>
 #include <stdlib.h>
