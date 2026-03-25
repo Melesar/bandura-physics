@@ -2,7 +2,7 @@
 #include "physics.h"
 #include <math.h>
 
-void update_desired_velocity_delta(physics_world *world, count_t contact_index, float dt) {
+static void update_desired_velocity_delta(physics_world *world, count_t contact_index, float dt) {
   count_t awake_count = world->dynamics.awake_count;
   contact *contact = &world->collisions.contacts[contact_index];
   count_t body_count = contact_index < world->collisions.dynamic_contacts_count ? 2 : 1;
@@ -52,7 +52,7 @@ static m3 contact_space_transform(const contact *contact) {
   return matrix_from_basis(x_axis, y_axis, z_axis);
 }
 
-void prepare_contacts(physics_world *world, float dt) {
+static void prepare_contacts(physics_world *world, float dt) {
   PROFILE_FUNCTION
 
   dynamic_bodies *dynamics = &world->dynamics;
@@ -94,7 +94,7 @@ void prepare_contacts(physics_world *world, float dt) {
   }
 }
 
-void resolve_interpenetration_contact(physics_world *world, count_t contact_index, v3 *deltas) {
+static void resolve_interpenetration_contact(physics_world *world, count_t contact_index, v3 *deltas) {
   PROFILE_FUNCTION
 
   const contact *contact = &world->collisions.contacts[contact_index];
@@ -172,21 +172,17 @@ void resolve_interpenetration_contact(physics_world *world, count_t contact_inde
   }
 }
 
-void update_penetration_depths_ex(physics_world *world, count_t contact_index, const v3 *deltas, depth_update_record *records, count_t *record_count) {
+static void update_penetration_depths(physics_world *world, count_t contact_index, const v3 *deltas) {
   contact *worst_contact = &world->collisions.contacts[contact_index];
 
   count_t worst_body_ids[] = { worst_contact->index_a, worst_contact->index_b };
   count_t worst_body_count = contact_index < world->collisions.dynamic_contacts_count ? 2 : 1;
-
-  if (record_count) *record_count = 0;
 
   count_t count = world->collisions.count;
   for (count_t i = 0; i < count; ++i) {
     contact *contact = &world->collisions.contacts[i];
     count_t body_count = i < world->collisions.dynamic_contacts_count ? 2 : 1;
     count_t body_ids[] = { contact->index_a, contact->index_b };
-
-    float depth_before = contact->depth;
 
     for (count_t k = 0; k < body_count; ++k) {
       count_t body_index = body_ids[k];
@@ -200,19 +196,10 @@ void update_penetration_depths_ex(physics_world *world, count_t contact_index, c
         }
       }
     }
-
-    if (records && record_count && contact->depth != depth_before && *record_count < CDBG_MAX_CONTACTS) {
-      records[*record_count] = (depth_update_record){ .index = i, .before = depth_before, .after = contact->depth };
-      (*record_count)++;
-    }
   }
 }
 
-static void update_penetration_depths(physics_world *world, count_t collision_index, const v3 *deltas) {
-  update_penetration_depths_ex(world, collision_index, deltas, NULL, NULL);
-}
-
-void resolve_velocity_contact(physics_world *world, count_t contact_index, v3 *deltas) {
+static void resolve_velocity_contact(physics_world *world, count_t contact_index, v3 *deltas) {
   PROFILE_FUNCTION
 
   contact *contact = &world->collisions.contacts[contact_index];
@@ -284,7 +271,7 @@ void resolve_velocity_contact(physics_world *world, count_t contact_index, v3 *d
 }
 
 // Find the worst penetration contact. Returns false if none above threshold.
-bool find_worst_penetration(physics_world *world, count_t *out_contact_index) {
+static bool find_worst_penetration(physics_world *world, count_t *out_contact_index) {
   float max_penetration = world->config.penetration_epsilon;
   count_t best_contact = (count_t)-1;
 
@@ -305,7 +292,7 @@ bool find_worst_penetration(physics_world *world, count_t *out_contact_index) {
 }
 
 // Find the worst velocity contact. Returns false if none above threshold.
-bool find_worst_velocity(physics_world *world, count_t *out_contact_index) {
+static bool find_worst_velocity(physics_world *world, count_t *out_contact_index) {
   float max_velocity = world->config.velocity_epsilon;
   count_t best_contact = (count_t)-1;
 
@@ -325,7 +312,7 @@ bool find_worst_velocity(physics_world *world, count_t *out_contact_index) {
   return true;
 }
 
-void update_awake_status_for_collision(physics_world *world, count_t contact_index) {
+static void update_awake_status_for_collision(physics_world *world, count_t contact_index) {
   if (contact_index >= world->collisions.dynamic_contacts_count)
     return;
 
@@ -344,7 +331,7 @@ void update_awake_status_for_collision(physics_world *world, count_t contact_ind
     world->dynamics.motion_avgs[contact->index_b] = 2.0 * sleep_threshold;
 }
 
-void resolve_interpenetrations(physics_world *world) {
+static void resolve_interpenetrations(physics_world *world) {
   PROFILE_FUNCTION
 
   const count_t count = world->collisions.count;
@@ -368,22 +355,16 @@ void resolve_interpenetrations(physics_world *world) {
   }
 }
 
-void update_velocity_deltas_ex(physics_world *world, count_t contact_index, const v3 *deltas, float dt, velocity_update_record *records, count_t *record_count) {
+static void update_velocity_deltas(physics_world *world, count_t contact_index, const v3 *deltas, float dt) {
   contact *worst_contact = &world->collisions.contacts[contact_index];
   count_t worst_body_ids[] = { worst_contact->index_a, worst_contact->index_b };
   count_t worst_body_count = contact_index < world->collisions.dynamic_contacts_count ? 2 : 1;
-
-  if (record_count) *record_count = 0;
 
   count_t count = world->collisions.count;
   for (count_t i = 0; i < count; ++i) {
     contact *contact = &world->collisions.contacts[i];
     count_t body_ids[] = { contact->index_a, contact->index_b };
     count_t body_count = i < world->collisions.dynamic_contacts_count ? 2 : 1;
-
-    v3 local_vel_before = contact->local_velocity;
-    float ddv_before = contact->desired_delta_velocity;
-    bool changed = false;
 
     for (count_t k = 0; k < body_count; ++k) {
       count_t body_index = body_ids[k];
@@ -399,30 +380,13 @@ void update_velocity_deltas_ex(physics_world *world, count_t contact_index, cons
           contact->local_velocity = add(contact->local_velocity, scale(delta_velocity, (k ? -1 : 1)));
 
           update_desired_velocity_delta(world, i, dt);
-          changed = true;
         }
       }
-    }
-
-    // TODO: refactor to move it out from the release loop.
-    if (records && record_count && changed && *record_count < CDBG_MAX_CONTACTS) {
-      records[*record_count] = (velocity_update_record){
-        .index = i,
-        .local_vel_before = local_vel_before,
-        .local_vel_after = contact->local_velocity,
-        .ddv_before = ddv_before,
-        .ddv_after = contact->desired_delta_velocity,
-      };
-      (*record_count)++;
     }
   }
 }
 
-static void update_velocity_deltas(physics_world *world, count_t worst_collision_index, const v3 *deltas, float dt) {
-  update_velocity_deltas_ex(world, worst_collision_index, deltas, dt, NULL, NULL);
-}
-
-void resolve_velocities(physics_world *world, float dt) {
+static void resolve_velocities(physics_world *world, float dt) {
   PROFILE_FUNCTION
 
   const count_t count = world->collisions.count;

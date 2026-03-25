@@ -80,8 +80,6 @@ typedef struct {
 
 static observed_body_state observed_body = {0};
 
-static collision_debug_state *debug_state;
-
 static Model groundModel;
 static physics_world *world;
 static physics_config config;
@@ -108,8 +106,6 @@ int main(int argc, char** argv) {
   init_physics();
   setup_scene(shader);
   scenario_setup_scene(world);
-
-  debug_state = physics_debug_state_init();
 
   if (argc > 1 && !strncmp(argv[1], "-p", 2)) {
     simulation_running = false;
@@ -229,12 +225,6 @@ static void draw_ui_widget_controls(struct nk_context* ctx) {
       nk_bool collisions = draw_collisions ? nk_true : nk_false;
       nk_checkbox_label(ctx, "Draw collisions", &collisions);
       draw_collisions = collisions != 0;
-
-      nk_bool cdbg = collision_debug_mode ? nk_true : nk_false;
-      nk_checkbox_label(ctx, "Collision debugging", &cdbg);
-      if (cdbg && !collision_debug_mode)
-        physics_debug_state_reset(debug_state);
-      collision_debug_mode = cdbg != 0;
 
       nk_bool gismos = draw_gismos ? nk_true : nk_false;
       nk_checkbox_label(ctx, "Draw gismos", &gismos);
@@ -382,11 +372,6 @@ static void draw_physics_bodies() {
     v3 angular_momentum = physics_get_angular_momentum(world, enumerator.handle);
     if (draw_angular_momenta)
       draw_body_angular_momentum(position, angular_momentum);
-  }
-
-  contact_t contact;
-  if (physics_debug_current_contact(world, debug_state, &contact)) {
-    draw_arrow(contact.point, contact.normal, RED);
   }
 }
 

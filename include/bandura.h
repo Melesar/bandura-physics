@@ -216,9 +216,4 @@ void physics_reset(physics_world *world);
 count_t physics_raycast(const physics_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits, raycast_hit *hits);
 
 void physics_teardown(physics_world* world);
-
-collision_debug_state *physics_debug_state_init();
-void physics_debug_state_reset(collision_debug_state *state);
-bool physics_debug_current_contact(const physics_world *world, const collision_debug_state *state, contact_t *contact);
-void physics_step_debug(physics_world *world, float dt, collision_debug_state *state);
 #endif
