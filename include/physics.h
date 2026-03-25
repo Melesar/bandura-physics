@@ -25,6 +25,7 @@ typedef struct {
   count_t count;
 
   count_t next_id;
+  count_t dynamic_count;
 } joints;
 
 typedef struct {
@@ -127,13 +128,17 @@ const common_data* as_common_const(const physics_world *world, body_type type);
 void contacts_init(physics_world *world);
 void contacts_teardown(physics_world *world);
 void contacts_reset(physics_world *world);
+void contacts_generate(physics_world *world);
 void contacts_resolve(physics_world *world, float dt);
 
-void collisions_detect(physics_world *world);
+count_t collisions_detect_dynamic(physics_world *world);
+void collisions_detect_static(physics_world *world);
 
 void joints_init(physics_world *world);
 void joints_teardown(physics_world *world);
-void joints_produce_contacts(physics_world *world);
+void joints_reset(physics_world *world);
+count_t joints_generate_dynamic(physics_world *world);
+void joints_generate_static(physics_world *world);
 
 void shapes_init(physics_world *world);
 void shapes_teardown(physics_world *world);

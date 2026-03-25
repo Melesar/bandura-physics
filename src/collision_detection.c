@@ -865,13 +865,9 @@ static void invert_static_collision(physics_world *world, collision_func func, c
   }
 }
 
-void collisions_detect(physics_world *world) {
-  PROFILE_FUNCTION
-
+count_t collisions_detect_dynamic(physics_world *world) {
   contacts *contacts = &world->contacts;
-
   const common_data *dynamics =(common_data*) &world->dynamics;
-  const common_data *statics = (common_data*)&world->statics;
 
   collision_detection_context ctx = { .world = world };
   ctx.data_a = dynamics;
@@ -879,7 +875,8 @@ void collisions_detect(physics_world *world) {
 
   collision_detection_context inv_ctx = ctx;
 
-  count_t dyn_count = contacts->dynamic_count;
+  count_t dyn_count = 0;
+
   for (count_t i = 0; i < dynamics->count; ++i) {
     for (count_t j = 0; j < i; ++j) {
       ctx.body_a = i;
@@ -965,9 +962,20 @@ void collisions_detect(physics_world *world) {
     }
   }
 
-  contacts->dynamic_count = dyn_count;
+  return dyn_count;
+}
 
+void collisions_detect_static(physics_world *world) {
+  contacts *contacts = &world->contacts;
+  const common_data *dynamics =(common_data*) &world->dynamics;
+  const common_data *statics = (common_data*)&world->statics;
+
+  collision_detection_context ctx = { .world = world };
+  collision_detection_context inv_ctx = ctx;
+
+  ctx.data_a = dynamics;
   ctx.data_b = statics;
+
   inv_ctx.data_a = statics;
   inv_ctx.data_b = dynamics;
 

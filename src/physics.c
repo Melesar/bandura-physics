@@ -664,8 +664,7 @@ void physics_step(physics_world* world, float dt) {
 
     integrate_bodies(world, dt);
     contacts_reset(world);
-    joints_produce_contacts(world);
-    collisions_detect(world);
+    contacts_generate(world);
     contacts_resolve(world, dt);
     update_awake_statuses(world, dt);
     clear_forces(world);
@@ -702,11 +701,9 @@ void physics_reset(physics_world *world) {
 
   world->statics.count = 0;
 
-  world->joints.count = 0;
-  world->contacts.dynamic_count = 0;
-  world->contacts.count = 0;
-
+  contacts_reset(world);
   shapes_reset(world);
+  joints_reset(world);
 }
 
 void physics_teardown(physics_world* world) {

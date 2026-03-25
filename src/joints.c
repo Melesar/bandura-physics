@@ -1,3 +1,4 @@
+#include "bandura.h"
 #include "physics.h"
 #include <stdlib.h>
 
@@ -49,8 +50,23 @@ count_t physics_add_joint(physics_world *world, body_handle body_a, body_handle 
 
   resize_if_needed(joints);
 
-  count_t index = joints->count++;
+  count_t last_index = joints->count++;
+  bool is_dynamic = body_b.type == BODY_DYNAMIC;
   count_t id = joints->next_id++;
+
+  count_t index;
+  if (is_dynamic) {
+    if (joints->dynamic_count < last_index) {
+      // Move first static joint to the end
+      joints->values[last_index] = joints->values[joints->dynamic_count];
+      joints->ids[last_index] = joints->ids[joints->dynamic_count];
+    }
+
+    index = joints->dynamic_count;
+    joints->dynamic_count += 1;
+  } else {
+    index = last_index;
+  }
 
   joints->values[index] = (joint) {
     .bodies = { body_a, body_b },
@@ -79,16 +95,13 @@ void physics_remove_joint(physics_world *world, count_t id) {
   }
 }
 
-void joints_produce_contacts(physics_world *world) {
+static void generate_contacts(physics_world *world, count_t start, count_t end, bool is_dynamic) {
   const joints *joints = &world->joints;
   const dynamic_bodies *dynamics = &world->dynamics;
   const static_bodies *statics = &world->statics;
 
-  contacts *contacts = &world->contacts;
-
-  for(count_t i = 0; i < joints->count; ++i) {
+  for(count_t i = start; i < end; ++i) {
     joint j = joints->values[i];
-    bool is_dynamic = j.bodies[1].type == BODY_DYNAMIC;
 
     const common_data *data[2];
     data[0] = (common_data*) dynamics;
@@ -117,20 +130,30 @@ void joints_produce_contacts(physics_world *world) {
     contact->depth = distance - j.max_error;
     contact->friction = 1.0;
     contact->restitution = 0;
-
-    // TODO: must preserve the order: dynamic contacts -> static contacts. Both across joints and contacts.
-    if (is_dynamic) {
-      contacts->dynamic_count += 1;
-    }
   }
+}
+
+count_t joints_generate_dynamic(physics_world *world) {
+  generate_contacts(world, 0, world->joints.dynamic_count, true);
+  return world->joints.dynamic_count;
+}
+
+void joints_generate_static(physics_world *world) {
+  generate_contacts(world, world->joints.dynamic_count, world->joints.count, false);
 }
 
 void joints_init(physics_world *world) {
   world->joints.values = malloc(world->config.joints_capacity * sizeof(joint));
   world->joints.ids = malloc(world->config.joints_capacity * sizeof(count_t));
   world->joints.capacity = world->config.joints_capacity;
+
+  joints_reset(world);
+}
+
+void joints_reset(physics_world *world) {
   world->joints.count = 0;
   world->joints.next_id = 0;
+  world->joints.dynamic_count = 0;
 }
 
 void joints_teardown(physics_world *world) {
