@@ -71,8 +71,6 @@ static void scatter_dynamic_body(physics_world *world, body b, float min_height,
     random_range(-2.5f, 2.5f),
     random_range(-2.5f, 2.5f),
   };
-
-  physics_awaken_body(world, b.handle);
 }
 
 static v3 random_upward_cone_direction(float cone_angle) {

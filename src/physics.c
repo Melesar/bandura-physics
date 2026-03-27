@@ -6,6 +6,7 @@
 #include <string.h>
 
 static void swap_bodies(physics_world *world, count_t index_a, count_t index_b);
+static void move_body(physics_world *world, count_t src_index, count_t dst_index);
 
 static v3 cylinder_inertia(float radius, float height, float mass) {
   float principal =  mass * (3 * radius * radius + height * height) / 12.0;
@@ -259,24 +260,50 @@ static shape_dimension_bracket get_shapes_bracket(count_t shapes_count) {
   return BRACKET_COUNT;
 }
 
-static void add_body_common(physics_world *world, common_data *data, shape_dimension_bracket bracket, body_shape* shapes, count_t shapes_count, count_t index) {
+static void init_body_common(physics_world *world, common_data *data, shape_dimension_bracket bracket, body_shape* shapes, count_t shapes_count, count_t index) {
   data->positions[index] = zero();
   data->rotations[index] = qidentity();
   data->shapes[index] = shapes_write(world, bracket, shapes, shapes_count);
-  data->outer_lookup[index] = index;
-  data->inner_lookup[index] = index;
 }
 
-static void add_body_dynamic(dynamic_bodies *data, float mass, count_t index) {
+static void init_body_dynamic(physics_world *world, float mass, m3 inertia_tensor, count_t index) {
+  dynamic_bodies *data = &world->dynamics;
+
   data->inv_masses[index] = 1.0 / mass;
   data->velocities[index] = zero();
   data->angular_momenta[index] = zero();
-  data->motion_avgs[index] = 0;
+  data->inv_inertia_tensors[index] = matrix_inverse(inertia_tensor);
+  data->motion_avgs[index] = 2 * world->config.sleep_threshold;
   data->forces[index] = zero();
   data->torques[index] = zero();
   data->impulses[index] = zero();
   data->angular_impulses[index] = zero();
   data->accelerations[index] = zero();
+}
+
+static count_t insert_new_dynamic_body(physics_world *world) {
+  dynamic_bodies *data = &world->dynamics;
+
+  count_t prev_count = data->count;
+  count_t index;
+  if (data->awake_count < prev_count) {
+    move_body(world, data->awake_count, prev_count);
+
+    index = data->awake_count;
+
+    count_t prev_outer_index = data->inner_lookup[index];
+    data->outer_lookup[prev_outer_index] = prev_count;
+    data->inner_lookup[prev_count] = prev_outer_index;
+
+    data->outer_lookup[prev_count] = index;
+    data->inner_lookup[index] = prev_count;
+  } else {
+    index = prev_count;
+    data->outer_lookup[index] = index;
+    data->inner_lookup[index] = index;
+  }
+
+  return index;
 }
 
 physics_world* physics_init(const physics_config *config) {
@@ -322,7 +349,10 @@ static body add_primitive_body_static(physics_world* world, body_shape shape) {
   }
 
   count_t index = data->count++;
-  add_body_common(world, data, BRACKET_PRIMITIVE, &shape, 1, index);
+  init_body_common(world, data, BRACKET_PRIMITIVE, &shape, 1, index);
+
+  data->outer_lookup[index] = index;
+  data->inner_lookup[index] = index;
 
   world->generation += 1;
 
@@ -342,13 +372,15 @@ static body add_primitive_body_dynamic(physics_world* world, body_shape shape, f
     realloc_dynamics(data);
   }
 
-  count_t index = data->count++;
-  add_body_common(world, (common_data*) data, BRACKET_PRIMITIVE, &shape, 1, index);
-  add_body_dynamic(data, mass, index);
+  count_t index = insert_new_dynamic_body(world);
+  init_body_common(world, (common_data*) data, BRACKET_PRIMITIVE, &shape, 1, index);
 
-  v3 inertia = inertia_vector(shape, mass);
+  m3 inertia = matrix_initial_inertia(inertia_vector(shape, mass));
+  init_body_dynamic(world, mass, inertia, index);
 
-  world->dynamics.inv_inertia_tensors[index] = matrix_initial_inertia(invert(inertia));
+  data->awake_count += 1;
+  data->count += 1;
+
   world->generation += 1;
 
   return (body) {
@@ -394,7 +426,10 @@ body physics_add_compound_body_static(physics_world *world, body_shape *shapes, 
   }
 
   count_t index = data->count++;
-  add_body_common(world, (common_data*) &world->statics, bracket, shapes, shapes_count, index);
+  init_body_common(world, (common_data*) &world->statics, bracket, shapes, shapes_count, index);
+
+  data->outer_lookup[index] = index;
+  data->inner_lookup[index] = index;
 
   float mass;
   body_shape* body_shapes = shapes_get(world, data->shapes[index]);
@@ -420,16 +455,17 @@ body physics_add_compound_body_dynamic(physics_world *world, body_shape *shapes,
     realloc_dynamics(data);
   }
 
-  count_t index = data->count++;
-  add_body_common(world, (common_data*) data, bracket, shapes, shapes_count, index);
+  count_t index = insert_new_dynamic_body(world);
+  init_body_common(world, (common_data*) data, bracket, shapes, shapes_count, index);
 
   float mass;
   m3 inertia;
   body_shape *body_shapes = shapes_get(world, data->shapes[index]);
   calculate_compound_shape_dynamic(body_shapes, masses, shapes_count, &mass, &inertia);
-  add_body_dynamic(data, mass, index);
+  init_body_dynamic(world, mass, inertia, index);
 
-  data->inv_inertia_tensors[index] = matrix_inverse(inertia);
+  data->awake_count += 1;
+  data->count += 1;
 
   world->generation += 1;
 
@@ -761,4 +797,24 @@ static void swap_bodies(physics_world *world, count_t index_a, count_t index_b) 
   world->generation += 1;
 
   #undef SWAP
+}
+
+static void move_body(physics_world *world, count_t src_index, count_t dst_index) {
+  dynamic_bodies *data = &world->dynamics;
+
+  data->positions[dst_index] = data->positions[src_index];
+  data->rotations[dst_index] = data->rotations[src_index];
+  data->shapes[dst_index] = data->shapes[src_index];
+  data->inv_masses[dst_index] = data->inv_masses[src_index];
+  data->velocities[dst_index] = data->velocities[src_index];
+  data->angular_momenta[dst_index] = data->angular_momenta[src_index];
+  data->inv_inertia_tensors[dst_index] = data->inv_inertia_tensors[src_index];
+  data->inv_intertias[dst_index] = data->inv_intertias[src_index];
+  data->motion_avgs[dst_index] = data->motion_avgs[src_index];
+
+  data->forces[dst_index] = data->forces[src_index];
+  data->torques[dst_index] = data->torques[src_index];
+  data->impulses[dst_index] = data->impulses[src_index];
+  data->angular_impulses[dst_index] = data->angular_impulses[src_index];
+  data->accelerations[dst_index] = data->accelerations[src_index];
 }

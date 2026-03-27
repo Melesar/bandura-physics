@@ -33,8 +33,6 @@ void scenario_handle_input(physics_world *world, Camera *cam) {
     body big_box = physics_add_box_dynamic(world, 10, (v3) { 1.3, 1.3, 1.3 });
     *big_box.position = (v3) { 0, 7, 0 };
     *big_box.angular_momentum = (v3) { 1, 1, 1 };
-
-    physics_awaken_body(world, big_box.handle);
   }
 
   if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
@@ -44,7 +42,6 @@ void scenario_handle_input(physics_world *world, Camera *cam) {
     *ball.position = add(cam->position, direction);
 
     physics_apply_impulse(world, ball.handle, scale(direction, 70));
-    physics_awaken_body(world, ball.handle);
   }
 }
 
