@@ -233,6 +233,17 @@ void physics_draw_config_widget(physics_world *world, struct nk_context* ctx) {
   nk_end(ctx);
 }
 
+static v3 joint_attachment_point(const physics_world *world, joint j, count_t index) {
+  v3 position = physics_get_position(world, j.bodies[index]);
+  quat rotation = physics_get_rotation(world, j.bodies[index]);
+
+  v3 point = j.relative_contact_positions[index];
+  point = rotate(point, rotation);
+  point = add(point, position);
+
+  return point;
+}
+
 void physics_draw_collisions(const physics_world *world) {
   #define max_count 50
 
@@ -245,7 +256,16 @@ void physics_draw_collisions(const physics_world *world) {
     draw_arrow(contact.point, scale(contact.normal, 0.2), RED);
   }
 
-  #undef count
+  const joint *joints = physics_get_joints(world, &count);
+  for (count_t i = 0; i < count; ++i) {
+    v3 p1 = joint_attachment_point(world, joints[i], 0);
+    v3 p2 = joint_attachment_point(world, joints[i], 1);
+
+    DrawSphere(p1, 0.05, GREEN);
+    DrawSphere(p2, 0.05, BLUE);
+  }
+
+  #undef max_count
 }
 
 ragdoll ragdoll_create(physics_world *world, v3 position) {

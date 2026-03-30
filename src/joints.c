@@ -96,6 +96,11 @@ void physics_remove_joint(physics_world *world, count_t id) {
   }
 }
 
+const joint *physics_get_joints(const physics_world *world, count_t *count) {
+  *count = world->joints.count;
+  return world->joints.values;
+}
+
 static count_t generate_contacts(physics_world *world, count_t start, count_t end, bool is_dynamic) {
   const joints *joints = &world->joints;
   const dynamic_bodies *dynamics = &world->dynamics;

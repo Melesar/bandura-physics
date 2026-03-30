@@ -185,6 +185,7 @@ body physics_add_compound_body_dynamic(physics_world *world, body_shape *shapes,
 
 count_t physics_add_joint(physics_world *world, body_handle body_a, body_handle body_b, v3 contact_offset_a, v3 contact_offset_b, float max_distance);
 void physics_remove_joint(physics_world *world, count_t id);
+const joint *physics_get_joints(const physics_world *world, count_t *count);
 
 void physics_apply_force(physics_world *world, body_handle handle, v3 force);
 void physics_apply_force_at(physics_world *world, body_handle handle, v3 force, v3 position);
