@@ -420,6 +420,8 @@ static void draw_scene(Camera camera, struct nk_context* ctx, Shader shader) {
 
           if (edit_mode)
             draw_gizmos();
+          if (draw_collisions)
+            physics_draw_collisions(world);
 
         EndShaderMode();
 

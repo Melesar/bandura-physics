@@ -162,7 +162,6 @@ typedef struct {
 } joint;
 
 typedef struct physics_world_t physics_world;
-typedef struct collision_debug_state_t collision_debug_state;
 
 typedef struct {
   body_handle handle;

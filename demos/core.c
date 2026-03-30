@@ -1,14 +1,14 @@
 #include "core.h"
+#include "bandura.h"
+#include "raylib.h"
+#include "raymath.h"
 #include "rlgl.h"
 #include <float.h>
 #include <limits.h>
-#include <stdio.h>
 
 Mesh arrow_base;
 Mesh arrow_head;
 Material mat;
-
-static void dump_collided_bodies(const physics_world *world, count_t collision_index, char *file_name);
 
 static void begin_debug_row(struct nk_context* ctx) {
   nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
@@ -28,6 +28,8 @@ void init_debugging() {
 }
 
 void draw_arrow(Vector3 start, Vector3 direction, Color color) {
+  const float scale = 0.2;
+
   Vector3 end = Vector3Add(start, direction);
   float distance = Vector3Length(direction);
   Vector3 n = Vector3Scale(direction, 1.0 / distance);
@@ -36,12 +38,13 @@ void draw_arrow(Vector3 start, Vector3 direction, Color color) {
 
   Matrix base_translation = MatrixTranslate(start.x, start.y, start.z);
   Matrix base_rotation = QuaternionToMatrix(QuaternionFromVector3ToVector3((Vector3) { 0, 1, 0 }, n));
-  Matrix base_scale = MatrixScale(1, distance, 1);
+  Matrix base_scale = MatrixScale(scale, distance, scale);
   Matrix base_transform = MatrixMultiply(MatrixMultiply(base_scale, base_rotation), base_translation);
 
   Matrix head_translation = MatrixTranslate(end.x, end.y, end.z);
   Matrix head_rotation = base_rotation;
-  Matrix head_transform = MatrixMultiply(head_rotation, head_translation);
+  Matrix head_scale = MatrixScale(scale, scale, scale);
+  Matrix head_transform = MatrixMultiply(MatrixMultiply(head_scale, head_rotation), head_translation);
 
   DrawMesh(arrow_base, mat, base_transform);
   DrawMesh(arrow_head, mat, head_transform);
@@ -229,236 +232,17 @@ void physics_draw_config_widget(physics_world *world, struct nk_context* ctx) {
   nk_end(ctx);
 }
 
-// void physics_draw_collisions(const physics_world *world) {
-//   count_t count = world->collisions->collisions_count;
+void physics_draw_collisions(const physics_world *world) {
+  #define max_count 50
 
-//   for (count_t i = 0; i < count; ++i) {
-//     collision c = world->collisions->collisions[i];
+  contact_t contacts[max_count];
+  count_t count = physics_get_contacts(world, contacts, max_count);
 
-//     for (count_t j = 0; j < c.contacts_count; ++j) {
-//       contact contact = world->collisions->contacts[c.contacts_offset + j];
+  for (count_t i = 0; i < count; ++i) {
+    contact_t contact = contacts[i];
 
-//       draw_arrow(contact.point, contact.normal, RED);
-//     }
-//   }
-// }
-// static const char* debug_phase_label(collision_debug_phase phase) {
-//   switch (phase) {
-//     case CDBG_PENETRATION_RESOLVE:
-//       return "Penetration resolve";
+    draw_arrow(contact.point, scale(contact.normal, 0.2), RED);
+  }
 
-//     case CDBG_DEPTH_UPDATE:
-//       return "Depth update";
-
-//     case CDBG_VELOCITY_RESOLVE:
-//       return "Velocity resolve";
-
-//     case CDBG_VELOCITY_UPDATE:
-//       return "Velocity update";
-
-//     case CDBG_DONE:
-//       return "Done";
-
-//     case CDBG_IDLE:
-//       return "Idle";
-//   }
-//   return "Unknown";
-// }
-
-// void physics_draw_debug_widget(const physics_world *world, const collision_debug_state *state, struct nk_context *ctx) {
-//   if (!state->active)
-//     return;
-
-//   static const char *window_name = "collision_debug_widget";
-//   const float row_height = 18.0f;
-//   const float window_width = 420.0f;
-
-//   // Estimate row count based on phase
-//   int row_count = 8; // header rows: iteration, phase, collision type + contact info (index, depth, local vel, desired delta)
-//   switch (state->phase) {
-//     case CDBG_PENETRATION_RESOLVE:
-//     case CDBG_VELOCITY_RESOLVE:
-//       // "Deltas:" label + body headers + linear/angular rows
-//       row_count += 1 + 1 + 2;
-//       break;
-//     case CDBG_DEPTH_UPDATE:
-//       row_count += 1 + (int)state->depth_update_count;
-//       break;
-//     case CDBG_VELOCITY_UPDATE:
-//       row_count += 1 + (int)state->velocity_update_count * 3;
-//       break;
-//     default:
-//       break;
-//   }
-
-//   bool draw_content = begin_widget_window(ctx, window_name, "Collision debug", 20.0f, 500.0f, window_width, row_height, row_count);
-
-//   if (draw_content) {
-//     // Header
-//     nk_layout_row_dynamic(ctx, row_height, 1);
-//     nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Iteration: %u", state->iteration);
-
-//     nk_layout_row_dynamic(ctx, row_height, 1);
-//     nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Phase: %s", debug_phase_label(state->phase));
-
-//      nk_layout_row_dynamic(ctx, row_height, 1);
-//      nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Collision type: %s", state->is_dynamic ? "dynamic" : "static");
-
-//      // Display contact information
-//      if (state->current_contact_index != (count_t)-1 && state->current_contact_index < world->collisions->contacts_count) {
-//        const contact *current_contact = &world->collisions->contacts[state->current_contact_index];
-
-//        nk_layout_row_dynamic(ctx, row_height, 1);
-//        nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Contact index: %u", state->current_contact_index);
-
-//        nk_layout_row_dynamic(ctx, row_height, 1);
-//        nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Depth: %.3f", current_contact->depth);
-
-//        nk_layout_row_dynamic(ctx, row_height, 1);
-//        nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Local velocity: (%.2f, %.2f, %.2f)",
-//          current_contact->local_velocity.x, current_contact->local_velocity.y, current_contact->local_velocity.z);
-
-//        nk_layout_row_dynamic(ctx, row_height, 1);
-//        nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Desired delta velocity: %.3f", current_contact->desired_delta_velocity);
-//      }
-
-//      // Body
-//      switch (state->phase) {
-//       case CDBG_PENETRATION_RESOLVE:
-//       case CDBG_VELOCITY_RESOLVE: {
-//         nk_layout_row_dynamic(ctx, row_height, 1);
-//         nk_label(ctx, "Deltas:", NK_TEXT_ALIGN_LEFT);
-
-//         if (state->is_dynamic) {
-//           nk_layout_row_begin(ctx, NK_DYNAMIC, row_height, 2);
-//           nk_layout_row_push(ctx, 0.5f);
-//           nk_label(ctx, "Body 1", NK_TEXT_ALIGN_LEFT);
-//           nk_layout_row_push(ctx, 0.5f);
-//           nk_label(ctx, "Body 2", NK_TEXT_ALIGN_LEFT);
-//           nk_layout_row_end(ctx);
-
-//           nk_layout_row_begin(ctx, NK_DYNAMIC, row_height, 2);
-//           nk_layout_row_push(ctx, 0.5f);
-//           nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Lin: (%.3f, %.3f, %.3f)", state->deltas[0].x, state->deltas[0].y, state->deltas[0].z);
-//           nk_layout_row_push(ctx, 0.5f);
-//           nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Lin: (%.3f, %.3f, %.3f)", state->deltas[2].x, state->deltas[2].y, state->deltas[2].z);
-//           nk_layout_row_end(ctx);
-
-//           nk_layout_row_begin(ctx, NK_DYNAMIC, row_height, 2);
-//           nk_layout_row_push(ctx, 0.5f);
-//           nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Ang: (%.3f, %.3f, %.3f)", state->deltas[1].x, state->deltas[1].y, state->deltas[1].z);
-//           nk_layout_row_push(ctx, 0.5f);
-//           nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Ang: (%.3f, %.3f, %.3f)", state->deltas[3].x, state->deltas[3].y, state->deltas[3].z);
-//           nk_layout_row_end(ctx);
-//         } else {
-//           nk_layout_row_dynamic(ctx, row_height, 1);
-//           nk_label(ctx, "Body 1", NK_TEXT_ALIGN_LEFT);
-
-//           nk_layout_row_dynamic(ctx, row_height, 1);
-//           nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Linear:  (%.3f, %.3f, %.3f)", state->deltas[0].x, state->deltas[0].y, state->deltas[0].z);
-
-//           nk_layout_row_dynamic(ctx, row_height, 1);
-//           nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Angular: (%.3f, %.3f, %.3f)", state->deltas[1].x, state->deltas[1].y, state->deltas[1].z);
-//         }
-//         break;
-//       }
-
-//       case CDBG_DEPTH_UPDATE: {
-//         nk_layout_row_dynamic(ctx, row_height, 1);
-//         nk_label(ctx, "Depth updates:", NK_TEXT_ALIGN_LEFT);
-
-//         for (count_t i = 0; i < state->depth_update_count; ++i) {
-//           const depth_update_record *r = &state->depth_updates[i];
-//           nk_layout_row_dynamic(ctx, row_height, 1);
-//           nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Contact #%u: %.3f -> %.3f", r->index, r->before, r->after);
-//         }
-//         break;
-//       }
-
-//       case CDBG_VELOCITY_UPDATE: {
-//         nk_layout_row_dynamic(ctx, row_height, 1);
-//         nk_label(ctx, "Velocity updates:", NK_TEXT_ALIGN_LEFT);
-
-//         for (count_t i = 0; i < state->velocity_update_count; ++i) {
-//           const velocity_update_record *r = &state->velocity_updates[i];
-//           nk_layout_row_dynamic(ctx, row_height, 1);
-//           nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Contact #%u:", r->index);
-
-//           nk_layout_row_dynamic(ctx, row_height, 1);
-//           nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "  Local vel: (%.2f, %.2f, %.2f) -> (%.2f, %.2f, %.2f)",
-//             r->local_vel_before.x, r->local_vel_before.y, r->local_vel_before.z,
-//             r->local_vel_after.x, r->local_vel_after.y, r->local_vel_after.z);
-
-//           nk_layout_row_dynamic(ctx, row_height, 1);
-//           nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "  Desired delta: %.3f -> %.3f", r->ddv_before, r->ddv_after);
-//         }
-//         break;
-//       }
-
-//       default:
-//         break;
-//     }
-//   }
-
-//   if (nk_button_label(ctx, "Dump collided bodies"))
-//     dump_collided_bodies(world, state->current_collision_index, "collision.txt");
-
-//   nk_end(ctx);
-// }
-
-// static void fclose_cleanup(FILE **f) {
-//   if (f && *f) {
-//     fclose(*f);
-//     f = NULL;
-//   }
-// }
-
-// static void dump_body(const physics_world *world, FILE *file, count_t body_index) {
-//   float mass = 1.0f / world->dynamics.inv_masses[body_index];
-//   v3 position = world->dynamics.positions[body_index];
-//   v3 velocity = world->dynamics.velocities[body_index];
-//   quat rotation = world->dynamics.rotations[body_index];
-//   v3 angular_momentum = world->dynamics.angular_momenta[body_index];
-
-//   fprintf(file, "  Mass: %.2f\n", mass);
-//   fprintf(file, "  Position: (%.2f, %.2f, %.2f)\n", position.x, position.y, position.z);
-//   fprintf(file, "  Rotation: (%.2f, %.2f, %.2f, %.2f)\n", rotation.x, rotation.y, rotation.z, rotation.w);
-//   fprintf(file, "  Velocity: (%.2f, %.2f, %.2f)\n", velocity.x, velocity.y, velocity.z);
-//   fprintf(file, "  Angular momentum: (%.2f, %.2f, %.2f)\n", angular_momentum.x, angular_momentum.y, angular_momentum.z);
-//   fprintf(file, "  Shape:\n");
-
-//   body_shape shape = world->dynamics.shapes[body_index];
-//   switch(shape.type) {
-//     case SHAPE_BOX:
-//       fprintf(file, "    Box. Size: (%.2f, %.2f, %.2f)\n", shape.box.size.x, shape.box.size.y, shape.box.size.z);
-//       break;
-
-//     case SHAPE_SPHERE:
-//       fprintf(file, "    Sphere. Radius: %.2f\n", shape.sphere.radius);
-//       break;
-
-//     default:
-//       fprintf(file, "    Unknown shape type\n");
-//       break;
-//   }
-// }
-
-// static void dump_collided_bodies(const physics_world *world, count_t collision_index, char *file_name) {
-//   __attribute__((cleanup(fclose_cleanup))) FILE *file = fopen(file_name, "w");
-//   if (!file) {
-//     TraceLog(LOG_WARNING, "Failed to open file to dump collided bodies: %s", file_name);
-//     return;
-//   }
-
-//   collision c = world->collisions->collisions[collision_index];
-//   fprintf(file, "Body 1:\n");
-
-//   dump_body(world, file, c.index_a);
-
-//   if (collision_index >= world->collisions->dynamic_collisions_count)
-//     return;
-
-//   fprintf(file, "\nBody 2:\n");
-
-//   dump_body(world, file, c.index_b);
-// }
+  #undef count
+}

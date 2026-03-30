@@ -55,7 +55,6 @@ void draw_model_with_wireframe(Model model, Vector3 position, float scale, Color
 
 void physics_draw_stats(const physics_world *world, struct nk_context* ctx);
 void physics_draw_config_widget(physics_world *world, struct nk_context* ctx);
-// void physics_draw_collisions(const physics_world *world);
-void physics_draw_debug_widget(const physics_world *world, const collision_debug_state *state, struct nk_context *ctx);
+void physics_draw_collisions(const physics_world *world);
 
 #endif
