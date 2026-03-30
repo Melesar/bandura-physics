@@ -87,6 +87,7 @@ void physics_remove_joint(physics_world *world, count_t id) {
       continue;
     }
 
+    // TODO Adjust this to account for dynamic-static joint sorting.
     joints->values[i] = joints->values[count - 1];
     joints->ids[i] = joints->ids[count - 1];
     joints->count -= 1;
@@ -95,11 +96,12 @@ void physics_remove_joint(physics_world *world, count_t id) {
   }
 }
 
-static void generate_contacts(physics_world *world, count_t start, count_t end, bool is_dynamic) {
+static count_t generate_contacts(physics_world *world, count_t start, count_t end, bool is_dynamic) {
   const joints *joints = &world->joints;
   const dynamic_bodies *dynamics = &world->dynamics;
   const static_bodies *statics = &world->statics;
 
+  count_t count = 0;
   for(count_t i = start; i < end; ++i) {
     joint j = joints->values[i];
 
@@ -130,12 +132,15 @@ static void generate_contacts(physics_world *world, count_t start, count_t end, 
     contact->depth = distance - j.max_error;
     contact->friction = 1.0;
     contact->restitution = 0;
+
+    count += 1;
   }
+
+  return count;
 }
 
 count_t joints_generate_dynamic(physics_world *world) {
-  generate_contacts(world, 0, world->joints.dynamic_count, true);
-  return world->joints.dynamic_count;
+  return generate_contacts(world, 0, world->joints.dynamic_count, true);
 }
 
 void joints_generate_static(physics_world *world) {
