@@ -496,7 +496,8 @@ void physics_apply_force_at(physics_world *world, body_handle handle, v3 force, 
   v3 prev_force = world->dynamics.forces[index];
   v3 prev_torque = world->dynamics.torques[index];
 
-  v3 torque = cross(position, force);
+  v3 r = sub(position, world->dynamics.positions[index]);
+  v3 torque = cross(r, force);
 
   world->dynamics.forces[index] = add(prev_force, force);
   world->dynamics.torques[index] = add(prev_torque, torque);
@@ -520,7 +521,8 @@ void physics_apply_impulse_at(physics_world *world, body_handle handle, v3 impul
   v3 prev_force = world->dynamics.impulses[index];
   v3 prev_angular_impulse = world->dynamics.angular_impulses[index];
 
-  v3 angular_impulse = cross(position, impulse);
+  v3 r = sub(position, world->dynamics.positions[index]);
+  v3 angular_impulse = cross(r, impulse);
 
   world->dynamics.impulses[index] = add(prev_force, impulse);
   world->dynamics.angular_impulses[index] = add(prev_angular_impulse, angular_impulse);
@@ -541,7 +543,6 @@ count_t physics_awake_count(const physics_world *world) {
 count_t physics_collisions_count(const physics_world *world) {
   return world->contacts.count;
 }
-
 
 v3 physics_get_position(const physics_world *world, body_handle handle) {
   const common_data *data = as_common_const(world, handle.type);
