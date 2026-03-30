@@ -23,6 +23,24 @@ typedef struct {
   Vector3 camera_target;
 } program_config;
 
+typedef enum {
+  HEAD,
+  TORSO,
+  PELVIS,
+  LEFT_UPPER_LEG,
+  LEFT_LOWER_LEG,
+  RIGHT_UPPER_LEG,
+  RIGHT_LOWER_LEG,
+  LEFT_UPPER_ARM,
+  LEFT_LOWER_ARM,
+  RIGHT_UPPER_ARM,
+  RIGHT_LOWER_ARM,
+
+  BONE_COUNT
+} bone;
+
+typedef body_handle* ragdoll;
+
 bool begin_widget_window(
   struct nk_context* ctx,
   const char* window_name,
@@ -57,4 +75,5 @@ void physics_draw_stats(const physics_world *world, struct nk_context* ctx);
 void physics_draw_config_widget(physics_world *world, struct nk_context* ctx);
 void physics_draw_collisions(const physics_world *world);
 
+ragdoll ragdoll_create(physics_world *world, v3 position);
 #endif
