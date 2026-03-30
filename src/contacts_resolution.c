@@ -97,7 +97,7 @@ static void prepare_contacts(physics_world *world, float dt) {
 static void resolve_interpenetration_contact(physics_world *world, count_t contact_index, v3 *deltas) {
   PROFILE_FUNCTION
 
-  const contact *contact = &world->contacts.values[contact_index];
+  contact *contact = &world->contacts.values[contact_index];
   count_t body_count = contact_index < world->contacts.dynamic_count ? 2 : 1;
   count_t body_ids[] = { contact->index_a, contact->index_b };
 
@@ -169,6 +169,10 @@ static void resolve_interpenetration_contact(physics_world *world, count_t conta
     world->dynamics.inv_intertias[body_index] = matrix_inertia(
       world->dynamics.inv_inertia_tensors[body_index],
       world->dynamics.rotations[body_index]);
+  }
+
+  for (count_t k = 0; k < body_count; ++k) {
+    contact->relative_position[k] = sub(contact->point, world->dynamics.positions[body_ids[k]]);
   }
 }
 
