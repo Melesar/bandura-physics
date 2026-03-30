@@ -149,15 +149,15 @@ m3 matrix_inertia(m3 initial_inertia, quat q) {
   m3 rotation;
 
   rotation.m0[0] = 1 - 2*(b2 + c2);
-  rotation.m0[1] = 2*(ab + cd);
-  rotation.m0[2] = 2*(ac - bd);
+  rotation.m0[1] = 2*(ab - cd);
+  rotation.m0[2] = 2*(ac + bd);
 
-  rotation.m1[0] = 2*(ab - cd);
+  rotation.m1[0] = 2*(ab + cd);
   rotation.m1[1] = 1 - 2*(a2 + c2);
-  rotation.m1[2] = 2*(bc + ad);
+  rotation.m1[2] = 2*(bc - ad);
 
-  rotation.m2[0] = 2*(ac + bd);
-  rotation.m2[1] = 2*(bc - ad);
+  rotation.m2[0] = 2*(ac - bd);
+  rotation.m2[1] = 2*(bc + ad);
   rotation.m2[2] = 1 - 2*(a2 + b2);
 
   return matrix_multiply(matrix_multiply(rotation, initial_inertia), matrix_transpose(rotation));
