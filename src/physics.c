@@ -118,7 +118,7 @@ static void update_awake_statuses(physics_world *world, float dt) {
   dynamics->awake_count = awake_count;
 }
 
-static void calculate_compound_shape_static(body_shape *shapes, float *masses, count_t count, float *total_mass) {
+static void calculate_compound_shape_dynamic(body_shape *shapes, float *masses, count_t count, float *total_mass, m3 *inertia) {
   *total_mass = 0;
   for (count_t i = 0; i < count; ++i) {
     *total_mass += masses[i];
@@ -135,10 +135,6 @@ static void calculate_compound_shape_static(body_shape *shapes, float *masses, c
   for (count_t i = 0; i < count; ++i) {
     shapes[i].offset = sub(shapes[i].offset, center_of_mass);
   }
-}
-
-static void calculate_compound_shape_dynamic(body_shape *shapes, float *masses, count_t count, float *total_mass, m3 *inertia) {
-  calculate_compound_shape_static(shapes, masses, count, total_mass);
 
   *inertia = (m3) { 0 };
   for (count_t i = 0; i < count; ++i) {
@@ -417,7 +413,7 @@ body physics_add_cylinder_dynamic(physics_world *world, float mass, float radius
   return add_primitive_body_dynamic(world, (body_shape) { .type = SHAPE_CYLINDER, .cylinder = { .radius = radius, .height = height }, .offset = zero(), .rotation = qidentity() }, mass);
 }
 
-body physics_add_compound_body_static(physics_world *world, body_shape *shapes, float *masses, count_t shapes_count) {
+body physics_add_compound_body_static(physics_world *world, body_shape *shapes, count_t shapes_count) {
   shape_dimension_bracket bracket = get_shapes_bracket(shapes_count);
 
   static_bodies *data = &world->statics;
@@ -430,10 +426,6 @@ body physics_add_compound_body_static(physics_world *world, body_shape *shapes, 
 
   data->outer_lookup[index] = index;
   data->inner_lookup[index] = index;
-
-  float mass;
-  body_shape* body_shapes = shapes_get(world, data->shapes[index]);
-  calculate_compound_shape_static(body_shapes, masses, shapes_count, &mass);
 
   world->generation += 1;
 

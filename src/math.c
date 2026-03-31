@@ -76,8 +76,9 @@ m3 matrix_inverse(m3 m) {
     t10 * m.m2[1] + t12 * m.m1[2] - t14 * m.m1[1]);
 
   // Make sure the determinant is non-zero.
-  if (t16 == (float)0.0f)
+  if (t16 == (float)0.0f) {
     return m;
+  }
 
   float t17 = 1/t16;
 

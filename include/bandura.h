@@ -180,7 +180,7 @@ body physics_add_box_static(physics_world *world, v3 size);
 body physics_add_sphere_dynamic(physics_world *world, float mass, float radius);
 body physics_add_cylinder_static(physics_world *world, float radius, float height);
 body physics_add_cylinder_dynamic(physics_world *world, float mass, float radius, float height);
-body physics_add_compound_body_static(physics_world *world, body_shape *shapes, float *masses, count_t shapes_count);
+body physics_add_compound_body_static(physics_world *world, body_shape *shapes, count_t shapes_count);
 body physics_add_compound_body_dynamic(physics_world *world, body_shape *shapes, float *masses, count_t shapes_count);
 
 count_t physics_add_joint(physics_world *world, body_handle body_a, body_handle body_b, v3 contact_offset_a, v3 contact_offset_b, float max_distance);
