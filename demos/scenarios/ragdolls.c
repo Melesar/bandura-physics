@@ -1,4 +1,5 @@
 #include "core.h"
+#include "raygui.h"
 #include <stdlib.h>
 
 ragdoll hanging_doll;
@@ -48,5 +49,10 @@ void scenario_draw_scene(physics_world *world) {
 }
 
 void scenario_draw_ui() {
-  CLAY(CLAY_ID("Rect"), { .layout = { .sizing = { .width = CLAY_SIZING_FIXED(300), .height = CLAY_SIZING_FIXED(100) }  }, .floating = { .attachTo = CLAY_ATTACH_TO_ROOT, .offset = { 300, 600 } }, .backgroundColor = {255, 0, 0, 255} }) {}
+  ui_begin_modal("Ragdolls");
+
+  CLAY_TEXT(CLAY_STRING("Heloo, ragdolls"));
+  ui_label_v3("Test vector", vec3(1.2, 1.4831, 4));
+
+  ui_end_modal();
 }

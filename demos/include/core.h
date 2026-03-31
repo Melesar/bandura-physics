@@ -56,4 +56,9 @@ void ui_initialize();
 void ui_teardown();
 void ui_begin();
 void ui_end(float dt);
+
+void ui_begin_modal(const char *title);
+void ui_end_modal();
+
+void ui_label_v3(const char *label, v3 value);
 #endif
