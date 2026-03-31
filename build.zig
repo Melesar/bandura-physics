@@ -48,6 +48,8 @@ pub fn build(b: *std.Build) !void {
         defer b.allocator.free(binarySources);
 
         const raylib = b.dependency("raylib", .{ .target = target, .optimize = optimize, .config = "-DPLATFORM_DESKTOP", .linkage = .dynamic });
+        const clay = b.dependency("clay", .{});
+        const raygui = b.dependency("raygui", .{});
         for (scenarioSources) |scenarioFile| {
             const scenarioModule = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true });
             const binFlags = try scenarioFlags(b, options, target.result, optimize);
@@ -59,15 +61,18 @@ pub fn build(b: *std.Build) !void {
             });
             scenarioModule.addCSourceFile(.{ .file = b.path(scenarioFile), .flags = binFlags });
 
+            scenarioModule.addIncludePath(raylib.path("src"));
+            scenarioModule.addIncludePath(raylib.path("examples"));
+            scenarioModule.addIncludePath(clay.path("."));
+            scenarioModule.addIncludePath(raygui.path("src"));
+            scenarioModule.addIncludePath(raygui.path("styles"));
+            scenarioModule.addIncludePath(b.path("demos/include"));
+
             const scenarioName = std.fs.path.stem(scenarioFile);
             const scenario = b.addExecutable(.{
                 .name = scenarioName,
                 .root_module = scenarioModule,
             });
-
-            scenario.addIncludePath(raylib.path("src"));
-            scenario.addIncludePath(raylib.path("examples"));
-            scenario.addIncludePath(b.path("demos/include"));
 
             linkLibraries(scenario, target);
 

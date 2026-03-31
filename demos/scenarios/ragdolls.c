@@ -11,11 +11,11 @@ void scenario_initialize(program_config* config, physics_config *physics_config)
 }
 
 void scenario_setup_scene(physics_world *world) {
-  if (normal_doll) {
-    free(normal_doll);
-  }
+  // if (normal_doll) {
+  //   free(normal_doll);
+  // }
 
-  normal_doll = ragdoll_create(world, scale(up(), 3));
+  // normal_doll = ragdoll_create(world, scale(up(), 3));
 
   body_shape ramp_shapes[] = {
     (body_shape) { .type = SHAPE_BOX, .box = { .size = vec3(1, 10, 1) }, .offset = vec3(0, 5, 0), .rotation = qidentity() },
@@ -47,6 +47,6 @@ void scenario_draw_scene(physics_world *world) {
 
 }
 
-void scenario_draw_ui(struct nk_context* ctx) {
-
+void scenario_draw_ui() {
+  CLAY(CLAY_ID("Rect"), { .layout = { .sizing = { .width = CLAY_SIZING_FIXED(300), .height = CLAY_SIZING_FIXED(100) }  }, .floating = { .attachTo = CLAY_ATTACH_TO_ROOT, .offset = { 300, 600 } }, .backgroundColor = {255, 0, 0, 255} }) {}
 }

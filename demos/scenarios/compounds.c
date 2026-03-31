@@ -58,6 +58,6 @@ void scenario_draw_scene(physics_world *world) {
 
 }
 
-void scenario_draw_ui(struct nk_context* ctx) {
+void scenario_draw_ui() {
 
 }
