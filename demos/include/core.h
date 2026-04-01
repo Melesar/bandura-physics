@@ -61,4 +61,5 @@ void ui_begin_modal(const char *title);
 void ui_end_modal();
 
 void ui_label_v3(const char *label, v3 value);
+void ui_checkbox(const char *label, bool *is_checked);
 #endif

@@ -5,6 +5,8 @@
 ragdoll hanging_doll;
 ragdoll normal_doll;
 
+bool simulate_dolls;
+
 void scenario_initialize(program_config* config, physics_config *physics_config) {
   config->window_title = "Ragdolls";
   config->camera_position = vec3(0, 5, -10);
@@ -51,8 +53,8 @@ void scenario_draw_scene(physics_world *world) {
 void scenario_draw_ui() {
   ui_begin_modal("Ragdolls");
 
-  CLAY_TEXT(CLAY_STRING("Heloo, ragdolls"));
   ui_label_v3("Test vector", vec3(1.2, 1.4831, 4));
+  ui_checkbox("Simulate ragdolls", &simulate_dolls);
 
   ui_end_modal();
 }

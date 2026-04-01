@@ -1,4 +1,3 @@
-#include <stdio.h>
 #define CLAY_IMPLEMENTATION
 #define RAYGUI_IMPLEMENTATION
 
@@ -8,15 +7,18 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 typedef enum {
-  UI_MODAL
+  UI_MODAL,
+  UI_CHECKBOX,
 } ui_element_type;
 
 typedef struct {
   ui_element_type type;
   union {
     struct { const char *title; } modal;
+    struct { bool *enabled; bool hovered; } checkbox;
   };
 } custom_ui_element;
 
@@ -47,23 +49,33 @@ static Rectangle clay_rect(Clay_BoundingBox bb) {
   return (Rectangle) { bb.x, bb.y, bb.width, bb.height };
 }
 
-static Color clay_color(Clay_Color color) {
-  return (Color) { color.r, color.g, color.b, color.a };
-}
-
-static Clay_Dimensions current_screen_size() {
+static Clay_Dimensions clay_screen_dimensions() {
   return (Clay_Dimensions){ .height = GetScreenHeight(), .width = GetScreenWidth() };
 }
 
+static Clay_String clay_string(const char *label) {
+  return (Clay_String) { .chars = label, .length = strlen(label), .isStaticallyAllocated = true };
+}
+
 static Clay_Dimensions measure_text(Clay_StringSlice slice, Clay_TextElementConfig *config, void *user_data) {
-  char *string = arena_alloc(slice.length + 1);
+  uint32_t required_size = slice.length + 1;
+  uint32_t unaligned = required_size % 8;
+  if (unaligned) {
+    required_size += 8 - unaligned;
+  }
+
+  char *string = arena_alloc(required_size);
   strncpy(string, slice.chars, slice.length);
   string[slice.length] = 0;
 
   return (Clay_Dimensions) {
     .width = GuiGetTextWidth(string),
-    .height = GuiGetStyle(LABEL, TEXT_SIZE),
+    .height = GuiGetStyle(DEFAULT, TEXT_SIZE),
   };
+}
+
+static Clay_Sizing clay_container_sizing() {
+  return (Clay_Sizing) { .width = CLAY_SIZING_GROW(100, 300) };
 }
 
 void ui_initialize() {
@@ -71,12 +83,14 @@ void ui_initialize() {
   clay_memory = malloc(memory_size);
   Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(memory_size, clay_memory);
   Clay_Initialize(arena,
-    current_screen_size(),
+    clay_screen_dimensions(),
     (Clay_ErrorHandler) { .errorHandlerFunction = clay_error_handler, .userData = NULL });
   Clay_SetMeasureTextFunction(measure_text, NULL);
 
   GuiLoadStyleCyber();
-  GuiSetStyle(DEFAULT, TEXT_SIZE, 18);
+
+  GuiSetStyle(DEFAULT, BORDER_WIDTH, 0);
+  GuiSetStyle(DEFAULT, TEXT_PADDING, 0);
 
   custom_arena.memory = malloc(1 << 20);
 }
@@ -87,7 +101,7 @@ void ui_teardown() {
 }
 
 void ui_begin() {
-  Clay_SetLayoutDimensions(current_screen_size());
+  Clay_SetLayoutDimensions(clay_screen_dimensions());
 
   Vector2 mouse_pos = GetMousePosition();
   Clay_SetPointerState((Clay_Vector2) { mouse_pos.x, mouse_pos.y }, IsMouseButtonPressed(MOUSE_LEFT_BUTTON));
@@ -109,6 +123,10 @@ void ui_end(float dt) {
           case UI_MODAL:
             GuiWindowBox(clay_rect(command->boundingBox), custom_element.modal.title);
             break;
+
+          case UI_CHECKBOX:
+            TraceLog(LOG_INFO, "Checkbox %d, enabled: %d, hovered: %d", command->id, *custom_element.checkbox.enabled, custom_element.checkbox.hovered);
+            break;
         }
         break;
 
@@ -121,7 +139,10 @@ void ui_end(float dt) {
         break;
 
       case CLAY_RENDER_COMMAND_TYPE_RECTANGLE:
-        TraceLog(LOG_INFO, "Rectangle color %f, width %f", command->renderData.rectangle.backgroundColor.r, command->boundingBox.width);
+        break;
+
+      case CLAY_RENDER_COMMAND_TYPE_BORDER:
+        TraceLog(LOG_INFO, "Border width (%d, %d, %d, %d) within box (%f, %f) %fx%f", command->renderData.border.width.top, command->renderData.border.width.right, command->renderData.border.width.bottom, command->renderData.border.width.left, command->boundingBox.x, command->boundingBox.y, command->boundingBox.width, command->boundingBox.height);
         break;
 
       default:
@@ -173,17 +194,55 @@ void ui_end_modal() {
 void ui_label_v3(const char *label, v3 value) {
   CLAY_AUTO_ID({
     .layout = {
-      .sizing = { .width = CLAY_SIZING_GROW() },
+      .sizing = clay_container_sizing(),
       .layoutDirection = CLAY_LEFT_TO_RIGHT,
     },
   }) {
-    Clay_String s = { .isStaticallyAllocated = true, .chars = label, .length = strlen(label) };
-    CLAY_TEXT(s);
+    CLAY_AUTO_ID({
+      .layout = { .sizing = { .width = CLAY_SIZING_GROW() } }
+    }){
+      CLAY_TEXT(clay_string(label));
+    };
 
-    char *v = arena_alloc(19);
-    snprintf(v, 19, "(%.2f, %.2f, %.2f)", value.x, value.y, value.z);
-    Clay_String vs = { .chars = v, .length = strlen(v), .isStaticallyAllocated = false };
+    CLAY_AUTO_ID({
+      .layout = {
+        .childAlignment = { .x = CLAY_ALIGN_X_RIGHT },
+        .sizing = { .width = CLAY_SIZING_GROW() },
+      }
+    }) {
+      char *v = arena_alloc(24); // Allocate more to keep the arena 8-bytes aligned
+      snprintf(v, 19, "(%.2f, %.2f, %.2f)", value.x, value.y, value.z);
+      Clay_String vs = { .chars = v, .length = strlen(v), .isStaticallyAllocated = false };
 
-    CLAY_TEXT(vs, { .textAlignment = CLAY_TEXT_ALIGN_RIGHT });
+      CLAY_TEXT(vs);
+    }
+  }
+}
+
+void ui_checkbox(const char *label, bool *is_checked) {
+  custom_ui_element *checkbox = arena_alloc(sizeof(custom_ui_element));
+  checkbox->type = UI_CHECKBOX;
+  checkbox->checkbox.enabled = is_checked;
+
+  CLAY(CLAY_SID(clay_string(label)), {
+    .layout = {
+      .sizing = clay_container_sizing(),
+      .layoutDirection = CLAY_LEFT_TO_RIGHT,
+      .childGap = 20,
+      .padding = CLAY_PADDING_ALL(15),
+    },
+    .custom = { .customData = checkbox }
+  }) {
+    checkbox->checkbox.hovered = Clay_Hovered();
+
+    CLAY(CLAY_ID("check"), {
+      .layout = {
+        .sizing = { .width = CLAY_SIZING_FIXED(50), .height = CLAY_SIZING_FIXED(50) },
+      },
+      .border = { .width = { 2, 2, 2, 2, 0 } },
+      .custom = { .customData = checkbox }
+    });
+
+    CLAY_TEXT(clay_string(label), { .userData = checkbox });
   }
 }
