@@ -18,7 +18,7 @@ typedef struct {
   ui_element_type type;
   union {
     struct { const char *title; } modal;
-    struct { bool *enabled; bool hovered; } checkbox;
+    struct { bool *enabled; GuiState state; } checkbox;
   };
 } custom_ui_element;
 
@@ -53,11 +53,11 @@ static Clay_Dimensions clay_screen_dimensions() {
   return (Clay_Dimensions){ .height = GetScreenHeight(), .width = GetScreenWidth() };
 }
 
-static Clay_String clay_string(const char *label) {
+static Clay_String clay_from_string(const char *label) {
   return (Clay_String) { .chars = label, .length = strlen(label), .isStaticallyAllocated = true };
 }
 
-static Clay_Dimensions measure_text(Clay_StringSlice slice, Clay_TextElementConfig *config, void *user_data) {
+static char *clay_to_string(Clay_StringSlice slice) {
   uint32_t required_size = slice.length + 1;
   uint32_t unaligned = required_size % 8;
   if (unaligned) {
@@ -67,6 +67,12 @@ static Clay_Dimensions measure_text(Clay_StringSlice slice, Clay_TextElementConf
   char *string = arena_alloc(required_size);
   strncpy(string, slice.chars, slice.length);
   string[slice.length] = 0;
+
+  return string;
+}
+
+static Clay_Dimensions measure_text(Clay_StringSlice slice, Clay_TextElementConfig *config, void *user_data) {
+  char *string = clay_to_string(slice);
 
   return (Clay_Dimensions) {
     .width = GuiGetTextWidth(string),
@@ -104,7 +110,7 @@ void ui_begin() {
   Clay_SetLayoutDimensions(clay_screen_dimensions());
 
   Vector2 mouse_pos = GetMousePosition();
-  Clay_SetPointerState((Clay_Vector2) { mouse_pos.x, mouse_pos.y }, IsMouseButtonPressed(MOUSE_LEFT_BUTTON));
+  Clay_SetPointerState((Clay_Vector2) { mouse_pos.x, mouse_pos.y }, IsMouseButtonDown(MOUSE_LEFT_BUTTON));
 
   Clay_BeginLayout();
 }
@@ -115,7 +121,14 @@ void ui_end(float dt) {
     Clay_RenderCommand *command = &commands.internalArray[i];
 
     char *string;
+    GuiState state = STATE_NORMAL;
     custom_ui_element custom_element;
+    if (command->userData != NULL) {
+      custom_element = *(custom_ui_element*) command->userData;
+      if (custom_element.type == UI_CHECKBOX) {
+        state = custom_element.checkbox.state;
+      }
+    }
     switch(command->commandType) {
       case CLAY_RENDER_COMMAND_TYPE_CUSTOM:
         custom_element = *(custom_ui_element*) command->renderData.custom.customData;
@@ -125,24 +138,25 @@ void ui_end(float dt) {
             break;
 
           case UI_CHECKBOX:
-            TraceLog(LOG_INFO, "Checkbox %d, enabled: %d, hovered: %d", command->id, *custom_element.checkbox.enabled, custom_element.checkbox.hovered);
+            GuiDrawRectangle(clay_rect(command->boundingBox), 0, BLANK, GetColor(GuiGetStyle(CHECKBOX, TEXT + (3 * state))));
+            if (*custom_element.checkbox.enabled) {
+              GuiDrawRectangle(clay_rect(command->boundingBox), 0, BLANK, GetColor(GuiGetStyle(CHECKBOX, TEXT_COLOR_PRESSED)));
+            }
             break;
         }
         break;
 
       case CLAY_RENDER_COMMAND_TYPE_TEXT:
-        string = arena_alloc(command->renderData.text.stringContents.length + 1);
-        strncpy(string, command->renderData.text.stringContents.chars, command->renderData.text.stringContents.length);
-        string[command->renderData.text.stringContents.length] = 0;
+        string = clay_to_string(command->renderData.text.stringContents);
 
-        GuiLabel(clay_rect(command->boundingBox), string);
+        GuiDrawText(string, clay_rect(command->boundingBox), TEXT_ALIGN_LEFT, GetColor(GuiGetStyle(LABEL, TEXT + (3*state))));
         break;
 
       case CLAY_RENDER_COMMAND_TYPE_RECTANGLE:
         break;
 
       case CLAY_RENDER_COMMAND_TYPE_BORDER:
-        TraceLog(LOG_INFO, "Border width (%d, %d, %d, %d) within box (%f, %f) %fx%f", command->renderData.border.width.top, command->renderData.border.width.right, command->renderData.border.width.bottom, command->renderData.border.width.left, command->boundingBox.x, command->boundingBox.y, command->boundingBox.width, command->boundingBox.height);
+        GuiDrawRectangle(clay_rect(command->boundingBox), command->renderData.border.width.left, GetColor(GuiGetStyle(DEFAULT, BORDER + (3*state))), BLANK);
         break;
 
       default:
@@ -201,7 +215,7 @@ void ui_label_v3(const char *label, v3 value) {
     CLAY_AUTO_ID({
       .layout = { .sizing = { .width = CLAY_SIZING_GROW() } }
     }){
-      CLAY_TEXT(clay_string(label));
+      CLAY_TEXT(clay_from_string(label));
     };
 
     CLAY_AUTO_ID({
@@ -224,25 +238,39 @@ void ui_checkbox(const char *label, bool *is_checked) {
   checkbox->type = UI_CHECKBOX;
   checkbox->checkbox.enabled = is_checked;
 
-  CLAY(CLAY_SID(clay_string(label)), {
+  CLAY(CLAY_SID(clay_from_string(label)), {
     .layout = {
       .sizing = clay_container_sizing(),
       .layoutDirection = CLAY_LEFT_TO_RIGHT,
       .childGap = 20,
       .padding = CLAY_PADDING_ALL(15),
     },
-    .custom = { .customData = checkbox }
   }) {
-    checkbox->checkbox.hovered = Clay_Hovered();
+    Clay_PointerDataInteractionState pointer_state = Clay_GetPointerState().state;
+    bool is_hovering = Clay_Hovered();
+
+    if (is_hovering && pointer_state == CLAY_POINTER_DATA_RELEASED_THIS_FRAME) {
+      *is_checked = !*is_checked;
+    }
+
+    if (is_hovering && pointer_state == CLAY_POINTER_DATA_PRESSED) {
+      checkbox->checkbox.state = STATE_PRESSED;
+    } else if (is_hovering) {
+      checkbox->checkbox.state = STATE_FOCUSED;
+    } else {
+      checkbox->checkbox.state = STATE_NORMAL;
+    }
+
+    float text_size = 1.2 * GuiGetStyle(DEFAULT, TEXT_SIZE);
 
     CLAY(CLAY_ID("check"), {
       .layout = {
-        .sizing = { .width = CLAY_SIZING_FIXED(50), .height = CLAY_SIZING_FIXED(50) },
+        .sizing = { .width = CLAY_SIZING_FIXED(text_size), .height = CLAY_SIZING_FIXED(text_size) },
       },
       .border = { .width = { 2, 2, 2, 2, 0 } },
       .custom = { .customData = checkbox }
     });
 
-    CLAY_TEXT(clay_string(label), { .userData = checkbox });
+    CLAY_TEXT(clay_from_string(label), { .userData = checkbox });
   }
 }
