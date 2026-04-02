@@ -62,6 +62,7 @@ bool simulation_running = true;
 bool step_forward = false;
 
 struct {
+  bool is_collapsed;
   bool show_physics_world_stats;
   bool show_physics_config_widget;
   bool draw_collisions;
@@ -381,12 +382,12 @@ static void init_physics() {
 }
 
 static void build_ui() {
-  ui_begin_modal("Debug widget", (Clay_Vector2) { 15, 15 });
-
-  ui_checkbox("Physics config", &master_widget_state.show_physics_config_widget);
-  ui_checkbox("World stats", &master_widget_state.show_physics_world_stats);
-  ui_checkbox("Draw collisions", &master_widget_state.draw_collisions);
-  ui_checkbox("Draw gizmos", &master_widget_state.draw_gismos);
+  if (ui_begin_modal("Debug widget", (Clay_Vector2) { 15, 15 }, &master_widget_state.is_collapsed)) {
+    ui_checkbox("Physics config", &master_widget_state.show_physics_config_widget);
+    ui_checkbox("World stats", &master_widget_state.show_physics_world_stats);
+    ui_checkbox("Draw collisions", &master_widget_state.draw_collisions);
+    ui_checkbox("Draw gizmos", &master_widget_state.draw_gismos);
+  }
 
   ui_end_modal();
 }

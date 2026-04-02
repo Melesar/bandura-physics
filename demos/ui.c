@@ -9,19 +9,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdbool.h>
-
-typedef enum {
-  UI_MODAL,
-  UI_CHECKBOX,
-} ui_element_type;
-
-typedef struct {
-  ui_element_type type;
-  union {
-    struct { const char *title; } modal;
-    struct { bool *enabled; GuiState state; } checkbox;
-  };
-} custom_ui_element;
+#include <float.h>
 
 struct {
   uint8_t *memory;
@@ -46,6 +34,15 @@ static void clay_error_handler(Clay_ErrorData error_data) {
   TraceLog(LOG_ERROR, "Clay error: %s", buffer);
 }
 
+static uint32_t memory_size_aligned(uint32_t required) {
+  uint32_t unaligned = required % 8;
+  if (unaligned) {
+    required += 8 - unaligned;
+  }
+
+  return required;
+}
+
 static Rectangle clay_rect(Clay_BoundingBox bb) {
   return (Rectangle) { bb.x, bb.y, bb.width, bb.height };
 }
@@ -58,12 +55,53 @@ static Clay_String clay_from_string(const char *label) {
   return (Clay_String) { .chars = label, .length = strlen(label), .isStaticallyAllocated = true };
 }
 
-static char *clay_to_string(Clay_StringSlice slice) {
-  uint32_t required_size = slice.length + 1;
-  uint32_t unaligned = required_size % 8;
-  if (unaligned) {
-    required_size += 8 - unaligned;
+static Clay_String clay_string_concat(const char *a, const char *b) {
+  uint32_t len_a = strlen(a);
+  uint32_t len_b = strlen(b);
+
+  uint32_t required_length = memory_size_aligned(len_a + len_b + 2);
+  char *s = arena_alloc(required_length);
+
+  strncpy(s, a, len_a);
+  s[len_a] = '_';
+  strncpy(s + len_a + 1, b, len_b);
+  s[len_a + len_b + 1] = 0;
+
+  return (Clay_String) { .chars = s, .length = len_a + len_b + 1, .isStaticallyAllocated = false };
+}
+
+static Clay_Color clay_element_color(int control, int property_base, GuiState state) {
+  Color color = GetColor(GuiGetStyle(control, property_base + 3 * state));
+
+  return (Clay_Color) { color.r, color.g, color.b, color.a };
+}
+
+static Color clay_color_to_ray(Clay_Color color) {
+  return (Color) { color.r, color.g, color.b, color.a };
+}
+
+static GuiState clay_gui_state() {
+  Clay_PointerDataInteractionState pointer_state = Clay_GetPointerState().state;
+  bool is_hovering = Clay_Hovered();
+
+  if (is_hovering && pointer_state == CLAY_POINTER_DATA_PRESSED) {
+    return STATE_PRESSED;
+  } else if (is_hovering) {
+    return STATE_FOCUSED;
+  } else {
+    return STATE_NORMAL;
   }
+}
+
+static bool clay_is_clicked() {
+  Clay_PointerDataInteractionState pointer_state = Clay_GetPointerState().state;
+  bool is_hovering = Clay_Hovered();
+
+  return is_hovering && pointer_state == CLAY_POINTER_DATA_RELEASED_THIS_FRAME;
+}
+
+static char *clay_to_string(Clay_StringSlice slice) {
+  uint32_t required_size = memory_size_aligned(slice.length + 1);
 
   char *string = arena_alloc(required_size);
   strncpy(string, slice.chars, slice.length);
@@ -95,12 +133,6 @@ void ui_initialize() {
   Clay_SetMeasureTextFunction(measure_text, NULL);
 
   GuiLoadStyleCyber();
-
-  GuiSetStyle(DEFAULT, BORDER_WIDTH, 0);
-
-  GuiSetStyle(STATUSBAR, BORDER_WIDTH, 10);
-  GuiSetStyle(STATUSBAR, BORDER_COLOR_NORMAL, GuiGetStyle(DEFAULT, BASE_COLOR_NORMAL));
-
   GuiSetStyle(DEFAULT, TEXT_PADDING, 0);
 
   custom_arena.memory = malloc(1 << 20);
@@ -126,44 +158,29 @@ void ui_end(float dt) {
   Clay_RenderCommandArray commands = Clay_EndLayout(dt);
   for (int32_t i = 0; i < commands.length; ++i) {
     Clay_RenderCommand *command = &commands.internalArray[i];
+    Rectangle rect = clay_rect(command->boundingBox);
 
     char *string;
-    GuiState state = STATE_NORMAL;
-    custom_ui_element custom_element;
-    if (command->userData != NULL) {
-      custom_element = *(custom_ui_element*) command->userData;
-      if (custom_element.type == UI_CHECKBOX) {
-        state = custom_element.checkbox.state;
-      }
-    }
     switch(command->commandType) {
-      case CLAY_RENDER_COMMAND_TYPE_CUSTOM:
-        custom_element = *(custom_ui_element*) command->renderData.custom.customData;
-        switch(custom_element.type) {
-          case UI_MODAL:
-            GuiWindowBox(clay_rect(command->boundingBox), custom_element.modal.title);
-            break;
-
-          case UI_CHECKBOX:
-            GuiDrawRectangle(clay_rect(command->boundingBox), 0, BLANK, GetColor(GuiGetStyle(CHECKBOX, TEXT + (3 * state))));
-            if (*custom_element.checkbox.enabled) {
-              GuiDrawText(GuiIconText(ICON_BOX_CIRCLE_MASK, NULL), clay_rect(command->boundingBox), TEXT_ALIGN_CENTER, GetColor(GuiGetStyle(LABEL, TEXT_COLOR_DISABLED)));
-            }
-            break;
-        }
-        break;
-
       case CLAY_RENDER_COMMAND_TYPE_TEXT:
         string = clay_to_string(command->renderData.text.stringContents);
-
-        GuiDrawText(string, clay_rect(command->boundingBox), TEXT_ALIGN_LEFT, GetColor(GuiGetStyle(LABEL, TEXT + (3*state))));
+        GuiDrawText(string, rect, TEXT_ALIGN_LEFT, clay_color_to_ray(command->renderData.text.textColor));
         break;
 
       case CLAY_RENDER_COMMAND_TYPE_RECTANGLE:
+        GuiDrawRectangle(rect, 0, BLANK, clay_color_to_ray(command->renderData.border.color));
         break;
 
       case CLAY_RENDER_COMMAND_TYPE_BORDER:
-        GuiDrawRectangle(clay_rect(command->boundingBox), command->renderData.border.width.left, GetColor(GuiGetStyle(DEFAULT, BORDER + (3*state))), BLANK);
+        GuiDrawRectangle(rect, command->renderData.border.width.left, clay_color_to_ray(command->renderData.border.color), BLANK);
+        break;
+
+      case CLAY_RENDER_COMMAND_TYPE_SCISSOR_START:
+        BeginScissorMode((int)roundf(rect.x), (int)roundf(rect.y), (int)roundf(rect.width), (int)roundf(rect.height));
+        break;
+
+      case CLAY_RENDER_COMMAND_TYPE_SCISSOR_END:
+        EndScissorMode();
         break;
 
       default:
@@ -175,16 +192,13 @@ void ui_end(float dt) {
   custom_arena.pointer = 0;
 }
 
-void ui_begin_modal(const char *title, Clay_Vector2 offset) {
-  custom_ui_element *custom_data = arena_alloc(sizeof(custom_ui_element));
-  custom_data->type = UI_MODAL;
-  custom_data->modal.title = title;
+bool ui_begin_modal(const char *title, Clay_Vector2 offset, bool *collapsed) {
+  Clay_String s = clay_from_string(title);
 
-  Clay_String s = { .isStaticallyAllocated = true, .chars = title, .length = strlen(title) };
   Clay__OpenElementWithId(CLAY_SID(s));
   Clay__ConfigureOpenElement((Clay_ElementDeclaration) {
     .layout = {
-      .sizing = { .width = CLAY_SIZING_FIT(500), .height = CLAY_SIZING_FIT(100) },
+      .sizing = { .width = CLAY_SIZING_FIT(300, FLT_MAX), .height = CLAY_SIZING_FIT(0, FLT_MAX) },
       .layoutDirection = CLAY_TOP_TO_BOTTOM,
     },
     .floating = {
@@ -192,23 +206,51 @@ void ui_begin_modal(const char *title, Clay_Vector2 offset) {
       .attachPoints = { .element = CLAY_ATTACH_POINT_LEFT_TOP, .parent = CLAY_ATTACH_POINT_LEFT_TOP },
       .offset = offset,
     },
-    .custom = { .customData = custom_data },
+    .backgroundColor = clay_element_color(DEFAULT, BACKGROUND_COLOR, STATE_NORMAL),
+    .border = { .width = { 1, 1, 1, 1, 0 }, .color = clay_element_color(DEFAULT, LINE_COLOR, STATE_NORMAL) }
   });
 
-  CLAY_AUTO_ID({
-    .layout = { .sizing = { .height = CLAY_SIZING_FIXED(20), .width = CLAY_SIZING_GROW() } },
-  }) { }
+  CLAY(CLAY_SID(clay_string_concat(title, "statusbar")), {
+    .layout = {
+      .sizing = { .height = CLAY_SIZING_FIXED(20), .width = CLAY_SIZING_GROW() },
+      .padding = { .left = 10, .right = 10 },
+      .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
+    },
+    .backgroundColor = clay_element_color(STATUSBAR, BASE, STATE_NORMAL),
+  }) {
+    CLAY(CLAY_SID(clay_string_concat(title, "text")), {
+      .layout = { .sizing = { .width = CLAY_SIZING_GROW(0) } }
+    }) {
+      CLAY_TEXT(s, { .textColor = clay_element_color(STATUSBAR, TEXT, STATE_NORMAL) });
+    }
 
-  Clay__OpenElement();
+    CLAY(CLAY_SID(clay_string_concat(title, "close_btn")), {
+      .layout = {
+        .sizing = { .width = CLAY_SIZING_FIXED(18), .height = CLAY_SIZING_FIXED(18) },
+        .childAlignment = { .y = CLAY_ALIGN_Y_CENTER },
+      },
+      .backgroundColor = clay_element_color(BUTTON, BASE, clay_gui_state()),
+    }){
+      if (clay_is_clicked()) {
+        *collapsed = !*collapsed;
+      }
+
+      CLAY_TEXT(clay_from_string(GuiIconText(ICON_BOX_MINUS_FILL, NULL)), { .textColor = clay_element_color(BUTTON, TEXT, clay_gui_state()), .textAlignment = CLAY_TEXT_ALIGN_CENTER });
+    };
+  }
+
+  float vertical_padding = *collapsed ? 0 : 15;
+  Clay__OpenElementWithId(CLAY_SID(clay_string_concat(title, "content")));
   Clay__ConfigureOpenElement((Clay_ElementDeclaration) {
     .layout = {
       .sizing = { .width = CLAY_SIZING_GROW() },
       .layoutDirection = CLAY_TOP_TO_BOTTOM,
       .childGap = 10,
-      .padding = { .left = 10, .right = 10, .top = 15, .bottom = 15 },
+      .padding = { .left = 10, .right = 10, .top = vertical_padding, .bottom = vertical_padding },
     },
-    .backgroundColor = { 255, 0, 0, 255 },
   });
+
+  return !*collapsed;
 }
 
 void ui_end_modal() {
@@ -217,19 +259,19 @@ void ui_end_modal() {
 }
 
 void ui_label_v3(const char *label, v3 value) {
-  CLAY_AUTO_ID({
+  CLAY(CLAY_SID(clay_from_string(label)), {
     .layout = {
       .sizing = clay_container_sizing(),
       .layoutDirection = CLAY_LEFT_TO_RIGHT,
     },
   }) {
-    CLAY_AUTO_ID({
+    CLAY(CLAY_SID(clay_string_concat(label, "label")), {
       .layout = { .sizing = { .width = CLAY_SIZING_GROW() } }
     }){
       CLAY_TEXT(clay_from_string(label));
     };
 
-    CLAY_AUTO_ID({
+    CLAY(CLAY_SID(clay_string_concat(label, "value_container")), {
       .layout = {
         .childAlignment = { .x = CLAY_ALIGN_X_RIGHT },
         .sizing = { .width = CLAY_SIZING_GROW() },
@@ -245,10 +287,6 @@ void ui_label_v3(const char *label, v3 value) {
 }
 
 void ui_checkbox(const char *label, bool *is_checked) {
-  custom_ui_element *checkbox = arena_alloc(sizeof(custom_ui_element));
-  checkbox->type = UI_CHECKBOX;
-  checkbox->checkbox.enabled = is_checked;
-
   CLAY(CLAY_SID(clay_from_string(label)), {
     .layout = {
       .sizing = clay_container_sizing(),
@@ -257,31 +295,24 @@ void ui_checkbox(const char *label, bool *is_checked) {
       .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
     },
   }) {
-    Clay_PointerDataInteractionState pointer_state = Clay_GetPointerState().state;
-    bool is_hovering = Clay_Hovered();
-
-    if (is_hovering && pointer_state == CLAY_POINTER_DATA_RELEASED_THIS_FRAME) {
+    if (clay_is_clicked()) {
       *is_checked = !*is_checked;
     }
 
-    if (is_hovering && pointer_state == CLAY_POINTER_DATA_PRESSED) {
-      checkbox->checkbox.state = STATE_PRESSED;
-    } else if (is_hovering) {
-      checkbox->checkbox.state = STATE_FOCUSED;
-    } else {
-      checkbox->checkbox.state = STATE_NORMAL;
-    }
-
+    GuiState state = clay_gui_state();
     float text_size = 1.2 * GuiGetStyle(DEFAULT, TEXT_SIZE);
 
-    CLAY(CLAY_ID("check"), {
+    CLAY(CLAY_SID(clay_string_concat(label, "check")), {
       .layout = {
         .sizing = { .width = CLAY_SIZING_FIXED(text_size), .height = CLAY_SIZING_FIXED(text_size) },
       },
-      .border = { .width = { 2, 2, 2, 2, 0 } },
-      .custom = { .customData = checkbox }
-    });
+      .border = { .width = { 2, 2, 2, 2, 0 }, .color = clay_element_color(CHECKBOX, BORDER, state) },
+      .backgroundColor = clay_element_color(CHECKBOX, TEXT, state),
+    }) {
+      if (*is_checked)
+        CLAY_TEXT(clay_from_string(GuiIconText(ICON_BOX_CIRCLE_MASK, NULL)), { .textColor = clay_element_color(LABEL, TEXT, STATE_DISABLED), .textAlignment = CLAY_TEXT_ALIGN_CENTER });
+    };
 
-    CLAY_TEXT(clay_from_string(label), { .userData = checkbox });
+    CLAY_TEXT(clay_from_string(label), { .textColor = clay_element_color(CHECKBOX, TEXT, state) });
   }
 }

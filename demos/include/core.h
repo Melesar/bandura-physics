@@ -57,7 +57,7 @@ void ui_teardown();
 void ui_begin();
 void ui_end(float dt);
 
-void ui_begin_modal(const char *title, Clay_Vector2 offset);
+bool ui_begin_modal(const char *title, Clay_Vector2 offset, bool *collapsed);
 void ui_end_modal();
 
 void ui_label_v3(const char *label, v3 value);
