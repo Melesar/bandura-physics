@@ -46,7 +46,7 @@ extern void scenario_setup_scene(physics_world *world);
 extern void scenario_handle_input(physics_world *world, Camera *camera);
 extern void scenario_simulate(physics_world *world, float dt);
 extern void scenario_draw_scene(physics_world *world);
-extern void scenario_build_ui();
+extern void scenario_build_ui(physics_world *world);
 
 camera_settings cam_settings = {
   .movement_speed = 10.0f,
@@ -278,7 +278,7 @@ static void draw_scene(Camera camera, Shader shader, float dt) {
 
       ui_begin();
       build_ui();
-      scenario_build_ui();
+      scenario_build_ui(world);
       ui_end(dt);
 
       DrawFPS(1800, 1050);
@@ -382,14 +382,14 @@ static void init_physics() {
 }
 
 static void build_ui() {
-  if (ui_begin_modal("Debug widget", (Clay_Vector2) { 15, 15 }, &master_widget_state.is_collapsed)) {
+  if (ui_begin_area("Debug widget", &master_widget_state.is_collapsed)) {
     ui_checkbox("Physics config", &master_widget_state.show_physics_config_widget);
     ui_checkbox("World stats", &master_widget_state.show_physics_world_stats);
     ui_checkbox("Draw collisions", &master_widget_state.draw_collisions);
     ui_checkbox("Draw gizmos", &master_widget_state.draw_gismos);
   }
 
-  ui_end_modal();
+  ui_end_area();
 }
 
 static Shader setup_lighting() {

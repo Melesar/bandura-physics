@@ -57,9 +57,11 @@ void ui_teardown();
 void ui_begin();
 void ui_end(float dt);
 
-bool ui_begin_modal(const char *title, Clay_Vector2 offset, bool *collapsed);
-void ui_end_modal();
+bool ui_begin_area(const char *title, bool *collapsed);
+void ui_end_area();
 
+void ui_label(char *label);
+void ui_label_float(char *label, float value);
 void ui_label_v3(const char *label, v3 value);
 void ui_checkbox(const char *label, bool *is_checked);
 #endif

@@ -25,6 +25,10 @@ void *arena_alloc(uint32_t size) {
 }
 
 static void clay_error_handler(Clay_ErrorData error_data) {
+  if (error_data.errorType == CLAY_ERROR_TYPE_DUPLICATE_ID) {
+    return;
+  }
+
   char buffer[250];
 
   uint32_t text_len = error_data.errorText.length;
@@ -131,9 +135,11 @@ void ui_initialize() {
     clay_screen_dimensions(),
     (Clay_ErrorHandler) { .errorHandlerFunction = clay_error_handler, .userData = NULL });
   Clay_SetMeasureTextFunction(measure_text, NULL);
+  Clay_SetDebugModeEnabled(true);
 
   GuiLoadStyleCyber();
   GuiSetStyle(DEFAULT, TEXT_PADDING, 0);
+
 
   custom_arena.memory = malloc(1 << 20);
 }
@@ -152,9 +158,19 @@ void ui_begin() {
   Clay_UpdateScrollContainers(true, (Clay_Vector2){ scroll_wheel.x, scroll_wheel.y }, 0);
 
   Clay_BeginLayout();
+  Clay__OpenElementWithId(CLAY_ID("Container"));
+  Clay__ConfigureOpenElement((Clay_ElementDeclaration) {
+    .layout = {
+      .layoutDirection = CLAY_TOP_TO_BOTTOM,
+      .padding = CLAY_PADDING_ALL(15),
+      .childGap = 15,
+    }
+  });
 }
 
 void ui_end(float dt) {
+  Clay__CloseElement();
+
   Clay_RenderCommandArray commands = Clay_EndLayout(dt);
   for (int32_t i = 0; i < commands.length; ++i) {
     Clay_RenderCommand *command = &commands.internalArray[i];
@@ -184,7 +200,7 @@ void ui_end(float dt) {
         break;
 
       default:
-        TraceLog(LOG_INFO, "Clay render command: %d", command->commandType);
+        TraceLog(LOG_WARNING, "Unknown Clay render command: %d", command->commandType);
         break;
     }
   }
@@ -192,7 +208,7 @@ void ui_end(float dt) {
   custom_arena.pointer = 0;
 }
 
-bool ui_begin_modal(const char *title, Clay_Vector2 offset, bool *collapsed) {
+bool ui_begin_area(const char *title, bool *collapsed) {
   Clay_String s = clay_from_string(title);
 
   Clay__OpenElementWithId(CLAY_SID(s));
@@ -201,11 +217,6 @@ bool ui_begin_modal(const char *title, Clay_Vector2 offset, bool *collapsed) {
       .sizing = { .width = CLAY_SIZING_FIT(300, FLT_MAX), .height = CLAY_SIZING_FIT(0, FLT_MAX) },
       .layoutDirection = CLAY_TOP_TO_BOTTOM,
     },
-    .floating = {
-      .attachTo = CLAY_ATTACH_TO_ROOT,
-      .attachPoints = { .element = CLAY_ATTACH_POINT_LEFT_TOP, .parent = CLAY_ATTACH_POINT_LEFT_TOP },
-      .offset = offset,
-    },
     .backgroundColor = clay_element_color(DEFAULT, BACKGROUND_COLOR, STATE_NORMAL),
     .border = { .width = { 1, 1, 1, 1, 0 }, .color = clay_element_color(DEFAULT, LINE_COLOR, STATE_NORMAL) }
   });
@@ -213,7 +224,7 @@ bool ui_begin_modal(const char *title, Clay_Vector2 offset, bool *collapsed) {
   CLAY(CLAY_SID(clay_string_concat(title, "statusbar")), {
     .layout = {
       .sizing = { .height = CLAY_SIZING_FIXED(20), .width = CLAY_SIZING_GROW() },
-      .padding = { .left = 10, .right = 10 },
+      .padding = { .left = 10, .right = 2 },
       .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
     },
     .backgroundColor = clay_element_color(STATUSBAR, BASE, STATE_NORMAL),
@@ -253,13 +264,17 @@ bool ui_begin_modal(const char *title, Clay_Vector2 offset, bool *collapsed) {
   return !*collapsed;
 }
 
-void ui_end_modal() {
+void ui_end_area() {
   Clay__CloseElement(); // Children container
   Clay__CloseElement(); // Modal window
 }
 
-void ui_label_v3(const char *label, v3 value) {
-  CLAY(CLAY_SID(clay_from_string(label)), {
+void ui_label(char *label) {
+  CLAY_TEXT(clay_from_string(label), { .textColor = clay_element_color(LABEL, TEXT, STATE_NORMAL) });
+}
+
+static void ui_value_label(const char *label, Clay_String value) {
+  CLAY(CLAY_SID(clay_string_concat(label, "container")), {
     .layout = {
       .sizing = clay_container_sizing(),
       .layoutDirection = CLAY_LEFT_TO_RIGHT,
@@ -268,7 +283,7 @@ void ui_label_v3(const char *label, v3 value) {
     CLAY(CLAY_SID(clay_string_concat(label, "label")), {
       .layout = { .sizing = { .width = CLAY_SIZING_GROW() } }
     }){
-      CLAY_TEXT(clay_from_string(label));
+      CLAY_TEXT(clay_from_string(label), { .textColor = clay_element_color(LABEL, TEXT, STATE_NORMAL) });
     };
 
     CLAY(CLAY_SID(clay_string_concat(label, "value_container")), {
@@ -277,13 +292,27 @@ void ui_label_v3(const char *label, v3 value) {
         .sizing = { .width = CLAY_SIZING_GROW() },
       }
     }) {
-      char *v = arena_alloc(24); // Allocate more to keep the arena 8-bytes aligned
-      snprintf(v, 19, "(%.2f, %.2f, %.2f)", value.x, value.y, value.z);
-      Clay_String vs = { .chars = v, .length = strlen(v), .isStaticallyAllocated = false };
 
-      CLAY_TEXT(vs);
+      CLAY_TEXT(value, { .textColor = clay_element_color(LABEL, TEXT, STATE_NORMAL) });
     }
   }
+}
+
+void ui_label_v3(const char *label, v3 value) {
+    char *v = arena_alloc(80); // Allocate more to keep the arena 8-bytes aligned
+    snprintf(v, 80, "(%.2f, %.2f, %.2f)", value.x, value.y, value.z);
+    Clay_String vs = { .chars = v, .length = strlen(v), .isStaticallyAllocated = false };
+
+    ui_value_label(label, vs);
+}
+
+
+void ui_label_float(char *label, float value) {
+  char *v = arena_alloc(80);
+  snprintf(v, 80, "%.2f", value);
+  Clay_String vs = { .chars = v, .length = strlen(v), .isStaticallyAllocated = false };
+
+  ui_value_label(label, vs);
 }
 
 void ui_checkbox(const char *label, bool *is_checked) {

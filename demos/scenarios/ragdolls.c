@@ -5,7 +5,7 @@
 ragdoll hanging_doll;
 ragdoll normal_doll;
 
-bool simulate_dolls;
+bool widget_collapsed;
 
 void scenario_initialize(program_config* config, physics_config *physics_config) {
   config->window_title = "Ragdolls";
@@ -50,5 +50,44 @@ void scenario_draw_scene(physics_world *world) {
 
 }
 
-void scenario_build_ui() {
+void scenario_build_ui(physics_world *world) {
+  if (ui_begin_area("Ragdolls", &widget_collapsed)) {
+
+    for(bone b = HEAD; b < BONE_COUNT; ++b) {
+      body_handle body = hanging_doll[b];
+      float velocity = len(physics_get_velocity(world, body));
+      float angular_velocity = len(physics_get_angular_velocity(world, body));
+
+      char *bone_name;
+      switch(b) {
+        case HEAD: bone_name = "Head"; break;
+        case TORSO: bone_name = "Torso"; break;
+        case PELVIS: bone_name = "Pelvis"; break;
+        case LEFT_UPPER_LEG: bone_name = "Left upper leg"; break;
+        case LEFT_LOWER_LEG: bone_name = "Left lower leg"; break;
+        case RIGHT_UPPER_LEG: bone_name = "Right upper leg"; break;
+        case RIGHT_LOWER_LEG: bone_name = "Right lower leg"; break;
+        case LEFT_UPPER_ARM: bone_name = "Left upper arm"; break;
+        case LEFT_LOWER_ARM: bone_name = "Left lower arm"; break;
+        case RIGHT_UPPER_ARM: bone_name = "Right upper arm"; break;
+        case RIGHT_LOWER_ARM: bone_name = "Right lower arm"; break;
+      }
+
+      CLAY_AUTO_ID({
+        .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM }
+      }) {
+        ui_label(bone_name);
+
+        CLAY_AUTO_ID({
+          .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .padding = { .left = 20 } }
+        }){
+          ui_label_float("- v :", velocity);
+          ui_label_float("- av:", angular_velocity);
+        }
+      }
+    }
+
+  }
+
+  ui_end_area();
 }
