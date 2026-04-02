@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 typedef enum {
   UI_MODAL,
@@ -96,6 +97,10 @@ void ui_initialize() {
   GuiLoadStyleCyber();
 
   GuiSetStyle(DEFAULT, BORDER_WIDTH, 0);
+
+  GuiSetStyle(STATUSBAR, BORDER_WIDTH, 10);
+  GuiSetStyle(STATUSBAR, BORDER_COLOR_NORMAL, GuiGetStyle(DEFAULT, BASE_COLOR_NORMAL));
+
   GuiSetStyle(DEFAULT, TEXT_PADDING, 0);
 
   custom_arena.memory = malloc(1 << 20);
@@ -110,7 +115,9 @@ void ui_begin() {
   Clay_SetLayoutDimensions(clay_screen_dimensions());
 
   Vector2 mouse_pos = GetMousePosition();
+  Vector2 scroll_wheel = GetMouseWheelMoveV();
   Clay_SetPointerState((Clay_Vector2) { mouse_pos.x, mouse_pos.y }, IsMouseButtonDown(MOUSE_LEFT_BUTTON));
+  Clay_UpdateScrollContainers(true, (Clay_Vector2){ scroll_wheel.x, scroll_wheel.y }, 0);
 
   Clay_BeginLayout();
 }
@@ -140,7 +147,7 @@ void ui_end(float dt) {
           case UI_CHECKBOX:
             GuiDrawRectangle(clay_rect(command->boundingBox), 0, BLANK, GetColor(GuiGetStyle(CHECKBOX, TEXT + (3 * state))));
             if (*custom_element.checkbox.enabled) {
-              GuiDrawRectangle(clay_rect(command->boundingBox), 0, BLANK, GetColor(GuiGetStyle(CHECKBOX, TEXT_COLOR_PRESSED)));
+              GuiDrawText(GuiIconText(ICON_BOX_CIRCLE_MASK, NULL), clay_rect(command->boundingBox), TEXT_ALIGN_CENTER, GetColor(GuiGetStyle(LABEL, TEXT_COLOR_DISABLED)));
             }
             break;
         }
@@ -168,7 +175,7 @@ void ui_end(float dt) {
   custom_arena.pointer = 0;
 }
 
-void ui_begin_modal(const char *title) {
+void ui_begin_modal(const char *title, Clay_Vector2 offset) {
   custom_ui_element *custom_data = arena_alloc(sizeof(custom_ui_element));
   custom_data->type = UI_MODAL;
   custom_data->modal.title = title;
@@ -180,21 +187,25 @@ void ui_begin_modal(const char *title) {
       .sizing = { .width = CLAY_SIZING_FIT(500), .height = CLAY_SIZING_FIT(100) },
       .layoutDirection = CLAY_TOP_TO_BOTTOM,
     },
-    .floating = { .attachTo = CLAY_ATTACH_TO_ROOT, .attachPoints = { .element = CLAY_ATTACH_POINT_LEFT_TOP, .parent = CLAY_ATTACH_POINT_LEFT_TOP } },
+    .floating = {
+      .attachTo = CLAY_ATTACH_TO_ROOT,
+      .attachPoints = { .element = CLAY_ATTACH_POINT_LEFT_TOP, .parent = CLAY_ATTACH_POINT_LEFT_TOP },
+      .offset = offset,
+    },
     .custom = { .customData = custom_data },
   });
 
   CLAY_AUTO_ID({
     .layout = { .sizing = { .height = CLAY_SIZING_FIXED(20), .width = CLAY_SIZING_GROW() } },
-  }) {}
+  }) { }
 
   Clay__OpenElement();
   Clay__ConfigureOpenElement((Clay_ElementDeclaration) {
     .layout = {
       .sizing = { .width = CLAY_SIZING_GROW() },
       .layoutDirection = CLAY_TOP_TO_BOTTOM,
-      .childGap = 20,
-      .padding = { .left = 10, .right = 10, .top = 15, },
+      .childGap = 10,
+      .padding = { .left = 10, .right = 10, .top = 15, .bottom = 15 },
     },
     .backgroundColor = { 255, 0, 0, 255 },
   });
@@ -242,8 +253,8 @@ void ui_checkbox(const char *label, bool *is_checked) {
     .layout = {
       .sizing = clay_container_sizing(),
       .layoutDirection = CLAY_LEFT_TO_RIGHT,
-      .childGap = 20,
-      .padding = CLAY_PADDING_ALL(15),
+      .childGap = 10,
+      .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
     },
   }) {
     Clay_PointerDataInteractionState pointer_state = Clay_GetPointerState().state;

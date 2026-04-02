@@ -48,5 +48,5 @@ void scenario_handle_input(physics_world *world, Camera *cam) {
 void scenario_draw_scene(physics_world *world) {
 }
 
-void scenario_draw_ui() {
+void scenario_build_ui() {
 }

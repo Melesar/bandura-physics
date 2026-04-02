@@ -50,11 +50,5 @@ void scenario_draw_scene(physics_world *world) {
 
 }
 
-void scenario_draw_ui() {
-  ui_begin_modal("Ragdolls");
-
-  ui_label_v3("Test vector", vec3(1.2, 1.4831, 4));
-  ui_checkbox("Simulate ragdolls", &simulate_dolls);
-
-  ui_end_modal();
+void scenario_build_ui() {
 }

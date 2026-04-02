@@ -34,6 +34,7 @@ static Shader setup_lighting();
 static Camera setup_camera(program_config config);
 static void update_camera(Camera* camera, float deltaTime);
 static void draw_scene(Camera camera, Shader shader, float dt);
+static void build_ui();
 static void draw_physics_bodies();
 static void draw_body_axes(v3 position, quat rotation);
 static void draw_body_angular_momentum(v3 position, v3 angular_momentum);
@@ -45,7 +46,7 @@ extern void scenario_setup_scene(physics_world *world);
 extern void scenario_handle_input(physics_world *world, Camera *camera);
 extern void scenario_simulate(physics_world *world, float dt);
 extern void scenario_draw_scene(physics_world *world);
-extern void scenario_draw_ui();
+extern void scenario_build_ui();
 
 camera_settings cam_settings = {
   .movement_speed = 10.0f,
@@ -60,22 +61,12 @@ bool edit_mode = false;
 bool simulation_running = true;
 bool step_forward = false;
 
-bool show_physics_world_stats = false;
-bool show_physics_config_widget = false;
-bool draw_collisions = false;
-bool collision_debug_mode = false;
-bool draw_gismos = false;
-bool draw_angular_momenta = false;
-bool observe_body_mode = false;
-
-typedef struct {
-  bool has_hit;
-  body_handle handle;
-  body_shape shape;
-  bool is_dynamic;
-} observed_body_state;
-
-static observed_body_state observed_body = {0};
+struct {
+  bool show_physics_world_stats;
+  bool show_physics_config_widget;
+  bool draw_collisions;
+  bool draw_gismos;
+} master_widget_state;
 
 static Model groundModel;
 static physics_world *world;
@@ -169,24 +160,6 @@ static void process_inputs(Camera* camera) {
 
   if (!edit_mode)
     scenario_handle_input(world, camera);
-
-  if (observe_body_mode && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-    Ray ray = GetScreenToWorldRay(GetMousePosition(), *camera);
-    v3 origin = { ray.position.x, ray.position.y, ray.position.z };
-    v3 direction = { ray.direction.x, ray.direction.y, ray.direction.z };
-
-    raycast_hit hit;
-    count_t hit_count = physics_raycast(world, origin, direction, 1000.0f, 1, &hit);
-    if (hit_count > 0) {
-      count_t c;
-      observed_body.has_hit = true;
-      observed_body.handle = hit.body;
-      observed_body.is_dynamic = (hit.body.type == BODY_DYNAMIC);
-      observed_body.shape = *physics_get_shapes(world, hit.body, &c);
-    } else {
-      observed_body.has_hit = false;
-    }
-  }
 }
 
 static void draw_physics_bodies_typed(body_type type) {
@@ -244,13 +217,9 @@ static void draw_physics_bodies() {
     v3 position = physics_get_position(world, enumerator.handle);
     quat rotation = physics_get_rotation(world, enumerator.handle);
 
-    if (draw_gismos) {
+    if (master_widget_state.draw_gismos) {
       draw_body_axes(position, rotation);
     }
-
-    v3 angular_momentum = physics_get_angular_momentum(world, enumerator.handle);
-    if (draw_angular_momenta)
-      draw_body_angular_momentum(position, angular_momentum);
   }
 }
 
@@ -299,7 +268,7 @@ static void draw_scene(Camera camera, Shader shader, float dt) {
 
           if (edit_mode)
             draw_gizmos();
-          if (draw_collisions)
+          if (master_widget_state.draw_collisions)
             physics_draw_collisions(world);
 
         EndShaderMode();
@@ -307,7 +276,8 @@ static void draw_scene(Camera camera, Shader shader, float dt) {
       EndMode3D();
 
       ui_begin();
-      scenario_draw_ui();
+      build_ui();
+      scenario_build_ui();
       ui_end(dt);
 
       DrawFPS(1800, 1050);
@@ -408,6 +378,17 @@ static void reset() {
 static void init_physics() {
   world = physics_init(&config);
   physics_add_plane(world, zero(), up());
+}
+
+static void build_ui() {
+  ui_begin_modal("Debug widget", (Clay_Vector2) { 15, 15 });
+
+  ui_checkbox("Physics config", &master_widget_state.show_physics_config_widget);
+  ui_checkbox("World stats", &master_widget_state.show_physics_world_stats);
+  ui_checkbox("Draw collisions", &master_widget_state.draw_collisions);
+  ui_checkbox("Draw gizmos", &master_widget_state.draw_gismos);
+
+  ui_end_modal();
 }
 
 static Shader setup_lighting() {
