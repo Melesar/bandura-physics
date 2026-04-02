@@ -349,9 +349,6 @@ static void ui_prefix_label(const char *label) {
   };
 }
 
-static void ui_value_box(const char *label, custom_element *element) {
-}
-
 void ui_label_v3(const char *label, v3 value) {
     char *v = arena_alloc(80); // Allocate more to keep the arena 8-bytes aligned
     snprintf(v, 80, "(%.2f, %.2f, %.2f)", value.x, value.y, value.z);
@@ -370,7 +367,7 @@ void ui_label_float(char *label, float value) {
 }
 
 void ui_checkbox(const char *label, bool *is_checked) {
-  CLAY(CLAY_SID(clay_from_string(label)), {
+  CLAY(CLAY_SID(clay_string_concat(label, "checkbox")), {
     .layout = {
       .sizing = clay_container_sizing(),
       .layoutDirection = CLAY_LEFT_TO_RIGHT,
@@ -439,6 +436,7 @@ void ui_value_float(const char *label, float *value, float min_value, float max_
     .layout = {
       .sizing = clay_container_sizing(),
       .layoutDirection = CLAY_LEFT_TO_RIGHT,
+      .childGap = 5
     },
   }) {
 
@@ -446,13 +444,6 @@ void ui_value_float(const char *label, float *value, float min_value, float max_
 
     element->state = clay_gui_state();
 
-    char *min_value_text = arena_alloc(128);
-    char *max_value_text = arena_alloc(128);
-
-    snprintf(min_value_text, 128, "%.1f", min_value);
-    snprintf(max_value_text, 128, "%.1f", max_value);
-
-    CLAY_TEXT(clay_from_string(min_value_text), { .textColor = clay_element_color(LABEL, TEXT, STATE_NORMAL) });
     CLAY(CLAY_SID(clay_string_concat(label, "value_container")), {
       .layout = {
         .childAlignment = { .x = CLAY_ALIGN_X_RIGHT },
@@ -460,6 +451,11 @@ void ui_value_float(const char *label, float *value, float min_value, float max_
       },
       .custom = { .customData = element },
     });
-    CLAY_TEXT(clay_from_string(max_value_text), { .textColor = clay_element_color(LABEL, TEXT, STATE_NORMAL) });
+
+    char *value_text = arena_alloc(128);
+    snprintf(value_text, 128, "%.2f", *value);
+    CLAY_TEXT(clay_from_string(value_text), {
+      .textColor = clay_element_color(LABEL, TEXT, STATE_NORMAL),
+    });
   }
 }
