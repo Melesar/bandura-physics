@@ -1,6 +1,7 @@
 #include "core.h"
 #include "raygui.h"
 #include <stdlib.h>
+#include <string.h>
 
 ragdoll hanging_doll;
 ragdoll normal_doll;
@@ -47,12 +48,10 @@ void scenario_simulate(physics_world *world, float dt) {
 }
 
 void scenario_draw_scene(physics_world *world) {
-
 }
 
 void scenario_build_ui(physics_world *world) {
   if (ui_begin_area("Ragdolls", &widget_collapsed)) {
-
     for(bone b = HEAD; b < BONE_COUNT; ++b) {
       body_handle body = hanging_doll[b];
       float velocity = len(physics_get_velocity(world, body));

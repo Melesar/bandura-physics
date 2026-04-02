@@ -1,4 +1,5 @@
 #include "core.h"
+#include "raygui.h"
 #include "raymath.h"
 #include "string.h"
 #include "rlgl.h"

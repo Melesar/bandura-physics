@@ -11,6 +11,20 @@
 #include <stdbool.h>
 #include <float.h>
 
+typedef enum {
+  ELEMENT_INPUT_INT,
+  ELEMENT_INPUT_FLOAT,
+} custom_element_type;
+
+typedef struct {
+  custom_element_type type;
+  union {
+    struct { int *value; int min_value; int max_value; } input_int;
+    struct { float *value; float min_value; float max_value; } input_float;
+  };
+  GuiState state;
+} custom_element;
+
 struct {
   uint8_t *memory;
   uint32_t pointer;
@@ -57,6 +71,16 @@ static Clay_Dimensions clay_screen_dimensions() {
 
 static Clay_String clay_from_string(const char *label) {
   return (Clay_String) { .chars = label, .length = strlen(label), .isStaticallyAllocated = true };
+}
+
+static Clay_String clay_icon_string(GuiIconName icon) {
+  const char *s = GuiIconText(icon, NULL);
+  uint32_t len = strlen(s);
+  char *buffer = arena_alloc(memory_size_aligned(len + 1));
+  strncpy(buffer, s, len);
+  buffer[len] = 0;
+
+  return (Clay_String) { .chars = buffer, .length = len, .isStaticallyAllocated = false };
 }
 
 static Clay_String clay_string_concat(const char *a, const char *b) {
@@ -127,6 +151,23 @@ static Clay_Sizing clay_container_sizing() {
   return (Clay_Sizing) { .width = CLAY_SIZING_GROW(100, 300) };
 }
 
+static void render_custom_element(Clay_RenderCommand *command) {
+  custom_element *element = command->renderData.custom.customData;
+  Rectangle rect = clay_rect(command->boundingBox);
+  bool edit;
+
+  switch(element->type) {
+    case ELEMENT_INPUT_INT:
+      edit = element->state == STATE_FOCUSED || element->state == STATE_PRESSED;
+      GuiValueBox(rect, NULL, element->input_int.value, element->input_int.min_value, element->input_int.max_value, edit);
+      break;
+
+    case ELEMENT_INPUT_FLOAT:
+      GuiSlider(rect, NULL, NULL, element->input_float.value, element->input_float.min_value, element->input_float.max_value);
+      break;
+  }
+}
+
 void ui_initialize() {
   uint32_t memory_size = Clay_MinMemorySize();
   clay_memory = malloc(memory_size);
@@ -139,7 +180,6 @@ void ui_initialize() {
 
   GuiLoadStyleCyber();
   GuiSetStyle(DEFAULT, TEXT_PADDING, 0);
-
 
   custom_arena.memory = malloc(1 << 20);
 }
@@ -199,6 +239,10 @@ void ui_end(float dt) {
         EndScissorMode();
         break;
 
+      case CLAY_RENDER_COMMAND_TYPE_CUSTOM:
+        render_custom_element(command);
+        break;
+
       default:
         TraceLog(LOG_WARNING, "Unknown Clay render command: %d", command->commandType);
         break;
@@ -238,7 +282,7 @@ bool ui_begin_area(const char *title, bool *collapsed) {
     CLAY(CLAY_SID(clay_string_concat(title, "close_btn")), {
       .layout = {
         .sizing = { .width = CLAY_SIZING_FIXED(18), .height = CLAY_SIZING_FIXED(18) },
-        .childAlignment = { .y = CLAY_ALIGN_Y_CENTER },
+        .childAlignment = { .y = CLAY_ALIGN_Y_CENTER, .x = CLAY_ALIGN_X_CENTER },
       },
       .backgroundColor = clay_element_color(BUTTON, BASE, clay_gui_state()),
     }){
@@ -246,7 +290,7 @@ bool ui_begin_area(const char *title, bool *collapsed) {
         *collapsed = !*collapsed;
       }
 
-      CLAY_TEXT(clay_from_string(GuiIconText(ICON_BOX_MINUS_FILL, NULL)), { .textColor = clay_element_color(BUTTON, TEXT, clay_gui_state()), .textAlignment = CLAY_TEXT_ALIGN_CENTER });
+      CLAY_TEXT(clay_icon_string(ICON_BOX_MINUS_FILL), { .textColor = clay_element_color(BUTTON, TEXT, clay_gui_state()), .textAlignment = CLAY_TEXT_ALIGN_CENTER });
     };
   }
 
@@ -292,10 +336,20 @@ static void ui_value_label(const char *label, Clay_String value) {
         .sizing = { .width = CLAY_SIZING_GROW() },
       }
     }) {
-
       CLAY_TEXT(value, { .textColor = clay_element_color(LABEL, TEXT, STATE_NORMAL) });
     }
   }
+}
+
+static void ui_prefix_label(const char *label) {
+  CLAY(CLAY_SID(clay_string_concat(label, "label")), {
+    .layout = { .sizing = { .width = CLAY_SIZING_GROW() } }
+  }){
+    CLAY_TEXT(clay_from_string(label), { .textColor = clay_element_color(LABEL, TEXT, STATE_NORMAL) });
+  };
+}
+
+static void ui_value_box(const char *label, custom_element *element) {
 }
 
 void ui_label_v3(const char *label, v3 value) {
@@ -339,9 +393,73 @@ void ui_checkbox(const char *label, bool *is_checked) {
       .backgroundColor = clay_element_color(CHECKBOX, TEXT, state),
     }) {
       if (*is_checked)
-        CLAY_TEXT(clay_from_string(GuiIconText(ICON_BOX_CIRCLE_MASK, NULL)), { .textColor = clay_element_color(LABEL, TEXT, STATE_DISABLED), .textAlignment = CLAY_TEXT_ALIGN_CENTER });
+        CLAY_TEXT(clay_icon_string(ICON_BOX_CIRCLE_MASK), { .textColor = clay_element_color(LABEL, TEXT, STATE_DISABLED), .textAlignment = CLAY_TEXT_ALIGN_CENTER });
     };
 
     CLAY_TEXT(clay_from_string(label), { .textColor = clay_element_color(CHECKBOX, TEXT, state) });
+  }
+}
+
+void ui_value_int(const char *label, int *value, int min_value, int max_value) {
+  custom_element *element = arena_alloc(sizeof(custom_element));
+  element->type = ELEMENT_INPUT_INT;
+  element->input_int.value = value;
+  element->input_int.min_value = min_value;
+  element->input_int.max_value = max_value;
+
+  CLAY(CLAY_SID(clay_string_concat(label, "container")), {
+    .layout = {
+      .sizing = clay_container_sizing(),
+      .layoutDirection = CLAY_LEFT_TO_RIGHT,
+    },
+  }) {
+
+    ui_prefix_label(label);
+
+    element->state = clay_gui_state();
+
+    CLAY(CLAY_SID(clay_string_concat(label, "value_container")), {
+      .layout = {
+        .childAlignment = { .x = CLAY_ALIGN_X_RIGHT },
+        .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT(GuiGetStyle(DEFAULT, TEXT_SIZE), FLT_MAX) },
+      },
+      .custom = { .customData = element },
+    });
+  }
+}
+
+void ui_value_float(const char *label, float *value, float min_value, float max_value) {
+  custom_element *element = arena_alloc(sizeof(custom_element));
+  element->type = ELEMENT_INPUT_FLOAT;
+  element->input_float.value = value;
+  element->input_float.min_value = 0.0;
+  element->input_float.max_value = 1.0;
+
+  CLAY(CLAY_SID(clay_string_concat(label, "container")), {
+    .layout = {
+      .sizing = clay_container_sizing(),
+      .layoutDirection = CLAY_LEFT_TO_RIGHT,
+    },
+  }) {
+
+    ui_prefix_label(label);
+
+    element->state = clay_gui_state();
+
+    char *min_value_text = arena_alloc(128);
+    char *max_value_text = arena_alloc(128);
+
+    snprintf(min_value_text, 128, "%.1f", min_value);
+    snprintf(max_value_text, 128, "%.1f", max_value);
+
+    CLAY_TEXT(clay_from_string(min_value_text), { .textColor = clay_element_color(LABEL, TEXT, STATE_NORMAL) });
+    CLAY(CLAY_SID(clay_string_concat(label, "value_container")), {
+      .layout = {
+        .childAlignment = { .x = CLAY_ALIGN_X_RIGHT },
+        .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT(GuiGetStyle(DEFAULT, TEXT_SIZE), FLT_MAX) },
+      },
+      .custom = { .customData = element },
+    });
+    CLAY_TEXT(clay_from_string(max_value_text), { .textColor = clay_element_color(LABEL, TEXT, STATE_NORMAL) });
   }
 }
