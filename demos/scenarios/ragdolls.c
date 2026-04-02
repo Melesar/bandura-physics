@@ -56,6 +56,7 @@ void scenario_build_ui(physics_world *world) {
       body_handle body = hanging_doll[b];
       float velocity = len(physics_get_velocity(world, body));
       float angular_velocity = len(physics_get_angular_velocity(world, body));
+      float angular_momentum = len(physics_get_angular_momentum(world, body));
 
       char *bone_name;
       switch(b) {
@@ -70,6 +71,7 @@ void scenario_build_ui(physics_world *world) {
         case LEFT_LOWER_ARM: bone_name = "Left lower arm"; break;
         case RIGHT_UPPER_ARM: bone_name = "Right upper arm"; break;
         case RIGHT_LOWER_ARM: bone_name = "Right lower arm"; break;
+        default: break;
       }
 
       CLAY_AUTO_ID({
@@ -82,6 +84,7 @@ void scenario_build_ui(physics_world *world) {
         }){
           ui_label_float("- v :", velocity);
           ui_label_float("- av:", angular_velocity);
+          ui_label_float("- am:", angular_momentum);
         }
       }
     }
