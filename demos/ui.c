@@ -108,6 +108,10 @@ static Color clay_color_to_ray(Clay_Color color) {
   return (Color) { color.r, color.g, color.b, color.a };
 }
 
+static Clay_Color clay_color_from_ray(Color color) {
+  return (Clay_Color) { color.r, color.g, color.b, color.a };
+}
+
 static GuiState clay_gui_state() {
   Clay_PointerDataInteractionState pointer_state = Clay_GetPointerState().state;
   bool is_hovering = Clay_Hovered();
@@ -176,7 +180,6 @@ void ui_initialize() {
     clay_screen_dimensions(),
     (Clay_ErrorHandler) { .errorHandlerFunction = clay_error_handler, .userData = NULL });
   Clay_SetMeasureTextFunction(measure_text, NULL);
-  Clay_SetDebugModeEnabled(true);
 
   GuiLoadStyleCyber();
   GuiSetStyle(DEFAULT, TEXT_PADDING, 0);
@@ -198,19 +201,9 @@ void ui_begin() {
   Clay_UpdateScrollContainers(true, (Clay_Vector2){ scroll_wheel.x, scroll_wheel.y }, 0);
 
   Clay_BeginLayout();
-  Clay__OpenElementWithId(CLAY_ID("Container"));
-  Clay__ConfigureOpenElement((Clay_ElementDeclaration) {
-    .layout = {
-      .layoutDirection = CLAY_TOP_TO_BOTTOM,
-      .padding = CLAY_PADDING_ALL(15),
-      .childGap = 15,
-    }
-  });
 }
 
 void ui_end(float dt) {
-  Clay__CloseElement();
-
   Clay_RenderCommandArray commands = Clay_EndLayout(dt);
   for (int32_t i = 0; i < commands.length; ++i) {
     Clay_RenderCommand *command = &commands.internalArray[i];
@@ -250,6 +243,10 @@ void ui_end(float dt) {
   }
 
   custom_arena.pointer = 0;
+}
+
+void ui_set_debug(bool is_debug) {
+  Clay_SetDebugModeEnabled(is_debug);
 }
 
 bool ui_begin_area(const char *title, bool *collapsed) {
@@ -366,6 +363,14 @@ void ui_label_float(char *label, float value) {
   ui_value_label(label, vs);
 }
 
+void ui_label_int(const char *label, count_t value) {
+  char *v = arena_alloc(80);
+  snprintf(v, 80, "%d", value);
+  Clay_String vs = { .chars = v, .length = strlen(v), .isStaticallyAllocated = false };
+
+  ui_value_label(label, vs);
+}
+
 void ui_checkbox(const char *label, bool *is_checked) {
   CLAY(CLAY_SID(clay_string_concat(label, "checkbox")), {
     .layout = {
@@ -457,5 +462,26 @@ void ui_value_float(const char *label, float *value, float min_value, float max_
     CLAY_TEXT(clay_from_string(value_text), {
       .textColor = clay_element_color(LABEL, TEXT, STATE_NORMAL),
     });
+  }
+}
+
+void ui_label_stat(const char *label, float value) {
+  Clay_Color background = clay_element_color(DEFAULT, BACKGROUND_COLOR, STATE_NORMAL);
+  background.a = 150;
+
+  CLAY(CLAY_SID(clay_string_concat(label, "stat_container")), {
+    .layout = {
+      .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER },
+      .padding = CLAY_PADDING_ALL(5),
+      .childGap = 5,
+    },
+    .backgroundColor = background,
+  }) {
+    CLAY_TEXT(clay_from_string(label), { .textColor = clay_element_color(LABEL, TEXT, STATE_NORMAL) });
+
+    char *value_text = arena_alloc(16);
+    snprintf(value_text, 16, "%d", (int) value);
+
+    CLAY_TEXT(clay_from_string(value_text), { .textColor = clay_color_from_ray(LIME) });
   }
 }

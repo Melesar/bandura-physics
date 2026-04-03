@@ -23,6 +23,7 @@ typedef struct {
   Vector3 camera_target;
 } program_config;
 
+
 typedef enum {
   HEAD,
   TORSO,
@@ -57,12 +58,15 @@ void ui_teardown();
 void ui_begin();
 void ui_end(float dt);
 
+void ui_set_debug(bool is_debug);
+
 bool ui_begin_area(const char *title, bool *collapsed);
 void ui_end_area();
 
 void ui_label(char *label);
 void ui_label_float(char *label, float value);
 void ui_label_v3(const char *label, v3 value);
+void ui_label_stat(const char *label, float value);
 
 void ui_value_int(const char *label, int *value, int min_value, int max_value);
 void ui_value_float(const char *label, float *value, float min_value, float max_value);

@@ -46,6 +46,8 @@
 #define lerp(x, y, t) Lerp(x, y, t)
 #define slerp(x, y, t) QuaternionSlerp(x, y, t)
 
+#define SMOOTH_VALUE_CAPACITY 8
+
 typedef Vector3 v3;
 typedef Vector4 v4;
 typedef Quaternion quat;
@@ -149,6 +151,19 @@ typedef struct {
 } physics_config;
 
 typedef struct {
+  float buffer[SMOOTH_VALUE_CAPACITY];
+  uint8_t count;
+  uint8_t pointer;
+} smooth_value;
+
+typedef struct {
+  count_t body_count;
+  smooth_value contacts_count;
+  smooth_value penetration_iterations;
+  smooth_value velocity_iterations;
+} physics_world_stats;
+
+typedef struct {
   v3 point;
   v3 normal;
   float depth;
@@ -197,6 +212,7 @@ count_t physics_awake_count(const physics_world *world);
 count_t physics_collisions_count(const physics_world *world);
 
 physics_config* physics_edit_config(physics_world *world);
+physics_world_stats physics_get_stats(const physics_world *world);
 
 v3 physics_get_position(const physics_world *world, body_handle handle);
 quat physics_get_rotation(const physics_world *world, body_handle handle);
@@ -217,5 +233,8 @@ void physics_reset(physics_world *world);
 count_t physics_raycast(const physics_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits, raycast_hit *hits);
 
 void physics_teardown(physics_world* world);
+
+float smooth_value_read(smooth_value v);
+void smooth_value_post(smooth_value *v, float x);
 
 #endif

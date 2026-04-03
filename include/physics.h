@@ -115,6 +115,7 @@ struct physics_world_t {
   shapes_bracket shape_brackets[BRACKET_COUNT];
 
   physics_config config;
+  physics_world_stats stats;
 
   count_t generation;
 };

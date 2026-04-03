@@ -357,6 +357,8 @@ static void resolve_interpenetrations(physics_world *world) {
 
     iterations += 1;
   }
+
+  smooth_value_post(&world->stats.penetration_iterations, iterations);
 }
 
 static void update_velocity_deltas(physics_world *world, count_t contact_index, const v3 *deltas, float dt) {
@@ -411,6 +413,8 @@ static void resolve_velocities(physics_world *world, float dt) {
 
     iterations += 1;
   }
+
+  smooth_value_post(&world->stats.velocity_iterations, iterations);
 }
 
 void contacts_resolve(physics_world *world, float dt) {

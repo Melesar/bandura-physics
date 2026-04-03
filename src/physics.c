@@ -524,6 +524,10 @@ physics_config* physics_edit_config(physics_world *world) {
   return &world->config;
 }
 
+physics_world_stats physics_get_stats(const physics_world *world) {
+  return world->stats;
+}
+
 count_t physics_body_count(const physics_world *world, body_type type) {
   return as_common_const(world, type)->count;
 }
@@ -690,6 +694,8 @@ void physics_step(physics_world* world, float dt) {
   profiler_start_frame();
   {
     PROFILE_FUNCTION
+
+    world->stats.body_count = world->dynamics.count + world->statics.count;
 
     integrate_bodies(world, dt);
     contacts_reset(world);

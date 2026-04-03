@@ -253,3 +253,6 @@ void scenario_draw_scene(physics_world *world) {
 
 void scenario_build_ui(physics_world *world) { }
 void scenario_handle_input(physics_world *world, Camera *camera) { }
+
+void scenario_teardown() {
+}

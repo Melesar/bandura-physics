@@ -37,8 +37,6 @@ static void update_camera(Camera* camera, float deltaTime);
 static void draw_scene(Camera camera, Shader shader, float dt);
 static void build_ui();
 static void draw_physics_bodies();
-static void draw_body_axes(v3 position, quat rotation);
-static void draw_body_angular_momentum(v3 position, v3 angular_momentum);
 static void process_inputs(Camera* camera);
 static void reset();
 
@@ -48,6 +46,7 @@ extern void scenario_handle_input(physics_world *world, Camera *camera);
 extern void scenario_simulate(physics_world *world, float dt);
 extern void scenario_draw_scene(physics_world *world);
 extern void scenario_build_ui(physics_world *world);
+extern void scenario_teardown();
 
 camera_settings cam_settings = {
   .movement_speed = 10.0f,
@@ -66,10 +65,10 @@ struct {
   bool is_collapsed;
   bool physics_config_collapsed;
 
+  bool show_ui_debug;
   bool show_physics_world_stats;
   bool show_physics_config_widget;
   bool draw_collisions;
-  bool draw_gismos;
 } master_widget_state;
 
 static Model groundModel;
@@ -133,6 +132,7 @@ int main(int argc, char** argv) {
   }
 
   ui_teardown();
+  scenario_teardown();
   physics_teardown(world);
 
   UnloadShader(shader);
@@ -213,45 +213,6 @@ static void draw_physics_bodies_typed(body_type type) {
 static void draw_physics_bodies() {
   draw_physics_bodies_typed(BODY_DYNAMIC);
   draw_physics_bodies_typed(BODY_STATIC);
-
-  body_enumerator_typed enumerator;
-  physics_enumerate_bodies_typed(world, BODY_DYNAMIC, &enumerator);
-
-  while(physics_body_next_typed(world, &enumerator)) {
-    v3 position = physics_get_position(world, enumerator.handle);
-    quat rotation = physics_get_rotation(world, enumerator.handle);
-
-    if (master_widget_state.draw_gismos) {
-      draw_body_axes(position, rotation);
-    }
-  }
-}
-
-static void draw_body_axes(v3 position, quat rotation) {
-  const float axis_len = 1.5f;
-
-  v3 x = rotate(((v3){axis_len, 0, 0}), rotation);
-  v3 y = rotate(((v3){0, axis_len, 0}), rotation);
-  v3 z = rotate(((v3){0, 0, axis_len}), rotation);
-
-  draw_arrow(position, x, RED);
-  draw_arrow(position, y, GREEN);
-  draw_arrow(position, z, BLUE);
-}
-
-static void draw_body_angular_momentum(v3 position, v3 angular_momentum) {
-  const float scale_factor = 1.0f;
-  const float max_len = 2.0f;
-
-  v3 v = scale(angular_momentum, scale_factor);
-  float l = len(v);
-  if (l < 0.0001f)
-    return;
-
-  if (l > max_len)
-    v = scale(normalize(v), max_len);
-
-  draw_arrow(position, v, SKYBLUE);
 }
 
 static void draw_scene(Camera camera, Shader shader, float dt) {
@@ -281,7 +242,6 @@ static void draw_scene(Camera camera, Shader shader, float dt) {
 
       ui_begin();
       build_ui();
-      scenario_build_ui(world);
       ui_end(dt);
 
       DrawFPS(1800, 1050);
@@ -385,35 +345,65 @@ static void init_physics() {
 }
 
 static void build_ui() {
-  if (ui_begin_area("Debug widget", &master_widget_state.is_collapsed)) {
-    ui_checkbox("Physics config", &master_widget_state.show_physics_config_widget);
-    ui_checkbox("World stats", &master_widget_state.show_physics_world_stats);
-    ui_checkbox("Draw collisions", &master_widget_state.draw_collisions);
-    ui_checkbox("Draw gizmos", &master_widget_state.draw_gismos);
-  }
-
-  ui_end_area();
-
-  if (master_widget_state.show_physics_config_widget) {
-    physics_config *physics_config = physics_edit_config(world);
-    if (ui_begin_area("Physics config", &master_widget_state.physics_config_collapsed)) {
-      ui_value_float("Linear damping", &physics_config->linear_damping, 0, 1);
-      ui_value_float("Angular damping", &physics_config->angular_damping, 0, 1);
-      ui_value_float("Restitution", &physics_config->restitution, 0, 2);
-      ui_value_float("Friction", &physics_config->friction, 0, 1);
-      ui_value_int("Max penetration iterations", (int*)&physics_config->max_penentration_iterations, 1, 100);
-      ui_value_int("Max velocity iterations", (int*)&physics_config->max_velocity_iterations, 1, 100);
-      ui_value_float("Penetration epsilon", &physics_config->penetration_epsilon, 0.001, 0.5);
-      ui_value_float("Velocity epsilon", &physics_config->velocity_epsilon, 0.001, 0.5);
-      ui_value_float("Sleep base bias", &physics_config->sleep_base_bias, 0, 1);
-      ui_value_float("Sleep threshold", &physics_config->sleep_threshold, 0, 10);
-      ui_value_float("Restitution damping epsilon", &physics_config->restitution_damping_limit, 0, 1);
+  CLAY(CLAY_ID("Container"), {
+    .layout = {
+      .layoutDirection = CLAY_TOP_TO_BOTTOM,
+      .padding = CLAY_PADDING_ALL(15),
+      .childGap = 15,
+    }
+  }) {
+    bool ui_debug = master_widget_state.show_ui_debug;
+    if (ui_begin_area("Debug widget", &master_widget_state.is_collapsed)) {
+      ui_checkbox("UI debug", &master_widget_state.show_ui_debug);
+      ui_checkbox("Physics config", &master_widget_state.show_physics_config_widget);
+      ui_checkbox("World stats", &master_widget_state.show_physics_world_stats);
+      ui_checkbox("Draw collisions", &master_widget_state.draw_collisions);
     }
 
     ui_end_area();
+
+    if (ui_debug != master_widget_state.show_ui_debug) {
+      ui_set_debug(master_widget_state.show_ui_debug);
+    }
+
+    if (master_widget_state.show_physics_config_widget) {
+      physics_config *physics_config = physics_edit_config(world);
+      if (ui_begin_area("Physics config", &master_widget_state.physics_config_collapsed)) {
+        ui_value_float("Linear damping", &physics_config->linear_damping, 0, 1);
+        ui_value_float("Angular damping", &physics_config->angular_damping, 0, 1);
+        ui_value_float("Restitution", &physics_config->restitution, 0, 2);
+        ui_value_float("Friction", &physics_config->friction, 0, 1);
+        ui_value_int("Max penetration iterations", (int*)&physics_config->max_penentration_iterations, 1, 500);
+        ui_value_int("Max velocity iterations", (int*)&physics_config->max_velocity_iterations, 1, 500);
+        ui_value_float("Penetration epsilon", &physics_config->penetration_epsilon, 0.001, 0.5);
+        ui_value_float("Velocity epsilon", &physics_config->velocity_epsilon, 0.001, 0.5);
+        ui_value_float("Sleep base bias", &physics_config->sleep_base_bias, 0, 1);
+        ui_value_float("Sleep threshold", &physics_config->sleep_threshold, 0, 10);
+        ui_value_float("Restitution damping epsilon", &physics_config->restitution_damping_limit, 0, 1);
+      }
+
+      ui_end_area();
+    }
+
+    scenario_build_ui(world);
   }
 
+  if (master_widget_state.show_physics_world_stats) {
+    CLAY(CLAY_ID("Stats"), {
+      .layout = {
+        .layoutDirection = CLAY_LEFT_TO_RIGHT,
+        .childGap = 10,
+        .padding = CLAY_PADDING_ALL(3),
+      }
+    }) {
+      physics_world_stats stats = physics_get_stats(world);
 
+      ui_label_stat("Body count", stats.body_count);
+      ui_label_stat("Contacts count", smooth_value_read(stats.contacts_count));
+      ui_label_stat("Penetrations", smooth_value_read(stats.penetration_iterations));
+      ui_label_stat("Velocities", smooth_value_read(stats.velocity_iterations));
+    }
+  }
 }
 
 static Shader setup_lighting() {
