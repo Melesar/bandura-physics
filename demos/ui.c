@@ -2,8 +2,8 @@
 #define RAYGUI_IMPLEMENTATION
 
 #include "core.h"
-#include "cyber/style_cyber.h"
 #include "raygui.h"
+#include "cyber/style_cyber.h"
 
 #include <float.h>
 #include <stdbool.h>

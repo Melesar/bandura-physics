@@ -1,9 +1,9 @@
 #ifndef CORE_H
 #define CORE_H
 
+#include "raylib.h"
 #include "bandura.h"
 #include "clay.h"
-#include "raylib.h"
 
 #define COLOR_GREEN_ACTIVE                                                                                             \
   (Color) { 0x00, 0xff, 0x88, 0xFF }
