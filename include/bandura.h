@@ -138,8 +138,7 @@ typedef struct {
   float restitution;
   float friction;
 
-  count_t max_penentration_iterations;
-  count_t max_velocity_iterations;
+  count_t resolution_attempts_factor;
 
   float penetration_epsilon;
   float velocity_epsilon;
@@ -158,9 +157,8 @@ typedef struct {
 
 typedef struct {
   count_t body_count;
-  smooth_value contacts_count;
-  smooth_value penetration_iterations;
-  smooth_value velocity_iterations;
+  count_t contacts_count;
+  count_t incomplete_resolutions;
 } physics_world_stats;
 
 typedef struct {

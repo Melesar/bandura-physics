@@ -373,8 +373,9 @@ static void build_ui() {
         ui_value_float("Angular damping", &physics_config->angular_damping, 0, 1);
         ui_value_float("Restitution", &physics_config->restitution, 0, 2);
         ui_value_float("Friction", &physics_config->friction, 0, 1);
-        ui_value_int("Max penetration iterations", (int*)&physics_config->max_penentration_iterations, 1, 500);
-        ui_value_int("Max velocity iterations", (int*)&physics_config->max_velocity_iterations, 1, 500);
+        ui_value_int("Iterations factor", (int*)&physics_config->resolution_attempts_factor, 1, 20);
+        // ui_value_int("Max penetration iterations", (int*)&physics_config->max_penentration_iterations, 1, 500);
+        // ui_value_int("Max velocity iterations", (int*)&physics_config->max_velocity_iterations, 1, 500);
         ui_value_float("Penetration epsilon", &physics_config->penetration_epsilon, 0.001, 0.5);
         ui_value_float("Velocity epsilon", &physics_config->velocity_epsilon, 0.001, 0.5);
         ui_value_float("Sleep base bias", &physics_config->sleep_base_bias, 0, 1);
@@ -399,9 +400,8 @@ static void build_ui() {
       physics_world_stats stats = physics_get_stats(world);
 
       ui_label_stat("Body count", stats.body_count);
-      ui_label_stat("Contacts count", smooth_value_read(stats.contacts_count));
-      ui_label_stat("Penetrations", smooth_value_read(stats.penetration_iterations));
-      ui_label_stat("Velocities", smooth_value_read(stats.velocity_iterations));
+      ui_label_stat("Contacts count", stats.contacts_count);
+      ui_label_stat("Incomplete resolutions", stats.incomplete_resolutions);
     }
   }
 }

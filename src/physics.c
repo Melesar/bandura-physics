@@ -180,8 +180,7 @@ physics_config physics_default_config() {
     .angular_damping = 0.8,
     .restitution = 0.2,
     .friction = 0.9,
-    .max_penentration_iterations = 50,
-    .max_velocity_iterations = 50,
+    .resolution_attempts_factor = 15,
     .sleep_base_bias = 0.5,
     .sleep_threshold = 0.3,
     .penetration_epsilon = 0.01,
@@ -735,6 +734,7 @@ void physics_reset(physics_world *world) {
   world->dynamics.awake_count = 0;
 
   world->statics.count = 0;
+  world->stats.incomplete_resolutions = 0;
 
   contacts_reset(world);
   shapes_reset(world);

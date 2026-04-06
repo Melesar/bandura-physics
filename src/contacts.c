@@ -14,7 +14,7 @@ void contacts_generate(physics_world *world) {
   collisions_detect_static(world);
   joints_generate_static(world);
 
-  smooth_value_post(&world->stats.contacts_count, world->contacts.count);
+  world->stats.contacts_count = world->contacts.count;
 }
 
 void contacts_reset(physics_world *world) {

@@ -339,13 +339,14 @@ static void resolve_interpenetrations(physics_world *world) {
   PROFILE_FUNCTION
 
   const count_t count = world->contacts.count;
+  const count_t max_iterations = count * world->config.resolution_attempts_factor;
 
   if (count == 0)
     return;
 
   count_t iterations = 0;
   count_t max_penetration_index = -1;
-  while (iterations < world->config.max_penentration_iterations) {
+  while (iterations < max_iterations) {
     if (!find_worst_penetration(world, &max_penetration_index))
       break;
 
@@ -358,7 +359,7 @@ static void resolve_interpenetrations(physics_world *world) {
     iterations += 1;
   }
 
-  smooth_value_post(&world->stats.penetration_iterations, iterations);
+  world->stats.incomplete_resolutions += iterations >= max_iterations;
 }
 
 static void update_velocity_deltas(physics_world *world, count_t contact_index, const v3 *deltas, float dt) {
@@ -396,12 +397,13 @@ static void resolve_velocities(physics_world *world, float dt) {
   PROFILE_FUNCTION
 
   const count_t count = world->contacts.count;
+  const count_t max_iterations = count * world->config.resolution_attempts_factor;
   if (count == 0)
     return;
 
   count_t iterations = 0;
   count_t worst_contact_index = -1;
-  while (iterations < world->config.max_velocity_iterations) {
+  while (iterations < max_iterations) {
     if (!find_worst_velocity(world, &worst_contact_index))
       break;
 
@@ -414,7 +416,7 @@ static void resolve_velocities(physics_world *world, float dt) {
     iterations += 1;
   }
 
-  smooth_value_post(&world->stats.velocity_iterations, iterations);
+  world->stats.incomplete_resolutions += iterations >= max_iterations;
 }
 
 void contacts_resolve(physics_world *world, float dt) {
