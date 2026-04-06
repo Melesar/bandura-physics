@@ -1,8 +1,8 @@
 #ifndef PROFILER_H
 #define PROFILER_H
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef struct {
   uint32_t labels_storage_capacity;
@@ -23,7 +23,7 @@ typedef struct {
 #define PROFILE_BLOCK(name)
 #define PROFILE_FUNCTION
 
-static profiler_config profiler_default_config() {  return (profiler_config) { 0 }; }
+static profiler_config profiler_default_config() { return (profiler_config){0}; }
 static void profiler_init_default() {}
 static void profiler_init(profiler_config config) {}
 static void profiler_teardown() {}
@@ -76,16 +76,16 @@ typedef struct {
   uint32_t storage_ptr;
 } labels;
 
-
 #define LABELS_STORAGE_FULL 0xFFFFFFFF
-#define INVALID_LABEL (label) { NULL, 0 }
+#define INVALID_LABEL                                                                                                  \
+  (label) { NULL, 0 }
 
 #define CONCAT(a, b) a##b
-#define MARKER_NAME(a,b) CONCAT(a,b)
+#define MARKER_NAME(a, b) CONCAT(a, b)
 
-#define PROFILE_BLOCK(name)\
-profiler_marker MARKER_NAME(marker_, __LINE__) __attribute__((__cleanup__(profiler_end_block)))\
-  = profiler_start_block(name);
+#define PROFILE_BLOCK(name)                                                                                            \
+  profiler_marker MARKER_NAME(marker_, __LINE__) __attribute__((__cleanup__(profiler_end_block))) =                    \
+      profiler_start_block(name);
 
 #define PROFILE_FUNCTION PROFILE_BLOCK(__func__)
 

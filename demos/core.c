@@ -9,9 +9,7 @@ Mesh arrow_base;
 Mesh arrow_head;
 Material mat;
 
-static void set_arrow_color(Color c) {
-  mat.maps[MATERIAL_MAP_DIFFUSE].color = c;
-}
+static void set_arrow_color(Color c) { mat.maps[MATERIAL_MAP_DIFFUSE].color = c; }
 
 void init_debugging() {
   arrow_base = GenMeshCylinder(0.1, 1, 8);
@@ -29,7 +27,7 @@ void draw_arrow(Vector3 start, Vector3 direction, Color color) {
   set_arrow_color(color);
 
   Matrix base_translation = MatrixTranslate(start.x, start.y, start.z);
-  Matrix base_rotation = QuaternionToMatrix(QuaternionFromVector3ToVector3((Vector3) { 0, 1, 0 }, n));
+  Matrix base_rotation = QuaternionToMatrix(QuaternionFromVector3ToVector3((Vector3){0, 1, 0}, n));
   Matrix base_scale = MatrixScale(scale, distance, scale);
   Matrix base_transform = MatrixMultiply(MatrixMultiply(base_scale, base_rotation), base_translation);
 
@@ -64,7 +62,7 @@ static v3 joint_attachment_point(const physics_world *world, joint j, count_t in
 }
 
 void physics_draw_collisions(const physics_world *world) {
-  #define max_count 50
+#define max_count 50
 
   contact_t contacts[max_count];
   count_t count = physics_get_contacts(world, contacts, max_count);
@@ -84,7 +82,7 @@ void physics_draw_collisions(const physics_world *world) {
     DrawSphere(p2, 0.05, BLUE);
   }
 
-  #undef max_count
+#undef max_count
 }
 
 ragdoll ragdoll_create(physics_world *world, v3 position) {
@@ -132,16 +130,20 @@ ragdoll ragdoll_create(physics_world *world, v3 position) {
   physics_add_joint(world, torso.handle, pelvis.handle, vec3(0, -0.5, 0), vec3(0, 0.5, 0), joint_margin);
 
   physics_add_joint(world, torso.handle, left_upper_arm.handle, vec3(0.3, 0.45, 0), vec3(-0.1, 0.6, 0), joint_margin);
-  physics_add_joint(world, left_upper_arm.handle, left_lower_arm.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0), joint_margin);
+  physics_add_joint(world, left_upper_arm.handle, left_lower_arm.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0),
+                    joint_margin);
 
   physics_add_joint(world, torso.handle, right_upper_arm.handle, vec3(-0.3, 0.45, 0), vec3(0.1, 0.6, 0), joint_margin);
-  physics_add_joint(world, right_upper_arm.handle, right_lower_arm.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0), joint_margin);
+  physics_add_joint(world, right_upper_arm.handle, right_lower_arm.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0),
+                    joint_margin);
 
   physics_add_joint(world, pelvis.handle, left_upper_leg.handle, vec3(0.23, -0.5, 0), vec3(0, 0.6, 0), joint_margin);
-  physics_add_joint(world, left_upper_leg.handle, left_lower_leg.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0), joint_margin);
+  physics_add_joint(world, left_upper_leg.handle, left_lower_leg.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0),
+                    joint_margin);
 
   physics_add_joint(world, pelvis.handle, right_upper_leg.handle, vec3(-0.23, -0.5, 0), vec3(0, 0.6, 0), joint_margin);
-  physics_add_joint(world, right_upper_leg.handle, right_lower_leg.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0), joint_margin);
+  physics_add_joint(world, right_upper_leg.handle, right_lower_leg.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0),
+                    joint_margin);
 
   ragdoll doll = malloc(BONE_COUNT * sizeof(body_handle));
   doll[HEAD] = head.handle;

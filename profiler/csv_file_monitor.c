@@ -1,6 +1,6 @@
 #ifdef __linux__
-  #define _POSIX_C_SOURCE 199309L // This is to have clock_gettime, which is otherwise not available under -std=c99
-  #define _XOPEN_SOURCE 500
+#define _POSIX_C_SOURCE 199309L // This is to have clock_gettime, which is otherwise not available under -std=c99
+#define _XOPEN_SOURCE 500
 #endif
 
 #include "profiler.h"
@@ -36,10 +36,9 @@ static char *read_label(uint32_t label_id) {
   return "unknown";
 }
 
-
-
-static int32_t find_direct_child(final_sample *samples, uint32_t samples_count, uint32_t parent_index, uint32_t label_id) {
-  for(uint32_t i = parent_index + 1; i < samples_count; ++i) {
+static int32_t find_direct_child(final_sample *samples, uint32_t samples_count, uint32_t parent_index,
+                                 uint32_t label_id) {
+  for (uint32_t i = parent_index + 1; i < samples_count; ++i) {
     final_sample sample = samples[i];
     if (sample.label_id != label_id) {
       continue;
@@ -63,7 +62,8 @@ static int32_t find_direct_child(final_sample *samples, uint32_t samples_count, 
   return -1;
 }
 
-static uint32_t process_samples(profiler_sample *samples, uint32_t samples_count, final_sample *output, uint32_t available_capacity) {
+static uint32_t process_samples(profiler_sample *samples, uint32_t samples_count, final_sample *output,
+                                uint32_t available_capacity) {
   if (samples_count == 0 || available_capacity == 0) {
     return 0;
   }
@@ -71,17 +71,17 @@ static uint32_t process_samples(profiler_sample *samples, uint32_t samples_count
   uint32_t final_count = 1;
   profiler_sample root = samples[0];
 
-  output[0] = (final_sample) {
-    .label_id = root.label_id,
-    .parent_index = root.parent_index,
-    .call_count = 1,
-    .total_time = root.time,
+  output[0] = (final_sample){
+      .label_id = root.label_id,
+      .parent_index = root.parent_index,
+      .call_count = 1,
+      .total_time = root.time,
   };
 
   uint32_t src_index = 1;
   uint32_t dst_current_index = 0;
   uint32_t dst_free_slot = 1;
-  while(src_index < samples_count) {
+  while (src_index < samples_count) {
     if (dst_free_slot >= available_capacity) {
       return final_count;
     }
@@ -94,7 +94,10 @@ static uint32_t process_samples(profiler_sample *samples, uint32_t samples_count
       // src_sample is the direct child of the current sample in the output.
       int32_t child_index = find_direct_child(output, final_count, dst_current_index, src_sample.label_id);
       if (child_index < 0) {
-        output[dst_free_slot] = (final_sample) { .label_id = src_sample.label_id, .parent_index = dst_current_index, .total_time = src_sample.time, .call_count = 1 };
+        output[dst_free_slot] = (final_sample){.label_id = src_sample.label_id,
+                                               .parent_index = dst_current_index,
+                                               .total_time = src_sample.time,
+                                               .call_count = 1};
 
         dst_current_index = dst_free_slot;
         dst_free_slot += 1;
@@ -113,11 +116,12 @@ static uint32_t process_samples(profiler_sample *samples, uint32_t samples_count
      *  Now there are two options:
      *    1) Src item can be a sibling of the dst item.
      *    2) Src item can be a sibling of the dst item's parent.
-     *  Do figure this out we will walk them both to the root of the tree. If they reach it simultaneosly - they are siblings.
+     *  Do figure this out we will walk them both to the root of the tree. If they reach it simultaneosly - they are
+     * siblings.
      */
     uint32_t src_parent_index = src_sample.parent_index;
     uint32_t dst_parent_index = output[dst_current_index].parent_index;
-    while(src_parent_index != 0 && dst_parent_index != 0) {
+    while (src_parent_index != 0 && dst_parent_index != 0) {
       src_parent_index = samples[src_parent_index].parent_index;
       dst_parent_index = output[dst_parent_index].parent_index;
     }
@@ -135,7 +139,7 @@ static uint32_t process_samples(profiler_sample *samples, uint32_t samples_count
   return final_count;
 }
 
-void* csv_file_monitor_run(void *data) {
+void *csv_file_monitor_run(void *data) {
   FILE *f = fopen("bandura.prof.csv", "w");
   if (!f)
     return NULL;
@@ -152,20 +156,22 @@ void* csv_file_monitor_run(void *data) {
   fprintf(f, "Frame index,Label,Call count,Total time,Body count,Contacts count\n");
 
   uint32_t running_count = 0;
-  while(profiler_monitor_should_run(&monitor)) {
+  while (profiler_monitor_should_run(&monitor)) {
     profiler_monitor_wait_for_frame(&monitor);
 
     while (profiler_monitor_read_next_frame(&monitor)) {
-      uint32_t processed_count = process_samples(monitor.framebuffer, monitor.samples_available, call_tree, CALL_TREE_CAPACITY);
+      uint32_t processed_count =
+          process_samples(monitor.framebuffer, monitor.samples_available, call_tree, CALL_TREE_CAPACITY);
 
-      for(uint32_t sample_index = 0; sample_index < processed_count; ++sample_index) {
+      for (uint32_t sample_index = 0; sample_index < processed_count; ++sample_index) {
         final_sample sample = call_tree[sample_index];
         char *label = read_label(sample.label_id);
 
         uint64_t time_ns = sample.total_time;
         double time_ms = time_ns / 1000000.0;
 
-        fprintf(f, "%d,%s,%d,%.5f,%d,%d\n", running_count, label, sample.call_count, time_ms, monitor.frame_metadata.body_count, monitor.frame_metadata.contacts_count);
+        fprintf(f, "%d,%s,%d,%.5f,%d,%d\n", running_count, label, sample.call_count, time_ms,
+                monitor.frame_metadata.body_count, monitor.frame_metadata.contacts_count);
       }
 
       running_count += 1;
@@ -186,10 +192,10 @@ void* csv_file_monitor_run(void *data) {
 static void print_call_tree(final_sample *samples, uint32_t count) {
   printf("\n");
 
-  for(uint32_t i = 0; i < count; ++i) {
+  for (uint32_t i = 0; i < count; ++i) {
     final_sample sample = samples[i];
     uint32_t parent = sample.parent_index;
-    while(parent != (uint32_t)~0) {
+    while (parent != (uint32_t)~0) {
       printf(" ");
       parent = samples[parent].parent_index;
     }
@@ -208,16 +214,13 @@ static bool label_equals(final_sample sample, const char *title) {
   return label_is_equal(l, title);
 }
 
-static void work() {
-  usleep(1000);
-}
+static void work() { usleep(1000); }
 
 static void simulate_frame() {
   PROFILE_FUNCTION
 
   {
-    for(int i = 0; i < 10; ++i)
-    {
+    for (int i = 0; i < 10; ++i) {
       PROFILE_BLOCK("water_the_plant")
       work();
 
@@ -232,7 +235,7 @@ static void simulate_frame() {
       work();
     }
 
-    for(int i = 0; i < 3; ++i) {
+    for (int i = 0; i < 3; ++i) {
       PROFILE_BLOCK("clean_the_room")
 
       if (i == 0) {
@@ -244,8 +247,7 @@ static void simulate_frame() {
         PROFILE_BLOCK("wipe_dust")
 
         for (int j = 0; j < 4; ++j) {
-          PROFILE_BLOCK("sort_shelf")
-          {
+          PROFILE_BLOCK("sort_shelf") {
             PROFILE_BLOCK("vaccuum")
             work();
           }
@@ -286,7 +288,8 @@ void total_count_and_time_is_calculated_correctly() {
   assert(profiler_monitor_read_next_frame(&monitor));
   assert(monitor.samples_available == 48);
 
-  uint32_t processed_count = process_samples(monitor.framebuffer, monitor.samples_available, call_tree, CALL_TREE_CAPACITY);
+  uint32_t processed_count =
+      process_samples(monitor.framebuffer, monitor.samples_available, call_tree, CALL_TREE_CAPACITY);
 
   print_call_tree(call_tree, processed_count);
 
@@ -323,7 +326,7 @@ void total_count_and_time_is_calculated_correctly() {
 
 void csv_file_monitor_tests() {
   TESTS_BEGIN("Text file monitor")
-    TEST(total_count_and_time_is_calculated_correctly)
+  TEST(total_count_and_time_is_calculated_correctly)
   TESTS_END
 }
 

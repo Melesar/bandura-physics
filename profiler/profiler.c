@@ -1,14 +1,14 @@
 #ifdef __linux__
-  #define _POSIX_C_SOURCE 199309L // This is to have clock_gettime, which is otherwise not available under -std=c99
+#define _POSIX_C_SOURCE 199309L // This is to have clock_gettime, which is otherwise not available under -std=c99
 #endif
 
 #include "profiler.h"
 #include "semaphores.h"
 #include <assert.h>
+#include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <pthread.h>
 #include <time.h>
 
 #define MAX_MONITORS_COUNT 1
@@ -42,7 +42,7 @@ struct monitors_t {
   bool running;
 } monitors;
 
-void* csv_file_monitor_run();
+void *csv_file_monitor_run();
 
 static void notify_monitors() {
   uint8_t count = monitors.count;
@@ -53,21 +53,19 @@ static void notify_monitors() {
 
 static void update_header_atomic(uint32_t offset, uint16_t count) {
   profiler_frame_header updated_header = {
-    .offset = offset,
-    .count = count,
-    .mask = monitors.mask,
+      .offset = offset,
+      .count = count,
+      .mask = monitors.mask,
   };
 
   uint64_t new_header;
   memcpy(&new_header, &updated_header, sizeof(uint64_t));
 
-  uint64_t *current_header = (uint64_t*)&frame_headers[frame_header_index];
+  uint64_t *current_header = (uint64_t *)&frame_headers[frame_header_index];
   __atomic_store_n(current_header, new_header, __ATOMIC_RELEASE);
 }
 
-static label marker_label(profiler_marker marker) {
-  return (label) { marker.label, strlen(marker.label) };
-}
+static label marker_label(profiler_marker marker) { return (label){marker.label, strlen(marker.label)}; }
 
 static uint64_t get_time() {
   struct timespec time;
@@ -85,18 +83,16 @@ static void end_block() {
   samples[frame_start + last_marker.sample_index].time = elapsed_ns;
 }
 
-void profiler_init_default() {
-  profiler_init(profiler_default_config());
-}
+void profiler_init_default() { profiler_init(profiler_default_config()); }
 
 profiler_config profiler_default_config() {
-  return (profiler_config) {
-    .samples_memory_size = 1 << 20, // 1 Mb
-    .labels_slots_capacity = 128,
-    .labels_storage_capacity = 1 << 16, // 32 Kb
-    .stack_capacity = 512,
-    .frame_headers_capacity = 64,
-    .auto_enable_monitors = true,
+  return (profiler_config){
+      .samples_memory_size = 1 << 20, // 1 Mb
+      .labels_slots_capacity = 128,
+      .labels_storage_capacity = 1 << 16, // 32 Kb
+      .stack_capacity = 512,
+      .frame_headers_capacity = 64,
+      .auto_enable_monitors = true,
   };
 }
 
@@ -108,7 +104,7 @@ void profiler_init(profiler_config config) {
 
   uint32_t desired_samples_capacity = config.samples_memory_size / sizeof(profiler_sample);
   samples_capacity = 1;
-  while(samples_capacity < desired_samples_capacity)
+  while (samples_capacity < desired_samples_capacity)
     samples_capacity <<= 1;
 
   samples = calloc(samples_capacity, sizeof(profiler_sample));
@@ -116,7 +112,7 @@ void profiler_init(profiler_config config) {
   max_frame_size = 0;
 
   frame_headers_capacity = 1;
-  while(frame_headers_capacity < config.frame_headers_capacity)
+  while (frame_headers_capacity < config.frame_headers_capacity)
     frame_headers_capacity <<= 1;
   frame_headers_mask = frame_headers_capacity - 1;
   frame_headers = calloc(frame_headers_capacity, sizeof(profiler_frame_header));
@@ -130,7 +126,7 @@ void profiler_init(profiler_config config) {
     semaphore_init(&monitor_semaphores[i], 0);
   }
 
-  if (config.auto_enable_monitors)  {
+  if (config.auto_enable_monitors) {
     pthread_create(&monitor_threads[0], NULL, &csv_file_monitor_run, NULL);
   }
 }
@@ -140,11 +136,11 @@ void profiler_teardown() {
 
   notify_monitors();
 
-  for(uint32_t i = 0; i < monitors.count; ++i) {
+  for (uint32_t i = 0; i < monitors.count; ++i) {
     pthread_join(monitor_threads[i], NULL);
   }
 
-  for(uint32_t i = 0; i < MAX_MONITORS_COUNT; ++i) {
+  for (uint32_t i = 0; i < MAX_MONITORS_COUNT; ++i) {
     semaphore_destroy(&monitor_semaphores[i]);
   }
 
@@ -178,17 +174,14 @@ void profiler_end_frame(profiler_frame_metadata frame_metadata) {
 profiler_marker profiler_start_block(const char *name) {
   assert(markers_count < markers_capacity);
 
-  profiler_marker marker = { (char*)name, get_time(), frame_offset };
-  profiler_marker parent_marker = markers_count > 0
-    ? markers_stack[markers_count - 1]
-    : (profiler_marker) { .sample_index = 0xFFFFFFFF };
+  profiler_marker marker = {(char *)name, get_time(), frame_offset};
+  profiler_marker parent_marker =
+      markers_count > 0 ? markers_stack[markers_count - 1] : (profiler_marker){.sample_index = 0xFFFFFFFF};
 
   uint32_t sample_index = frame_start + frame_offset;
-  samples[sample_index] = (profiler_sample) {
-    .label_id = labels_store(&labels_storage, marker_label(marker)),
-    .parent_index = parent_marker.sample_index,
-    .time = 0
-  };
+  samples[sample_index] = (profiler_sample){.label_id = labels_store(&labels_storage, marker_label(marker)),
+                                            .parent_index = parent_marker.sample_index,
+                                            .time = 0};
 
   markers_stack[markers_count++] = marker;
   frame_offset += 1;
@@ -196,9 +189,7 @@ profiler_marker profiler_start_block(const char *name) {
   return marker;
 }
 
-void profiler_end_block(profiler_marker *marker) {
-  end_block();
-}
+void profiler_end_block(profiler_marker *marker) { end_block(); }
 
 bool profiler_get_label(uint32_t label_id, label *label) {
   *label = labels_get(&labels_storage, label_id);
@@ -247,7 +238,6 @@ bool profiler_monitor_read_next_frame(profiler_monitor *monitor) {
   uint8_t disable_mask = ~monitor_mask;
   uint8_t frame_mask = frame->mask;
 
-
   if ((frame_mask & monitor_mask) == 0) {
     return false;
   }
@@ -267,7 +257,8 @@ bool profiler_monitor_read_next_frame(profiler_monitor *monitor) {
   uint8_t new_frame_mask;
   do {
     new_frame_mask = frame_mask & disable_mask;
-  } while(!__atomic_compare_exchange_n(&frame->mask, &frame_mask, new_frame_mask, true, __ATOMIC_RELEASE, __ATOMIC_RELAXED));
+  } while (!__atomic_compare_exchange_n(&frame->mask, &frame_mask, new_frame_mask, true, __ATOMIC_RELEASE,
+                                        __ATOMIC_RELAXED));
 
   return true;
 }

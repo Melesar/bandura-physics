@@ -37,13 +37,13 @@ typedef struct {
   count_t dynamic_count;
 } contacts;
 
-#define COMMON_FIELDS \
-  count_t capacity; \
-  count_t count; \
-  v3* positions; \
-  quat* rotations; \
-  body_shapes *shapes; \
-  count_t *outer_lookup; \
+#define COMMON_FIELDS                                                                                                  \
+  count_t capacity;                                                                                                    \
+  count_t count;                                                                                                       \
+  v3 *positions;                                                                                                       \
+  quat *rotations;                                                                                                     \
+  body_shapes *shapes;                                                                                                 \
+  count_t *outer_lookup;                                                                                               \
   count_t *inner_lookup;
 
 typedef enum {
@@ -123,8 +123,8 @@ struct physics_world_t {
 body_handle make_body_handle(const physics_world *world, body_type type, count_t index);
 count_t handle_to_inner_index(const physics_world *world, body_handle handle);
 
-common_data* as_common(physics_world *world, body_type type);
-const common_data* as_common_const(const physics_world *world, body_type type);
+common_data *as_common(physics_world *world, body_type type);
+const common_data *as_common_const(const physics_world *world, body_type type);
 
 void contacts_init(physics_world *world);
 void contacts_teardown(physics_world *world);
@@ -146,8 +146,9 @@ void shapes_teardown(physics_world *world);
 void shapes_reset(physics_world *world);
 bool shapes_any_slot_available(const physics_world *world, shape_dimension_bracket bracket);
 void shapes_expand_bracket(physics_world *world, shape_dimension_bracket bracket);
-bool shapes_put_into_empty_slot(physics_world *world, shape_dimension_bracket bracket, body_shape *shapes, count_t shapes_count, count_t *slot_number);
+bool shapes_put_into_empty_slot(physics_world *world, shape_dimension_bracket bracket, body_shape *shapes,
+                                count_t shapes_count, count_t *slot_number);
 body_shapes shapes_write(physics_world *world, shape_dimension_bracket bracket, body_shape *shapes, count_t count);
-body_shape* shapes_get(const physics_world *world, body_shapes shapes);
+body_shape *shapes_get(const physics_world *world, body_shapes shapes);
 
 #endif

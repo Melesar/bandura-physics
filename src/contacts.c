@@ -30,6 +30,4 @@ void contacts_init(physics_world *world) {
   contacts->dynamic_count = 0;
 }
 
-void contacts_teardown(physics_world *world) {
-  free(world->contacts.values);
-}
+void contacts_teardown(physics_world *world) { free(world->contacts.values); }

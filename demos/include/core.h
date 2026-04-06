@@ -1,28 +1,36 @@
 #ifndef CORE_H
 #define CORE_H
 
-#include "raylib.h"
-#include "clay.h"
 #include "bandura.h"
+#include "clay.h"
+#include "raylib.h"
 
-#define COLOR_GREEN_ACTIVE   (Color){0x00, 0xff, 0x88, 0xFF}
-#define COLOR_RED_HIGHLIGHT  (Color){0xff, 0x33, 0x66, 0xFF}
-#define COLOR_BLUE_STATIC    (Color){0x33, 0x66, 0xff, 0xFF}
-#define COLOR_YELLOW_INFO    (Color){0xff, 0xcc, 0x00, 0xFF}
+#define COLOR_GREEN_ACTIVE                                                                                             \
+  (Color) { 0x00, 0xff, 0x88, 0xFF }
+#define COLOR_RED_HIGHLIGHT                                                                                            \
+  (Color) { 0xff, 0x33, 0x66, 0xFF }
+#define COLOR_BLUE_STATIC                                                                                              \
+  (Color) { 0x33, 0x66, 0xff, 0xFF }
+#define COLOR_YELLOW_INFO                                                                                              \
+  (Color) { 0xff, 0xcc, 0x00, 0xFF }
 
-#define COLOR_BACKGROUND     (Color){0x12, 0x12, 0x14, 0xFF}
-#define COLOR_GROUND         (Color){0x08, 0x08, 0x08, 0xFF}
-#define COLOR_GRID_MAIN      (Color){0x44, 0x44, 0x44, 0xFF}
-#define COLOR_GRID_SUB       (Color){0x22, 0x22, 0x22, 0xFF}
+#define COLOR_BACKGROUND                                                                                               \
+  (Color) { 0x12, 0x12, 0x14, 0xFF }
+#define COLOR_GROUND                                                                                                   \
+  (Color) { 0x08, 0x08, 0x08, 0xFF }
+#define COLOR_GRID_MAIN                                                                                                \
+  (Color) { 0x44, 0x44, 0x44, 0xFF }
+#define COLOR_GRID_SUB                                                                                                 \
+  (Color) { 0x22, 0x22, 0x22, 0xFF }
 
-#define COLOR_WIREFRAME      (Color){0x12, 0x12, 0x12, 25}
+#define COLOR_WIREFRAME                                                                                                \
+  (Color) { 0x12, 0x12, 0x12, 25 }
 
 typedef struct {
-  char* window_title;
+  char *window_title;
   Vector3 camera_position;
   Vector3 camera_target;
 } program_config;
-
 
 typedef enum {
   HEAD,
@@ -40,7 +48,7 @@ typedef enum {
   BONE_COUNT
 } bone;
 
-typedef body_handle* ragdoll;
+typedef body_handle *ragdoll;
 
 int register_gizmo(Vector3 *pos, Quaternion *rot);
 void unregister_gizmo(int id);

@@ -10,7 +10,7 @@ static count_t bracket_block_count(const physics_world *world, shape_dimension_b
   return world->shape_brackets[bracket].capacity / SHAPE_BRACKET_BLOCK_CAPACITY;
 }
 
-static void* allocate_bracket(count_t block_count, count_t shapes_count) {
+static void *allocate_bracket(count_t block_count, count_t shapes_count) {
   void *bracket = malloc(block_count * sizeof(uint64_t) + shapes_count * sizeof(body_shape));
 
   memset(bracket, 0, block_count * sizeof(uint64_t));
@@ -21,19 +21,21 @@ static void* allocate_bracket(count_t block_count, count_t shapes_count) {
 void shapes_init(physics_world *world) {
   const physics_config *config = &world->config;
 
-  for(count_t i = 0; i < BRACKET_COUNT; ++i) {
-    count_t blocks_count = config->shapes_brackets_capacity[i] / SHAPE_BRACKET_BLOCK_CAPACITY + ((config->shapes_brackets_capacity[i] & (SHAPE_BRACKET_BLOCK_CAPACITY - 1)) > 0);
+  for (count_t i = 0; i < BRACKET_COUNT; ++i) {
+    count_t blocks_count = config->shapes_brackets_capacity[i] / SHAPE_BRACKET_BLOCK_CAPACITY +
+                           ((config->shapes_brackets_capacity[i] & (SHAPE_BRACKET_BLOCK_CAPACITY - 1)) > 0);
     count_t bracket_capacity = blocks_count * SHAPE_BRACKET_BLOCK_CAPACITY;
 
     count_t bracket_dimension = 1 << i;
     count_t shapes_count = bracket_capacity * bracket_dimension;
 
-    world->shape_brackets[i] = (shapes_bracket){ .capacity = bracket_capacity, .bracket = allocate_bracket(blocks_count, shapes_count) };
+    world->shape_brackets[i] =
+        (shapes_bracket){.capacity = bracket_capacity, .bracket = allocate_bracket(blocks_count, shapes_count)};
   }
 }
 
 void shapes_teardown(physics_world *world) {
-  for(count_t i = 0; i < BRACKET_COUNT; ++i) {
+  for (count_t i = 0; i < BRACKET_COUNT; ++i) {
     free(world->shape_brackets[i].bracket);
   }
 }
@@ -50,7 +52,7 @@ void shapes_reset(physics_world *world) {
 
 bool shapes_any_slot_available(const physics_world *world, shape_dimension_bracket bracket) {
   count_t blocks_count = bracket_block_count(world, bracket);
-  uint64_t *header = (uint64_t*) world->shape_brackets[bracket].bracket;
+  uint64_t *header = (uint64_t *)world->shape_brackets[bracket].bracket;
 
   for (count_t i = 0; i < blocks_count; ++i) {
     if (header[i] < (uint64_t)~0) {
@@ -75,18 +77,19 @@ void shapes_expand_bracket(physics_world *world, shape_dimension_bracket bracket
   uint64_t *new_bracket = allocate_bracket(new_block_count, shapes_count);
   memcpy(new_bracket, current_bracket, current_block_count * sizeof(uint64_t));
 
-  body_shape *shapes = (body_shape*) &new_bracket[new_block_count];
-  body_shape *old_shapes = (body_shape*)((uint64_t*)current_bracket + current_block_count);
+  body_shape *shapes = (body_shape *)&new_bracket[new_block_count];
+  body_shape *old_shapes = (body_shape *)((uint64_t *)current_bracket + current_block_count);
   memcpy(shapes, old_shapes, current_capacity * bracket_capacity * sizeof(body_shape));
 
-  world->shape_brackets[bracket] = (shapes_bracket) { .capacity = new_capacity, .bracket = (body_shape*)new_bracket };
+  world->shape_brackets[bracket] = (shapes_bracket){.capacity = new_capacity, .bracket = (body_shape *)new_bracket};
 
   free(current_bracket);
 }
 
-bool shapes_put_into_empty_slot(physics_world *world, shape_dimension_bracket bracket, body_shape *shapes, count_t shapes_count, count_t *slot_number) {
+bool shapes_put_into_empty_slot(physics_world *world, shape_dimension_bracket bracket, body_shape *shapes,
+                                count_t shapes_count, count_t *slot_number) {
   count_t blocks_count = bracket_block_count(world, bracket);
-  uint64_t *header = (uint64_t*) world->shape_brackets[bracket].bracket;
+  uint64_t *header = (uint64_t *)world->shape_brackets[bracket].bracket;
 
   for (count_t i = 0; i < blocks_count; ++i) {
     if (header[i] == (uint64_t)~0)
@@ -98,7 +101,7 @@ bool shapes_put_into_empty_slot(physics_world *world, shape_dimension_bracket br
         continue;
 
       count_t bracket_capacity = 1 << bracket;
-      body_shape *shapes_buffer = (body_shape*)(header + blocks_count);
+      body_shape *shapes_buffer = (body_shape *)(header + blocks_count);
 
       body_shape *slot = shapes_buffer + i * SHAPE_BRACKET_BLOCK_CAPACITY + k * bracket_capacity;
       memcpy(slot, shapes, shapes_count * sizeof(body_shape));
@@ -124,12 +127,12 @@ body_shapes shapes_write(physics_world *world, shape_dimension_bracket bracket, 
   count_t shape_slot;
   shapes_put_into_empty_slot(world, bracket, shapes, count, &shape_slot);
 
-  return (body_shapes) { .bracket = bracket, .offset = shape_slot, .count = count };
+  return (body_shapes){.bracket = bracket, .offset = shape_slot, .count = count};
 }
 
-body_shape* shapes_get(const physics_world *world, body_shapes shapes) {
+body_shape *shapes_get(const physics_world *world, body_shapes shapes) {
   count_t block_count = bracket_block_count(world, shapes.bracket);
-  body_shape *bracket = (body_shape*)((uint64_t*)world->shape_brackets[shapes.bracket].bracket + block_count);
+  body_shape *bracket = (body_shape *)((uint64_t *)world->shape_brackets[shapes.bracket].bracket + block_count);
   count_t bracket_capacity = 1 << shapes.bracket;
 
   return bracket + shapes.offset * bracket_capacity;

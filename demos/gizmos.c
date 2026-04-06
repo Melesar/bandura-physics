@@ -1,5 +1,5 @@
-#include "raylib.h"
 #include "core.h"
+#include "raylib.h"
 
 #include "stdbool.h"
 #include "stdlib.h"
@@ -95,7 +95,8 @@ static float ray_to_line_distance(Ray ray, Vector3 line_start, Vector3 line_end,
   t_line = fmaxf(0.0f, fminf(1.0f, t_line));
 
   Vector3 point_on_ray = Vector3Add(ray.position, Vector3Scale(ray_dir, t_ray));
-  Vector3 point_on_line = Vector3Add(line_start, Vector3Scale(line_dir, t_line * Vector3Length(Vector3Subtract(line_end, line_start))));
+  Vector3 point_on_line =
+      Vector3Add(line_start, Vector3Scale(line_dir, t_line * Vector3Length(Vector3Subtract(line_end, line_start))));
 
   return Vector3Distance(point_on_ray, point_on_line);
 }
@@ -124,7 +125,6 @@ static float ray_to_circle_distance(Ray ray, Vector3 center, Vector3 axis, float
 
   return fabsf(dist_to_center - radius);
 }
-
 
 gizmo_type check_gizmo_hover(Ray mouse_ray, Vector3 cylinder_pos) {
   float min_dist = gizmo_selection_threshold;
@@ -174,9 +174,7 @@ gizmo_type check_gizmo_hover(Ray mouse_ray, Vector3 cylinder_pos) {
   return result;
 }
 
-void init_gizmos() {
-  gizmos = (gizmo*) malloc(capacity * sizeof(gizmo));
-}
+void init_gizmos() { gizmos = (gizmo *)malloc(capacity * sizeof(gizmo)); }
 
 void manipulate_gizmos(Camera *camera) {
   for (int i = 0; i < count; ++i) {
@@ -194,8 +192,7 @@ void manipulate_gizmos(Camera *camera) {
         g->start_rot = *g->rot;
 
         // For translation, calculate initial offset along axis
-        if (g->selected_gizmo >= GIZMO_TRANSLATE_X &&
-            g->selected_gizmo <= GIZMO_TRANSLATE_Z) {
+        if (g->selected_gizmo >= GIZMO_TRANSLATE_X && g->selected_gizmo <= GIZMO_TRANSLATE_Z) {
           Vector3 axis = {0, 0, 0};
           if (g->selected_gizmo == GIZMO_TRANSLATE_X)
             axis = (Vector3){1, 0, 0};
@@ -225,18 +222,15 @@ void manipulate_gizmos(Camera *camera) {
             axis = (Vector3){0, 0, 1};
 
           Vector3 intersection;
-          ray_to_circle_distance(mouse_ray, *g->pos, axis,
-                                 gizmo_rotation_ring_radius, &intersection);
+          ray_to_circle_distance(mouse_ray, *g->pos, axis, gizmo_rotation_ring_radius, &intersection);
           Vector3 to_intersection = Vector3Subtract(intersection, *g->pos);
 
           // Project to find perpendicular for angle calculation
           Vector3 perpendicular;
           if (fabsf(axis.y) < 0.9f) {
-            perpendicular =
-                Vector3Normalize(Vector3CrossProduct(axis, (Vector3){0, 1, 0}));
+            perpendicular = Vector3Normalize(Vector3CrossProduct(axis, (Vector3){0, 1, 0}));
           } else {
-            perpendicular =
-                Vector3Normalize(Vector3CrossProduct(axis, (Vector3){1, 0, 0}));
+            perpendicular = Vector3Normalize(Vector3CrossProduct(axis, (Vector3){1, 0, 0}));
           }
           Vector3 binormal = Vector3CrossProduct(axis, perpendicular);
 
@@ -249,8 +243,7 @@ void manipulate_gizmos(Camera *camera) {
 
     if (g->is_dragging) {
       if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-        if (g->selected_gizmo == GIZMO_TRANSLATE_X ||
-            g->selected_gizmo == GIZMO_TRANSLATE_Y ||
+        if (g->selected_gizmo == GIZMO_TRANSLATE_X || g->selected_gizmo == GIZMO_TRANSLATE_Y ||
             g->selected_gizmo == GIZMO_TRANSLATE_Z) {
           // Translation
           Vector3 axis = {0, 0, 0};
@@ -286,20 +279,16 @@ void manipulate_gizmos(Camera *camera) {
             axis = (Vector3){0, 0, 1};
 
           Vector3 intersection;
-          float dist =
-              ray_to_circle_distance(mouse_ray, *g->pos, axis,
-                                     gizmo_rotation_ring_radius, &intersection);
+          float dist = ray_to_circle_distance(mouse_ray, *g->pos, axis, gizmo_rotation_ring_radius, &intersection);
 
           if (dist < 1.0f) {
             Vector3 to_intersection = Vector3Subtract(intersection, *g->pos);
 
             Vector3 perpendicular;
             if (fabsf(axis.y) < 0.9f) {
-              perpendicular = Vector3Normalize(
-                  Vector3CrossProduct(axis, (Vector3){0, 1, 0}));
+              perpendicular = Vector3Normalize(Vector3CrossProduct(axis, (Vector3){0, 1, 0}));
             } else {
-              perpendicular = Vector3Normalize(
-                  Vector3CrossProduct(axis, (Vector3){1, 0, 0}));
+              perpendicular = Vector3Normalize(Vector3CrossProduct(axis, (Vector3){1, 0, 0}));
             }
             Vector3 binormal = Vector3CrossProduct(axis, perpendicular);
 
@@ -349,13 +338,13 @@ int register_gizmo(Vector3 *pos, Quaternion *rot) {
     while (capacity <= count)
       capacity *= 2;
 
-    gizmo *new_gizmos = (gizmo*) malloc(capacity * sizeof(gizmo));
+    gizmo *new_gizmos = (gizmo *)malloc(capacity * sizeof(gizmo));
     memcpy(new_gizmos, gizmos, count * sizeof(gizmo));
     free(gizmos);
     gizmos = new_gizmos;
   }
 
-  gizmo g = { 0 };
+  gizmo g = {0};
   g.pos = pos;
   g.rot = rot;
   g.id = current_id++;

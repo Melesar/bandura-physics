@@ -17,12 +17,13 @@
 #define lensq(x) Vector3LengthSqr(x)
 #define distance(x, y) Vector3Distance(x, y)
 #define distancesqr(x, y) Vector3DistanceSqr(x, y)
-#define vec3(x, y, z) (v3) { x, y, z }
+#define vec3(x, y, z)                                                                                                  \
+  (v3) { x, y, z }
 #define zero() Vector3Zero()
 #define one() Vector3One()
-#define up() ((Vector3) { 0, 1, 0 })
-#define right() ((Vector3) { 1, 0, 0 })
-#define forward() ((Vector3) { 0, 0, 1 })
+#define up() ((Vector3){0, 1, 0})
+#define right() ((Vector3){1, 0, 0})
+#define forward() ((Vector3){0, 0, 1})
 #define rotate(x, y) Vector3RotateByQuaternion(x, y)
 #define negate(x) Vector3Negate(x)
 #define transform(x, y) Vector3Transform(x, y)
@@ -54,9 +55,9 @@ typedef Quaternion quat;
 typedef Matrix m4;
 
 typedef struct {
-  float m0[3];  // Row 0
-  float m1[3];  // Row 1
-  float m2[3];  // Row 2
+  float m0[3]; // Row 0
+  float m1[3]; // Row 1
+  float m2[3]; // Row 2
 } m3;
 
 m3 matrix_identity();
@@ -93,10 +94,19 @@ typedef struct {
   shape_type type;
 
   union {
-    struct { v3 size; } box;
-    struct { v3 normal; } plane;
-    struct { float radius; } sphere;
-    struct { float radius; float height; } cylinder;
+    struct {
+      v3 size;
+    } box;
+    struct {
+      v3 normal;
+    } plane;
+    struct {
+      float radius;
+    } sphere;
+    struct {
+      float radius;
+      float height;
+    } cylinder;
   };
 
   v3 offset;
@@ -104,15 +114,15 @@ typedef struct {
 } body_shape;
 
 typedef struct {
-  count_t type: 1;
-  count_t index: 31;
+  count_t type : 1;
+  count_t index : 31;
 } body_handle;
 
 typedef struct {
-  v3* position;
-  quat* rotation;
-  v3* velocity;
-  v3* angular_momentum;
+  v3 *position;
+  quat *rotation;
+  v3 *velocity;
+  v3 *angular_momentum;
 
   body_handle handle;
 } body;
@@ -185,7 +195,7 @@ typedef body_enumerator body_enumerator_typed;
 
 physics_config physics_default_config();
 
-physics_world* physics_init(const physics_config *config);
+physics_world *physics_init(const physics_config *config);
 
 void physics_add_plane(physics_world *world, v3 point, v3 normal);
 body physics_add_box_dynamic(physics_world *world, float mass, v3 size);
@@ -196,7 +206,8 @@ body physics_add_cylinder_dynamic(physics_world *world, float mass, float radius
 body physics_add_compound_body_static(physics_world *world, body_shape *shapes, count_t shapes_count);
 body physics_add_compound_body_dynamic(physics_world *world, body_shape *shapes, float *masses, count_t shapes_count);
 
-count_t physics_add_joint(physics_world *world, body_handle body_a, body_handle body_b, v3 contact_offset_a, v3 contact_offset_b, float max_distance);
+count_t physics_add_joint(physics_world *world, body_handle body_a, body_handle body_b, v3 contact_offset_a,
+                          v3 contact_offset_b, float max_distance);
 void physics_remove_joint(physics_world *world, count_t id);
 const joint *physics_get_joints(const physics_world *world, count_t *count);
 
@@ -209,12 +220,12 @@ count_t physics_body_count(const physics_world *world, body_type type);
 count_t physics_awake_count(const physics_world *world);
 count_t physics_collisions_count(const physics_world *world);
 
-physics_config* physics_edit_config(physics_world *world);
+physics_config *physics_edit_config(physics_world *world);
 physics_world_stats physics_get_stats(const physics_world *world);
 
 v3 physics_get_position(const physics_world *world, body_handle handle);
 quat physics_get_rotation(const physics_world *world, body_handle handle);
-body_shape* physics_get_shapes(const physics_world *world, body_handle handle, count_t *count);
+body_shape *physics_get_shapes(const physics_world *world, body_handle handle, count_t *count);
 v3 physics_get_velocity(const physics_world *world, body_handle handle);
 v3 physics_get_angular_velocity(const physics_world *world, body_handle handle);
 v3 physics_get_angular_momentum(const physics_world *world, body_handle handle);
@@ -224,13 +235,14 @@ count_t physics_get_contacts(const physics_world *world, contact_t *contacts, co
 void physics_enumerate_bodies_typed(const physics_world *world, body_type type, body_enumerator_typed *enumerator);
 bool physics_body_next_typed(const physics_world *world, body_enumerator_typed *enumerator);
 
-void physics_step(physics_world* world, float dt);
-void physics_awaken_body(physics_world* world, body_handle handle);
+void physics_step(physics_world *world, float dt);
+void physics_awaken_body(physics_world *world, body_handle handle);
 void physics_reset(physics_world *world);
 
-count_t physics_raycast(const physics_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits, raycast_hit *hits);
+count_t physics_raycast(const physics_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits,
+                        raycast_hit *hits);
 
-void physics_teardown(physics_world* world);
+void physics_teardown(physics_world *world);
 
 float smooth_value_read(smooth_value v);
 void smooth_value_post(smooth_value *v, float x);

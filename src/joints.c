@@ -21,7 +21,7 @@ static inline void resize_if_needed(joints *joints) {
     return;
   }
 
-  while(joints->count >= joints->capacity) {
+  while (joints->count >= joints->capacity) {
     joints->capacity *= 2;
   }
 
@@ -29,9 +29,10 @@ static inline void resize_if_needed(joints *joints) {
   joints->ids = realloc(joints->ids, joints->capacity * sizeof(count_t));
 }
 
-count_t physics_add_joint(physics_world *world, body_handle body_a, body_handle body_b, v3 contact_offset_a, v3 contact_offset_b, float max_distance) {
+count_t physics_add_joint(physics_world *world, body_handle body_a, body_handle body_b, v3 contact_offset_a,
+                          v3 contact_offset_b, float max_distance) {
   // Two static bodies shouldn't be bound together.
-  if (body_a.type ==  BODY_STATIC && body_b.type == BODY_STATIC) {
+  if (body_a.type == BODY_STATIC && body_b.type == BODY_STATIC) {
     return ~0;
   }
 
@@ -68,10 +69,10 @@ count_t physics_add_joint(physics_world *world, body_handle body_a, body_handle 
     index = last_index;
   }
 
-  joints->values[index] = (joint) {
-    .bodies = { body_a, body_b },
-    .relative_contact_positions = { contact_offset_a, contact_offset_b },
-    .max_error = max_distance,
+  joints->values[index] = (joint){
+      .bodies = {body_a, body_b},
+      .relative_contact_positions = {contact_offset_a, contact_offset_b},
+      .max_error = max_distance,
   };
   joints->ids[index] = id;
 
@@ -82,7 +83,7 @@ void physics_remove_joint(physics_world *world, count_t id) {
   joints *joints = &world->joints;
 
   count_t count = joints->count;
-  for(count_t i = 0; i < count; ++i) {
+  for (count_t i = 0; i < count; ++i) {
     if (joints->ids[i] != id) {
       continue;
     }
@@ -107,16 +108,16 @@ static count_t generate_contacts(physics_world *world, count_t start, count_t en
   const static_bodies *statics = &world->statics;
 
   count_t count = 0;
-  for(count_t i = start; i < end; ++i) {
+  for (count_t i = start; i < end; ++i) {
     joint j = joints->values[i];
 
     const common_data *data[2];
-    data[0] = (common_data*) dynamics;
-    data[1] = is_dynamic ? (common_data*) dynamics : statics;
+    data[0] = (common_data *)dynamics;
+    data[1] = is_dynamic ? (common_data *)dynamics : statics;
 
     v3 world_points[2];
     count_t indices[2];
-    for(count_t k = 0; k < 2; ++k) {
+    for (count_t k = 0; k < 2; ++k) {
       count_t index = handle_to_inner_index(world, j.bodies[k]);
       world_points[k] = rotate(j.relative_contact_positions[k], data[k]->rotations[index]);
       world_points[k] = add(world_points[k], data[k]->positions[index]);

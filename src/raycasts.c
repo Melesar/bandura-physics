@@ -2,7 +2,8 @@
 #include <float.h>
 #include <math.h>
 
-static bool raycast_box(v3 origin, v3 direction, float max_distance, v3 position, v3 size, quat rotation, raycast_hit *hit) {
+static bool raycast_box(v3 origin, v3 direction, float max_distance, v3 position, v3 size, quat rotation,
+                        raycast_hit *hit) {
   v3 half = scale(size, 0.5f);
   quat inv_rotation = qinvert(rotation);
   v3 local_origin = rotate(sub(origin, position), inv_rotation);
@@ -16,9 +17,9 @@ static bool raycast_box(v3 origin, v3 direction, float max_distance, v3 position
   const float epsilon = 1e-6f;
 
   for (count_t axis = 0; axis < 3; ++axis) {
-    float o = ((float*)&local_origin)[axis];
-    float d = ((float*)&local_direction)[axis];
-    float h = ((float*)&half)[axis];
+    float o = ((float *)&local_origin)[axis];
+    float d = ((float *)&local_direction)[axis];
+    float h = ((float *)&half)[axis];
 
     if (fabsf(d) < epsilon) {
       if (o < -h || o > h) {
@@ -32,8 +33,8 @@ static bool raycast_box(v3 origin, v3 direction, float max_distance, v3 position
 
     v3 n1 = zero();
     v3 n2 = zero();
-    ((float*)&n1)[axis] = -1.0f;
-    ((float*)&n2)[axis] = 1.0f;
+    ((float *)&n1)[axis] = -1.0f;
+    ((float *)&n2)[axis] = 1.0f;
 
     if (t1 > t2) {
       float temp = t1;
@@ -98,21 +99,23 @@ static bool raycast_plane(v3 origin, v3 direction, float max_distance, v3 point,
   return true;
 }
 
-static count_t raycast_bodies(const physics_world *world, body_type type, v3 origin, v3 direction, float max_distance, count_t hit_count, count_t max_hits, raycast_hit *hits) {
+static count_t raycast_bodies(const physics_world *world, body_type type, v3 origin, v3 direction, float max_distance,
+                              count_t hit_count, count_t max_hits, raycast_hit *hits) {
   if (hit_count >= max_hits) {
     return 0;
   }
 
   count_t num_hits = 0;
   const common_data *data = as_common_const(world, type);
-  for(count_t i = 0; i < data->count; ++i) {
+  for (count_t i = 0; i < data->count; ++i) {
     body_shape shape = *shapes_get(world, data->shapes[i]);
     raycast_hit *hit = hits + hit_count + num_hits;
     count_t prev_count = num_hits;
 
-    switch(shape.type) {
+    switch (shape.type) {
       case SHAPE_BOX:
-        num_hits += raycast_box(origin, direction, max_distance, data->positions[i], shape.box.size, data->rotations[i], hit);
+        num_hits +=
+            raycast_box(origin, direction, max_distance, data->positions[i], shape.box.size, data->rotations[i], hit);
         break;
 
       case SHAPE_PLANE:
@@ -135,7 +138,8 @@ static count_t raycast_bodies(const physics_world *world, body_type type, v3 ori
   return num_hits;
 }
 
-count_t physics_raycast(const physics_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits, raycast_hit *hits) {
+count_t physics_raycast(const physics_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits,
+                        raycast_hit *hits) {
   count_t hit_count = 0;
 
   hit_count += raycast_bodies(world, BODY_DYNAMIC, origin, direction, max_distance, hit_count, max_hits, hits);

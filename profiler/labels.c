@@ -1,37 +1,32 @@
 #if defined(MSC_VER)
-  #pragma message ("Profiling is not supported with MSVC")
+#pragma message("Profiling is not supported with MSVC")
 #endif
 
 #include "profiler.h"
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 static inline uint32_t hash(label l) {
   uint32_t h = 2166136261u;
   for (uint8_t i = 0; i < l.len; i++) {
-      h ^= (uint8_t)l.s[i];
-      h *= 16777619u;
+    h ^= (uint8_t)l.s[i];
+    h *= 16777619u;
   }
   return h;
 }
 
-
-static inline uint64_t slot_pack(uint32_t offset, uint32_t length) {
-  return ((uint64_t) offset << 32) | length;
-}
+static inline uint64_t slot_pack(uint32_t offset, uint32_t length) { return ((uint64_t)offset << 32) | length; }
 
 static inline void slot_unpack(uint64_t value, uint32_t *offset, uint32_t *length) {
   *offset = (uint32_t)(value >> 32);
   *length = (uint32_t)(value & 0xFFFFFFFF);
 }
 
-static inline bool slot_free(labels_slot slot) {
-  return slot.value == (uint64_t)~0;
-}
+static inline bool slot_free(labels_slot slot) { return slot.value == (uint64_t)~0; }
 
-static void slot_write(labels* labels, labels_slot *slot, label l) {
+static void slot_write(labels *labels, labels_slot *slot, label l) {
   uint64_t new_value = slot_pack(labels->storage_ptr, l.len);
 
   memcpy(labels->storage + labels->storage_ptr, l.s, l.len);
@@ -48,21 +43,19 @@ static label slot_read(const labels *labels, labels_slot slot) {
   uint32_t offset, len;
   slot_unpack(slot.value, &offset, &len);
 
-  return (label) { labels->storage + offset, (uint8_t)len };
+  return (label){labels->storage + offset, (uint8_t)len};
 }
 
 bool label_is_valid(label l) { return l.s != NULL && l.len != 0; }
 
-bool label_is_equal(label l, const char *string) {
-  return strncmp(l.s, string, l.len) == 0;
-}
+bool label_is_equal(label l, const char *string) { return strncmp(l.s, string, l.len) == 0; }
 
 labels labels_init(uint32_t storage_capacity, uint32_t slots_capacity) {
-  labels self = { 0 };
+  labels self = {0};
   self.storage = malloc(storage_capacity);
 
   uint32_t slots_count = 1;
-  while(slots_count < slots_capacity) {
+  while (slots_count < slots_capacity) {
     slots_count <<= 1;
   }
 
@@ -97,7 +90,7 @@ uint32_t labels_store(labels *self, label l) {
     if (index == initial_index) {
       return LABELS_STORAGE_FULL;
     }
-  } while(!slot_free(self->slots[index]));
+  } while (!slot_free(self->slots[index]));
 
   slot_write(self, &self->slots[index], l);
 
@@ -122,11 +115,10 @@ void labels_teardown(labels self) {
 #ifdef BND_TESTS
 #include "testing.h"
 
-#define LABEL(s) (label) { s, strlen(s) }
+#define LABEL(s)                                                                                                       \
+  (label) { s, strlen(s) }
 
-static bool label_equal(const label l, char *s) {
-  return strncmp(l.s, s, l.len) == 0;
-}
+static bool label_equal(const label l, char *s) { return strncmp(l.s, s, l.len) == 0; }
 
 static void storing_label_allows_to_retreive_it() {
   labels ls = labels_init(32, 32);
@@ -151,7 +143,7 @@ static void storing_same_label_multiple_times_gives_the_same_id() {
   labels ls = labels_init(32, 32);
   uint32_t id = labels_store(&ls, LABEL("Hello"));
 
-  for(int i = 0; i < 10; ++i) {
+  for (int i = 0; i < 10; ++i) {
     uint32_t another_id = labels_store(&ls, LABEL("Hello"));
     assert(id == another_id);
   }
@@ -161,16 +153,11 @@ static void storing_same_label_multiple_times_gives_the_same_id() {
 
 static void different_labels_produce_different_ids() {
   labels ls = labels_init(1000, 32);
-  uint32_t ids[] = {
-    labels_store(&ls, LABEL("Hello")),
-    labels_store(&ls, LABEL("foo")),
-    labels_store(&ls, LABEL("bas")),
-    labels_store(&ls, LABEL("42")),
-    labels_store(&ls, LABEL("Starship Millenium Falcon"))
-  };
+  uint32_t ids[] = {labels_store(&ls, LABEL("Hello")), labels_store(&ls, LABEL("foo")), labels_store(&ls, LABEL("bas")),
+                    labels_store(&ls, LABEL("42")), labels_store(&ls, LABEL("Starship Millenium Falcon"))};
 
-  for(int i = 0; i < 5; ++i) {
-    for(int j = 0; j < 5; ++j) {
+  for (int i = 0; i < 5; ++i) {
+    for (int j = 0; j < 5; ++j) {
       if (i != j)
         assert(ids[i] != ids[j]);
     }
@@ -180,12 +167,12 @@ static void different_labels_produce_different_ids() {
 }
 
 extern void labels_tests() {
-TESTS_BEGIN("Profiling labels")
+  TESTS_BEGIN("Profiling labels")
   TEST(storing_label_allows_to_retreive_it)
   TEST(requesting_invalid_id_gives_null_pointer)
   TEST(storing_same_label_multiple_times_gives_the_same_id)
   TEST(different_labels_produce_different_ids)
-TESTS_END
+  TESTS_END
 }
 
 #endif
