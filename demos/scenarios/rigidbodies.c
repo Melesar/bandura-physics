@@ -1,3 +1,4 @@
+#include "bandura.h"
 #include "core.h"
 
 #include <unistd.h>
@@ -25,7 +26,9 @@ void scenario_setup_scene(physics_world *world) {
   *big_box.position = (v3){0, 1.5, 0};
 }
 
-void scenario_simulate(physics_world *world, float dt) {}
+void scenario_simulate(physics_world *world, float dt) {
+  physics_step(world, dt);
+}
 
 void scenario_handle_input(physics_world *world, Camera *cam) {
   if (IsKeyPressed(KEY_X)) {
