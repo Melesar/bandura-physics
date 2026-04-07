@@ -270,12 +270,48 @@ static void init_body_dynamic(physics_world *world, float mass, m3 inertia_tenso
   data->velocities[index] = zero();
   data->angular_momenta[index] = zero();
   data->inv_inertia_tensors[index] = matrix_inverse(inertia_tensor);
+  data->inv_intertias[index] = data->inv_inertia_tensors[index];
   data->motion_avgs[index] = 2 * world->config.sleep_threshold;
   data->forces[index] = zero();
   data->torques[index] = zero();
   data->impulses[index] = zero();
   data->angular_impulses[index] = zero();
   data->accelerations[index] = zero();
+}
+
+static quat integrate_rotation_midpoint(quat rotation, v3 angular_momentum, m3 base_inv_inertia, float dt) {
+  m3 inv_inertia = matrix_inertia(base_inv_inertia, rotation);
+  v3 omega = matrix_rotate(angular_momentum, inv_inertia);
+
+  const float qdt = 0.25f * dt;
+  const float hdt = 0.5f * dt;
+
+  float half_angle = len(omega) * qdt;
+  quat half_step;
+  if (half_angle < 1e-6f) {
+    half_step = (quat){omega.x * qdt, omega.y * qdt, omega.z * qdt, 1.0f};
+    half_step = qnormalize(half_step);
+  } else {
+    float scale_factor = sinf(half_angle) / len(omega);
+    half_step = (quat){omega.x * scale_factor, omega.y * scale_factor, omega.z * scale_factor, cosf(half_angle)};
+  }
+
+  quat mid_rotation = qnormalize(qmul(half_step, rotation));
+
+  inv_inertia = matrix_inertia(base_inv_inertia, mid_rotation);
+  omega = matrix_rotate(angular_momentum, inv_inertia);
+
+  float angle = len(omega) * hdt;
+  if (angle < 1e-6f) {
+    quat step = (quat){omega.x * hdt, omega.y * hdt, omega.z * hdt, 1.0f};
+    step = qnormalize(step);
+    return qnormalize(qmul(step, rotation));
+  }
+
+  float scale_factor = sinf(angle) / len(omega);
+  quat step = (quat){omega.x * scale_factor, omega.y * scale_factor, omega.z * scale_factor, cosf(angle)};
+
+  return qnormalize(qmul(step, rotation));
 }
 
 static count_t insert_new_dynamic_body(physics_world *world) {
@@ -585,6 +621,33 @@ v3 physics_get_angular_momentum(const physics_world *world, body_handle handle) 
   return world->dynamics.angular_momenta[handle_to_inner_index(world, handle)];
 }
 
+m3 physics_get_inertia(const physics_world *world, body_handle handle) {
+  if (handle.type != BODY_DYNAMIC) {
+    return (m3){0};
+  }
+
+  const dynamic_bodies *dynamics = &world->dynamics;
+  count_t index = handle_to_inner_index(world, handle);
+
+  quat rotation = dynamics->rotations[index];
+  m3 inv_inertia = dynamics->inv_inertia_tensors[index];
+
+  return matrix_inverse(matrix_inertia(inv_inertia, rotation));
+}
+
+m3 physics_get_base_inertia(const physics_world *world, body_handle handle) {
+  if (handle.type != BODY_DYNAMIC) {
+    return (m3){0};
+  }
+
+  const dynamic_bodies *dynamics = &world->dynamics;
+  count_t index = handle_to_inner_index(world, handle);
+
+  m3 inv_inertia = dynamics->inv_inertia_tensors[index];
+
+  return matrix_inverse(inv_inertia);
+}
+
 float physics_get_motion_avg(const physics_world *world, body_handle handle) {
   if (handle.type != BODY_DYNAMIC) {
     return 0;
@@ -662,7 +725,7 @@ void integrate_bodies(physics_world *world, float dt) {
     velocity = scale(velocity, linear_damping);
 
     quat rotation = dynamics->rotations[i];
-    m3 inertia = matrix_inertia(dynamics->inv_inertia_tensors[i], rotation);
+    m3 base_inv_inertia = dynamics->inv_inertia_tensors[i];
 
     v3 momentum_delta = scale(dynamics->torques[i], dt);
     momentum_delta = add(momentum_delta, dynamics->angular_impulses[i]);
@@ -671,16 +734,12 @@ void integrate_bodies(physics_world *world, float dt) {
     angular_momentum = add(angular_momentum, momentum_delta);
     angular_momentum = scale(angular_momentum, angular_damping);
 
-    v3 omega = matrix_rotate(angular_momentum, inertia);
-
-    quat q_omega = {omega.x, omega.y, omega.z, 0};
-    quat dq = qscale(qmul(q_omega, rotation), 0.5 * dt);
-    quat q_orientation = qadd(rotation, dq);
-    rotation = qnormalize(q_orientation);
+    rotation = integrate_rotation_midpoint(rotation, angular_momentum, base_inv_inertia, dt);
 
     dynamics->accelerations[i] = acceleration;
     dynamics->velocities[i] = velocity;
     dynamics->angular_momenta[i] = angular_momentum;
+    dynamics->inv_intertias[i] = matrix_inertia(base_inv_inertia, rotation);
     dynamics->rotations[i] = rotation;
     dynamics->positions[i] = add(dynamics->positions[i], scale(velocity, dt));
   }
