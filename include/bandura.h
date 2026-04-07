@@ -229,6 +229,8 @@ body_shape *physics_get_shapes(const physics_world *world, body_handle handle, c
 v3 physics_get_velocity(const physics_world *world, body_handle handle);
 v3 physics_get_angular_velocity(const physics_world *world, body_handle handle);
 v3 physics_get_angular_momentum(const physics_world *world, body_handle handle);
+m3 physics_get_inertia(const physics_world *world, body_handle handle);
+m3 physics_get_base_inertia(const physics_world *world, body_handle handle);
 float physics_get_motion_avg(const physics_world *world, body_handle handle);
 count_t physics_get_contacts(const physics_world *world, contact_t *contacts, count_t max_contacts);
 
