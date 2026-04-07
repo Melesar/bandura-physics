@@ -6,14 +6,12 @@ const ResolvedTarget = std.Build.ResolvedTarget;
 const COMMON_FLAGS = &.{ "-std=c99", "-Wall", "-Wextra", "-Werror=format", "-Werror=shadow", "-Werror=incompatible-pointer-types", "-Werror=return-type", "-Wno-unused-parameter" };
 
 const Options = struct {
-    diagnostic: bool,
     profiling: bool,
     installTests: bool,
     includeDemos: bool,
 
     fn getOptions(b: *std.Build) Options {
         return .{
-            .diagnostic = b.option(bool, "diagnostic", "Enable diagnostics") orelse true,
             .profiling = b.option(bool, "profiling", "Enable profiling") orelse false,
             .installTests = b.option(bool, "install-tests", "Install tests binary") orelse false,
             .includeDemos = b.option(bool, "include-demos", "Build demo projects") orelse true,
@@ -31,7 +29,7 @@ pub fn build(b: *std.Build) !void {
 
     const banduraLib = try build_bandura(b, options, target, optimize);
 
-    const profiler = try build_profiler(b, options, target, optimize, false);
+    const profiler = try build_profiler(b, target, optimize, false);
     try build_targets.append(b.allocator, profiler);
     if (options.profiling) {
         banduraLib.root_module.linkLibrary(profiler);
@@ -52,7 +50,7 @@ pub fn build(b: *std.Build) !void {
         const raygui = b.dependency("raygui", .{});
         for (scenarioSources) |scenarioFile| {
             const scenarioModule = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true });
-            const binFlags = try scenarioFlags(b, options, target.result, optimize);
+            const binFlags = try scenarioFlags(b, target.result, optimize);
             defer b.allocator.free(binFlags);
 
             scenarioModule.addCSourceFiles(.{
@@ -104,6 +102,13 @@ fn build_bandura(b: *std.Build, options: Options, target: std.Build.ResolvedTarg
         .link_libc = true,
     });
 
+    const ccd_dep = b.dependency("ccd", .{});
+    const ccd = try build_ccd(b, ccd_dep, target, optimize);
+
+    banduraModule.addIncludePath(ccd_dep.path("src"));
+    banduraModule.addIncludePath(b.path("include"));
+    banduraModule.linkLibrary(ccd);
+
     const libFlags = try libraryFlags(b, options, target.result, optimize);
     defer b.allocator.free(libFlags);
 
@@ -121,15 +126,14 @@ fn build_bandura(b: *std.Build, options: Options, target: std.Build.ResolvedTarg
         .root_module = banduraModule,
     });
 
-    banduraLib.addIncludePath(b.path("include"));
     banduraLib.installHeader(b.path("include/bandura.h"), "bandura.h");
 
     return banduraLib;
 }
 
-fn build_profiler(b: *std.Build, options: Options, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, enable_tests: bool) !*std.Build.Step.Compile {
+fn build_profiler(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, enable_tests: bool) !*std.Build.Step.Compile {
     const module = b.createModule(.{ .link_libc = true, .target = target, .optimize = optimize });
-    var flags = try compilerFlags(b, options, target.result, optimize);
+    var flags = try compilerFlags(b, target.result, optimize);
     errdefer flags.deinit(b.allocator);
 
     try flags.append(b.allocator, "-DBND_PROFILING");
@@ -148,6 +152,27 @@ fn build_profiler(b: *std.Build, options: Options, target: std.Build.ResolvedTar
         .linkage = .static,
         .name = "bnd_profiler",
         .root_module = module,
+    });
+
+    return lib;
+}
+
+fn build_ccd(b: *std.Build, dep: *std.Build.Dependency, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !*std.Build.Step.Compile {
+    const module = b.createModule(.{ .link_libc = true, .optimize = optimize, .target = target });
+
+    module.addIncludePath(dep.path("src"));
+    module.addCSourceFiles(.{ .files = &.{
+        "vendor/ccd/src/ccd.c",
+        "vendor/ccd/src/mpr.c",
+        "vendor/ccd/src/polytope.c",
+        "vendor/ccd/src/support.c",
+        "vendor/ccd/src/vec3.c",
+    }, .flags = &.{ "-O3", "-fvisibility=hidden" } });
+
+    const lib = b.addLibrary(.{
+        .linkage = .static,
+        .root_module = module,
+        .name = "ccd",
     });
 
     return lib;
@@ -179,7 +204,7 @@ fn build_tests(b: *std.Build, options: Options, target: std.Build.ResolvedTarget
         .flags = try flags.toOwnedSlice(b.allocator),
     });
 
-    const profiler = try build_profiler(b, options, target, optimize, true);
+    const profiler = try build_profiler(b, target, optimize, true);
     testsModule.linkLibrary(profiler);
 
     const tests = b.addExecutable(.{
@@ -225,19 +250,19 @@ fn linkLibraries(compile: *std.Build.Step.Compile, target: ResolvedTarget) void 
 }
 
 fn libraryFlags(b: *std.Build, options: Options, target: std.Target, optimize: std.builtin.OptimizeMode) ![]const []const u8 {
-    var flags = try compilerFlags(b, options, target, optimize);
+    var flags = try compilerFlags(b, target, optimize);
     if (options.profiling)
         try flags.append(b.allocator, "-DBND_PROFILING");
 
     return flags.toOwnedSlice(b.allocator);
 }
 
-fn scenarioFlags(b: *std.Build, options: Options, target: std.Target, optimize: std.builtin.OptimizeMode) ![]const []const u8 {
-    var flags = try compilerFlags(b, options, target, optimize);
+fn scenarioFlags(b: *std.Build, target: std.Target, optimize: std.builtin.OptimizeMode) ![]const []const u8 {
+    var flags = try compilerFlags(b, target, optimize);
     return flags.toOwnedSlice(b.allocator);
 }
 
-fn compilerFlags(b: *std.Build, options: Options, target: std.Target, optimize: std.builtin.OptimizeMode) !std.ArrayList([]const u8) {
+fn compilerFlags(b: *std.Build, target: std.Target, optimize: std.builtin.OptimizeMode) !std.ArrayList([]const u8) {
     var flags = try std.ArrayList([]const u8).initCapacity(b.allocator, 32);
     errdefer flags.deinit(b.allocator);
 
@@ -245,10 +270,6 @@ fn compilerFlags(b: *std.Build, options: Options, target: std.Target, optimize: 
     errdefer sanitizers.deinit(b.allocator);
 
     try flags.appendSlice(b.allocator, COMMON_FLAGS);
-
-    if (options.diagnostic) {
-        try flags.append(b.allocator, "-DDIAGNOSTICS");
-    }
 
     switch (optimize) {
         .Debug => {
