@@ -75,6 +75,7 @@ void ui_label(char *label);
 void ui_label_float(char *label, float value);
 void ui_label_v3(const char *label, v3 value);
 void ui_label_stat(const char *label, float value);
+void ui_label_matrix(const char *label, m3 value);
 
 void ui_value_int(const char *label, int *value, int min_value, int max_value);
 void ui_value_float(const char *label, float *value, float min_value, float max_value);

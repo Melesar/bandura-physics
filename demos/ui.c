@@ -366,6 +366,29 @@ void ui_label_int(const char *label, count_t value) {
   ui_value_label(label, vs);
 }
 
+void ui_label_matrix(const char *label, m3 value) {
+  CLAY(CLAY_SID(clay_string_concat(label, "container")), {.layout = {.sizing = clay_container_sizing()}}) {
+    CLAY(CLAY_SID(clay_string_concat(label, "label")), {.layout = {.sizing = {.width = CLAY_SIZING_GROW()}}}) {
+      CLAY_TEXT(clay_from_string(label), {.textColor = clay_element_color(LABEL, TEXT, STATE_NORMAL)});
+    };
+
+    CLAY(CLAY_SID(clay_string_concat(label, "matrix")),
+         {.layout = {.layoutDirection = CLAY_TOP_TO_BOTTOM, .padding = CLAY_PADDING_ALL(3), .childGap = 5}}) {
+      float *rows[] = {&value.m0[0], &value.m1[0], &value.m2[0]};
+      for (count_t i = 0; i < 3; ++i) {
+        CLAY(CLAY_SIDI(clay_string_concat(label, "row"), i + 1), {.layout = {.childGap = 5}}) {
+          for (count_t j = 0; j < 3; ++j) {
+            char *s = arena_alloc(32);
+            snprintf(s, 32, "%.2f", rows[i][j]);
+
+            CLAY_TEXT(clay_from_string(s), {.textColor = clay_element_color(LABEL, TEXT, STATE_NORMAL)});
+          }
+        }
+      }
+    }
+  }
+}
+
 void ui_checkbox(const char *label, bool *is_checked) {
   CLAY(CLAY_SID(clay_string_concat(label, "checkbox")), {
                                                             .layout = {.sizing = clay_container_sizing(),
