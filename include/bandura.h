@@ -148,6 +148,9 @@ typedef struct {
   float restitution;
   float friction;
 
+  count_t max_gjk_iterations;
+  float epa_tolerance;
+
   count_t resolution_attempts_factor;
 
   float penetration_epsilon;

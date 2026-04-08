@@ -7,9 +7,6 @@
 #include <math.h>
 #include <stdlib.h>
 
-#define GJK_MAX_ITERATIONS 100
-#define EPA_TOLERANCE 0.01
-
 typedef struct {
   const physics_world *world;
   const common_data *data;
@@ -208,8 +205,8 @@ static count_t detect_collision_ccd(physics_world *world, const collision_detect
 
   ccd.support1 = support_functions[ctx->shape_a.type];
   ccd.support2 = support_functions[ctx->shape_b.type];
-  ccd.max_iterations = GJK_MAX_ITERATIONS;
-  ccd.epa_tolerance = EPA_TOLERANCE;
+  ccd.max_iterations = world->config.max_gjk_iterations;
+  ccd.epa_tolerance = world->config.epa_tolerance;
 
   ccd_context ctx_a = {
       .world = world,

@@ -181,6 +181,8 @@ physics_config physics_default_config() {
       .angular_damping = 0.8,
       .restitution = 0.2,
       .friction = 0.9,
+      .max_gjk_iterations = 100,
+      .epa_tolerance = 0.01,
       .resolution_attempts_factor = 15,
       .sleep_base_bias = 0.5,
       .sleep_threshold = 0.3,
