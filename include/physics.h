@@ -136,6 +136,7 @@ count_t handle_to_inner_index(const physics_world *world, body_handle handle);
 common_data *as_common(physics_world *world, body_type type);
 const common_data *as_common_const(const physics_world *world, body_type type);
 
+void collision_detection_init();
 void contacts_init(physics_world *world);
 void contacts_teardown(physics_world *world);
 void contacts_reset(physics_world *world);

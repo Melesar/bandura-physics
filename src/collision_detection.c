@@ -7,17 +7,21 @@
 #include <math.h>
 #include <stdlib.h>
 
-v3 ccd_vec3_to_ray(ccd_vec3_t v) {
-  return (v3) { v.v[0], v.v[1], v.v[2] };
-}
+#define GJK_MAX_ITERATIONS 100
+#define EPA_TOLERANCE 0.01
 
-ccd_vec3_t ccd_vec3_from_ray(v3 v) {
-  return (ccd_vec3_t) { { v.x, v.y, v.z } };
-}
+typedef struct {
+  const physics_world *world;
+  const common_data *data;
+  count_t body;
+  body_shape shape;
+} ccd_context;
 
-void sphere_support(const void *data, const ccd_vec3_t *dir, ccd_vec3_t *vec) {
-  v3 direction = ccd_vec3_to_ray(*dir);
-}
+typedef struct {
+  v3 center;
+  v3 size;
+  v3 axis[3];
+} collision_box;
 
 #define ARRAY_RESIZE_IF_NEEDED(array, count, capacity, type)                                                           \
   while (count >= capacity) {                                                                                          \
@@ -28,11 +32,29 @@ void sphere_support(const void *data, const ccd_vec3_t *dir, ccd_vec3_t *vec) {
     }                                                                                                                  \
   }
 
-typedef struct {
-  v3 center;
-  v3 size;
-  v3 axis[3];
-} collision_box;
+typedef void (*support_func)(const void *, const ccd_vec3_t *, ccd_vec3_t *);
+typedef count_t (*collision_func)(physics_world *world, const collision_detection_context *ctx);
+
+static support_func support_functions[SHAPES_COUNT];
+
+static v3 ccd_vec3_to_ray(ccd_vec3_t v) { return (v3){v.v[0], v.v[1], v.v[2]}; }
+
+static ccd_vec3_t ccd_vec3_from_ray(v3 v) { return (ccd_vec3_t){{v.x, v.y, v.z}}; }
+
+static void sphere_support(const void *data, const ccd_vec3_t *dir, ccd_vec3_t *vec) {
+  ccd_context *ctx = (ccd_context *)data;
+
+  v3 direction = normalize(ccd_vec3_to_ray(*dir));
+  v3 center = add(ctx->data->positions[ctx->body], ctx->shape.offset);
+  float radius = ctx->shape.sphere.radius;
+
+  v3 support = add(center, scale(direction, radius));
+  *vec = ccd_vec3_from_ray(support);
+}
+
+static void box_support(const void *data, const ccd_vec3_t *dir, ccd_vec3_t *vec) {}
+
+static void cylinder_support(const void *data, const ccd_vec3_t *dir, ccd_vec3_t *vec) {}
 
 static contact *new_contact(physics_world *world, const collision_detection_context *ctx) {
   contact *c = &world->contacts.values[world->contacts.count++];
@@ -43,8 +65,6 @@ static contact *new_contact(physics_world *world, const collision_detection_cont
 
   return c;
 }
-
-typedef count_t (*collision_func)(physics_world *world, const collision_detection_context *ctx);
 
 static v3 body_center(v3 shape_offset, quat global_rotation, v3 body_position) {
   v3 center = shape_offset;
@@ -165,6 +185,53 @@ static count_t cylinder_plane_collision(physics_world *world, const collision_de
   return 1;
 }
 
+static count_t detect_collision_ccd(physics_world *world, const collision_detection_context *ctx) {
+  ccd_t ccd;
+  CCD_INIT(&ccd);
+
+  ccd.support1 = support_functions[ctx->shape_a.type];
+  ccd.support2 = support_functions[ctx->shape_b.type];
+  ccd.max_iterations = GJK_MAX_ITERATIONS;
+  ccd.epa_tolerance = EPA_TOLERANCE;
+
+  ccd_context ctx_a = {
+      .world = world,
+      .data = ctx->data_a,
+      .shape = ctx->shape_a,
+      .body = ctx->body_a,
+  };
+
+  ccd_context ctx_b = {
+      .world = world,
+      .data = ctx->data_b,
+      .shape = ctx->shape_b,
+      .body = ctx->body_b,
+  };
+
+  float depth;
+  ccd_vec3_t normal, point;
+
+  int result = ccdGJKPenetration(&ctx_a, &ctx_b, &ccd, &depth, &normal, &point);
+  if (result < 0) {
+    return 0;
+  }
+
+  ARRAY_RESIZE_IF_NEEDED(world->contacts.values, world->contacts.count, world->contacts.capacity, contact)
+
+  contact *c = new_contact(world, ctx);
+  c->point = ccd_vec3_to_ray(point);
+  c->normal = negate(ccd_vec3_to_ray(normal));
+  c->depth = depth;
+
+  return 1;
+}
+
+void collision_detection_init() {
+  support_functions[SHAPE_SPHERE] = sphere_support;
+  support_functions[SHAPE_BOX] = box_support;
+  support_functions[SHAPE_CYLINDER] = cylinder_support;
+}
+
 count_t collisions_detect_dynamic(physics_world *world) {
   const common_data *dynamics = (common_data *)&world->dynamics;
 
@@ -196,6 +263,8 @@ count_t collisions_detect_dynamic(physics_world *world) {
 
           inv_ctx.shape_a = ctx.shape_b;
           inv_ctx.shape_b = ctx.shape_a;
+
+          dyn_count += detect_collision_ccd(world, &ctx);
         }
       }
     }
@@ -255,6 +324,10 @@ void collisions_detect_static(physics_world *world) {
                 default:
                   break;
               }
+              break;
+
+            default:
+              detect_collision_ccd(world, &ctx);
               break;
           }
         }

@@ -378,6 +378,8 @@ physics_world *physics_init(const physics_config *config) {
 
   world->config = *config;
 
+  collision_detection_init();
+
   contacts_init(world);
   joints_init(world);
   shapes_init(world);
