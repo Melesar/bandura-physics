@@ -40,8 +40,7 @@ static void draw_physics_bodies();
 static void process_inputs(Camera *camera);
 static void reset();
 
-extern void scenario_initialize(program_config *config,
-                                physics_config *physics_config);
+extern void scenario_initialize(program_config *config, physics_config *physics_config);
 extern void scenario_setup_scene(physics_world *world);
 extern void scenario_handle_input(physics_world *world, Camera *camera);
 extern void scenario_simulate(physics_world *world, float dt);
@@ -54,10 +53,8 @@ camera_settings cam_settings = {
     .rotation_sensitivity = 0.1f,
 };
 
-Color colors[] = {BROWN,    YELLOW,     GREEN, MAROON, MAGENTA,
-                  RAYWHITE, DARKPURPLE, LIME,  PINK,   ORANGE,
-                  BROWN,    YELLOW,     GREEN, MAROON, MAGENTA,
-                  RAYWHITE, DARKPURPLE, LIME,  PINK,   ORANGE};
+Color colors[] = {BROWN, YELLOW, GREEN, MAROON, MAGENTA, RAYWHITE, DARKPURPLE, LIME, PINK, ORANGE,
+                  BROWN, YELLOW, GREEN, MAROON, MAGENTA, RAYWHITE, DARKPURPLE, LIME, PINK, ORANGE};
 Material materials[20];
 Mesh meshes[20];
 
@@ -179,8 +176,7 @@ static void draw_physics_bodies_typed(body_type type) {
     quat rotation = physics_get_rotation(world, enumerator.handle);
 
     count_t shapes_count;
-    body_shape *shapes =
-        physics_get_shapes(world, enumerator.handle, &shapes_count);
+    body_shape *shapes = physics_get_shapes(world, enumerator.handle, &shapes_count);
 
     m4 scale;
     m4 transform =
@@ -191,31 +187,27 @@ static void draw_physics_bodies_typed(body_type type) {
     for (count_t k = 0; k < shapes_count; ++k) {
       body_shape shape = shapes[k];
       m4 shape_transform =
-          mul(as_matrix(shape.rotation),
-              MatrixTranslate(shape.offset.x, shape.offset.y, shape.offset.z));
+          mul(as_matrix(shape.rotation), MatrixTranslate(shape.offset.x, shape.offset.y, shape.offset.z));
       m4 full_transform = mul(shape_transform, transform);
 
       switch (shape.type) {
-      case SHAPE_BOX:
-        scale =
-            MatrixScale(shape.box.size.x, shape.box.size.y, shape.box.size.z);
-        DrawMesh(meshes[SHAPE_BOX], material, mul(scale, full_transform));
-        break;
+        case SHAPE_BOX:
+          scale = MatrixScale(shape.box.size.x, shape.box.size.y, shape.box.size.z);
+          DrawMesh(meshes[SHAPE_BOX], material, mul(scale, full_transform));
+          break;
 
-      case SHAPE_SPHERE:
-        scale = MatrixScale(shape.sphere.radius, shape.sphere.radius,
-                            shape.sphere.radius);
-        DrawMesh(meshes[SHAPE_SPHERE], material, mul(scale, full_transform));
-        break;
+        case SHAPE_SPHERE:
+          scale = MatrixScale(shape.sphere.radius, shape.sphere.radius, shape.sphere.radius);
+          DrawMesh(meshes[SHAPE_SPHERE], material, mul(scale, full_transform));
+          break;
 
-      case SHAPE_CYLINDER:
-        scale = MatrixScale(shape.cylinder.radius, shape.cylinder.height,
-                            shape.cylinder.radius);
-        DrawMesh(meshes[SHAPE_CYLINDER], material, mul(scale, full_transform));
-        break;
+        case SHAPE_CYLINDER:
+          scale = MatrixScale(shape.cylinder.radius, shape.cylinder.height, shape.cylinder.radius);
+          DrawMesh(meshes[SHAPE_CYLINDER], material, mul(scale, full_transform));
+          break;
 
-      default:
-        break;
+        default:
+          break;
       }
     }
   }
@@ -267,20 +259,13 @@ static void update_camera(Camera *camera, float deltaTime) {
   Vector3 movement = {0};
 
   if (IsKeyDown(KEY_W))
-    movement =
-        Vector3Add(movement, Vector3Scale(forward, cam_settings.movement_speed *
-                                                       deltaTime));
+    movement = Vector3Add(movement, Vector3Scale(forward, cam_settings.movement_speed * deltaTime));
   if (IsKeyDown(KEY_S))
-    movement = Vector3Add(
-        movement,
-        Vector3Scale(forward, -cam_settings.movement_speed * deltaTime));
+    movement = Vector3Add(movement, Vector3Scale(forward, -cam_settings.movement_speed * deltaTime));
   if (IsKeyDown(KEY_A))
-    movement =
-        Vector3Add(movement, Vector3Scale(right, -cam_settings.movement_speed *
-                                                     deltaTime));
+    movement = Vector3Add(movement, Vector3Scale(right, -cam_settings.movement_speed * deltaTime));
   if (IsKeyDown(KEY_D))
-    movement = Vector3Add(
-        movement, Vector3Scale(right, cam_settings.movement_speed * deltaTime));
+    movement = Vector3Add(movement, Vector3Scale(right, cam_settings.movement_speed * deltaTime));
 
   camera->position = Vector3Add(camera->position, movement);
   camera->target = Vector3Add(camera->target, movement);
@@ -331,9 +316,8 @@ static void setup_scene(Shader shader) {
   for (int i = 0; i < cylinder.vertexCount; ++i) {
     cylinder.vertices[i * 3 + 1] -= 0.5;
   }
-  UpdateMeshBuffer(cylinder, RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION,
-                   cylinder.vertices, 3 * cylinder.vertexCount * sizeof(float),
-                   0);
+  UpdateMeshBuffer(cylinder, RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION, cylinder.vertices,
+                   3 * cylinder.vertexCount * sizeof(float), 0);
 
   meshes[SHAPE_CYLINDER] = cylinder;
 
@@ -371,8 +355,7 @@ static void build_ui() {
     bool ui_debug = master_widget_state.show_ui_debug;
     if (ui_begin_area("Debug widget", &master_widget_state.is_collapsed)) {
       ui_checkbox("UI debug", &master_widget_state.show_ui_debug);
-      ui_checkbox("Physics config",
-                  &master_widget_state.show_physics_config_widget);
+      ui_checkbox("Physics config", &master_widget_state.show_physics_config_widget);
       ui_checkbox("World stats", &master_widget_state.show_physics_world_stats);
       ui_checkbox("Draw collisions", &master_widget_state.draw_collisions);
     }
@@ -385,29 +368,19 @@ static void build_ui() {
 
     if (master_widget_state.show_physics_config_widget) {
       physics_config *physics_config = physics_edit_config(world);
-      if (ui_begin_area("Physics config",
-                        &master_widget_state.physics_config_collapsed)) {
+      if (ui_begin_area("Physics config", &master_widget_state.physics_config_collapsed)) {
         ui_value_float("Linear damping", &physics_config->linear_damping, 0, 1);
-        ui_value_float("Angular damping", &physics_config->angular_damping, 0,
-                       1);
+        ui_value_float("Angular damping", &physics_config->angular_damping, 0, 1);
         ui_value_float("Restitution", &physics_config->restitution, 0, 2);
         ui_value_float("Friction", &physics_config->friction, 0, 1);
-        ui_value_int("Iterations factor",
-                     (int *)&physics_config->resolution_attempts_factor, 1, 20);
-        // ui_value_int("Max penetration iterations",
-        // (int*)&physics_config->max_penentration_iterations, 1, 500);
-        // ui_value_int("Max velocity iterations",
-        // (int*)&physics_config->max_velocity_iterations, 1, 500);
-        ui_value_float("Penetration epsilon",
-                       &physics_config->penetration_epsilon, 0.001, 0.5);
-        ui_value_float("Velocity epsilon", &physics_config->velocity_epsilon,
-                       0.001, 0.5);
-        ui_value_float("Sleep base bias", &physics_config->sleep_base_bias, 0,
-                       1);
-        ui_value_float("Sleep threshold", &physics_config->sleep_threshold, 0,
-                       10);
-        ui_value_float("Restitution damping epsilon",
-                       &physics_config->restitution_damping_limit, 0, 1);
+        ui_value_int("Max GJK iterations", (int *)&physics_config->max_gjk_iterations, 1, 1000);
+        ui_value_float("EPA tolerance", &physics_config->epa_tolerance, 0, 1);
+        ui_value_int("Iterations factor", (int *)&physics_config->resolution_attempts_factor, 1, 20);
+        ui_value_float("Penetration epsilon", &physics_config->penetration_epsilon, 0.001, 0.5);
+        ui_value_float("Velocity epsilon", &physics_config->velocity_epsilon, 0.001, 0.5);
+        ui_value_float("Sleep base bias", &physics_config->sleep_base_bias, 0, 1);
+        ui_value_float("Sleep threshold", &physics_config->sleep_threshold, 0, 10);
+        ui_value_float("Restitution damping epsilon", &physics_config->restitution_damping_limit, 0, 1);
       }
 
       ui_end_area();
@@ -437,32 +410,27 @@ static Shader setup_lighting() {
 
   Shader shader = LoadShader(vs_shader_path, fs_shader_path);
 
-  Light keyLight = CreateLight(LIGHT_DIRECTIONAL,
-                               (Vector3){10.0f, 20.0f, 10.0f}, Vector3Zero(),
+  Light keyLight = CreateLight(LIGHT_DIRECTIONAL, (Vector3){10.0f, 20.0f, 10.0f}, Vector3Zero(),
                                WHITE, // #ffffff
                                shader);
   keyLight.enabled = 1;
   UpdateLightValues(shader, keyLight);
 
-  Light rimLight =
-      CreateLight(LIGHT_POINT, (Vector3){-10.0f, 10.0f, -10.0f}, Vector3Zero(),
-                  (Color){0x44, 0x44, 0xff, 0xff}, // Blue rim light
-                  shader);
+  Light rimLight = CreateLight(LIGHT_POINT, (Vector3){-10.0f, 10.0f, -10.0f}, Vector3Zero(),
+                               (Color){0x44, 0x44, 0xff, 0xff}, // Blue rim light
+                               shader);
   rimLight.enabled = 1;
   UpdateLightValues(shader, rimLight);
 
   int ambientLoc = GetShaderLocation(shader, "ambient");
-  SetShaderValue(shader, ambientLoc,
-                 (float[4]){0x40 / 255.0f, 0x40 / 255.0f, 0x40 / 255.0f, 1.0f},
+  SetShaderValue(shader, ambientLoc, (float[4]){0x40 / 255.0f, 0x40 / 255.0f, 0x40 / 255.0f, 1.0f},
                  SHADER_UNIFORM_VEC4);
 
   int fogColorLoc = GetShaderLocation(shader, "fogColor");
   int fogStartLoc = GetShaderLocation(shader, "fogStart");
   int fogEndLoc = GetShaderLocation(shader, "fogEnd");
 
-  SetShaderValue(shader, fogColorLoc,
-                 (float[3]){0x12 / 255.0f, 0x12 / 255.0f, 0x14 / 255.0f},
-                 SHADER_UNIFORM_VEC3);
+  SetShaderValue(shader, fogColorLoc, (float[3]){0x12 / 255.0f, 0x12 / 255.0f, 0x14 / 255.0f}, SHADER_UNIFORM_VEC3);
   SetShaderValue(shader, fogStartLoc, (float[1]){20.0f}, SHADER_UNIFORM_FLOAT);
   SetShaderValue(shader, fogEndLoc, (float[1]){100.0f}, SHADER_UNIFORM_FLOAT);
 
