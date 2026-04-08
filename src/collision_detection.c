@@ -2,8 +2,8 @@
 
 #include "vec3.h"
 #include "ccd.h"
-
 #include "physics.h"
+
 #include <math.h>
 #include <stdlib.h>
 
@@ -41,6 +41,14 @@ static v3 ccd_vec3_to_ray(ccd_vec3_t v) { return (v3){v.v[0], v.v[1], v.v[2]}; }
 
 static ccd_vec3_t ccd_vec3_from_ray(v3 v) { return (ccd_vec3_t){{v.x, v.y, v.z}}; }
 
+static v3 body_center(v3 shape_offset, quat global_rotation, v3 body_position) {
+  v3 center = shape_offset;
+  center = rotate(center, global_rotation);
+  center = add(center, body_position);
+
+  return center;
+}
+
 static void sphere_support(const void *data, const ccd_vec3_t *dir, ccd_vec3_t *vec) {
   ccd_context *ctx = (ccd_context *)data;
 
@@ -52,7 +60,24 @@ static void sphere_support(const void *data, const ccd_vec3_t *dir, ccd_vec3_t *
   *vec = ccd_vec3_from_ray(support);
 }
 
-static void box_support(const void *data, const ccd_vec3_t *dir, ccd_vec3_t *vec) {}
+static void box_support(const void *data, const ccd_vec3_t *dir, ccd_vec3_t *vec) {
+  ccd_context *ctx = (ccd_context *)data;
+
+  v3 direction = normalize(ccd_vec3_to_ray(*dir));
+  quat rotation = qmul(ctx->data->rotations[ctx->body], ctx->shape.rotation);
+  quat inv_rotation = qinvert(rotation);
+
+  v3 local_direction = rotate(direction, inv_rotation);
+  v3 v = vec3((local_direction.x > 0 ? 1 : -1) * ctx->shape.box.size.x * 0.5,
+              (local_direction.y > 0 ? 1 : -1) * ctx->shape.box.size.y * 0.5,
+              (local_direction.z > 0 ? 1 : -1) * ctx->shape.box.size.z * 0.5);
+
+  v3 offset = rotate(v, rotation);
+  v3 support =
+      add(body_center(ctx->shape.offset, ctx->data->rotations[ctx->body], ctx->data->positions[ctx->body]), offset);
+
+  *vec = ccd_vec3_from_ray(support);
+}
 
 static void cylinder_support(const void *data, const ccd_vec3_t *dir, ccd_vec3_t *vec) {}
 
@@ -64,14 +89,6 @@ static contact *new_contact(physics_world *world, const collision_detection_cont
   c->restitution = world->config.restitution;
 
   return c;
-}
-
-static v3 body_center(v3 shape_offset, quat global_rotation, v3 body_position) {
-  v3 center = shape_offset;
-  center = rotate(center, global_rotation);
-  center = add(center, body_position);
-
-  return center;
 }
 
 static v3 body_a_center(const collision_detection_context *ctx) {
