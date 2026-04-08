@@ -102,10 +102,9 @@ fn build_bandura(b: *std.Build, options: Options, target: std.Build.ResolvedTarg
         .link_libc = true,
     });
 
-    const ccd_dep = b.dependency("ccd", .{});
-    const ccd = try build_ccd(b, ccd_dep, target, optimize);
+    const ccd = try build_ccd(b, target, optimize);
 
-    banduraModule.addIncludePath(ccd_dep.path("src"));
+    banduraModule.addIncludePath(b.path("ccd"));
     banduraModule.addIncludePath(b.path("include"));
     banduraModule.linkLibrary(ccd);
 
@@ -157,17 +156,11 @@ fn build_profiler(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std
     return lib;
 }
 
-fn build_ccd(b: *std.Build, dep: *std.Build.Dependency, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !*std.Build.Step.Compile {
+fn build_ccd(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !*std.Build.Step.Compile {
     const module = b.createModule(.{ .link_libc = true, .optimize = optimize, .target = target });
 
-    module.addIncludePath(dep.path("src"));
-    module.addCSourceFiles(.{ .files = &.{
-        "vendor/ccd/src/ccd.c",
-        "vendor/ccd/src/mpr.c",
-        "vendor/ccd/src/polytope.c",
-        "vendor/ccd/src/support.c",
-        "vendor/ccd/src/vec3.c",
-    }, .flags = &.{ "-O3", "-fvisibility=hidden" } });
+    module.addIncludePath(b.path("ccd"));
+    module.addCSourceFiles(.{ .files = try collectSources(b, "ccd"), .flags = &.{ "-O3", "-fvisibility=hidden", "-DCCD_SINGLE" } });
 
     const lib = b.addLibrary(.{
         .linkage = .static,

@@ -75,3 +75,9 @@ point for writing your own scenes.
 ## License
 
 This project is licensed under the Zlib License. See [`LICENSE`](LICENSE).
+
+## Third-party code
+
+This library includes portions of [libccd](https://github.com/danfis/libccd)
+by Daniel Fiser, distributed under the BSD 3-Clause License.
+See [THIRD_PARTY_NOTICES](./THIRD_PARTY_NOTICES) for details.

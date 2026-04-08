@@ -7,6 +7,3 @@
 [submodule "vendor/raygui"]
 	path = vendor/raygui
 	url = gh:raysan5/raygui
-[submodule "vendor/ccd"]
-	path = vendor/ccd
-	url = gh:danfis/libccd
