@@ -83,9 +83,10 @@ typedef enum {
 typedef enum {
   SHAPE_BOX,
   SHAPE_SPHERE,
-  SHAPE_PLANE,
   SHAPE_CYLINDER,
 
+  // Keep the plane at the end
+  SHAPE_PLANE,
   SHAPES_COUNT
 } shape_type;
 

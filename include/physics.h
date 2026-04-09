@@ -82,14 +82,6 @@ typedef struct {
 } common_data;
 
 typedef struct {
-  const physics_world *world;
-  const common_data *data_a;
-  const common_data *data_b;
-  count_t body_a, body_b;
-  body_shape shape_a, shape_b;
-} collision_detection_context;
-
-typedef struct {
   COMMON_FIELDS
 
   // Forces
@@ -136,7 +128,6 @@ count_t handle_to_inner_index(const physics_world *world, body_handle handle);
 common_data *as_common(physics_world *world, body_type type);
 const common_data *as_common_const(const physics_world *world, body_type type);
 
-void collision_detection_init();
 void contacts_init(physics_world *world);
 void contacts_teardown(physics_world *world);
 void contacts_reset(physics_world *world);
