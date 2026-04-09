@@ -4,3 +4,5 @@ ColumnLimit: 120
 IndentCaseLabels: true
 SortIncludes:
   Enabled: false
+SeparateDefinitionBlocks: Always
+MaxEmptyLinesToKeep: 1
