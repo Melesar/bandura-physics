@@ -2,9 +2,9 @@
 
 import argparse
 import csv
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import matplotlib
 from matplotlib.backends.backend_pdf import PdfPages
@@ -15,8 +15,8 @@ import matplotlib.pyplot as plt
 PLOT_LABELS = [
     "physics_step",
     "integrate_bodies",
-    "collisions_detect",
-    "resolve_collisions",
+    "contacts_generate",
+    "contacts_resolve",
 ]
 
 
@@ -118,7 +118,9 @@ def open_output_document(output_path: Path) -> None:
     elif sys.platform.startswith("linux"):
         command = ["xdg-open", str(output_path)]
     else:
-        raise RuntimeError("Opening the output document is only supported on macOS and Linux")
+        raise RuntimeError(
+            "Opening the output document is only supported on macOS and Linux"
+        )
 
     subprocess.run(command, check=True)
 
