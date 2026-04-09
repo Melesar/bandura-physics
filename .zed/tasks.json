@@ -95,4 +95,16 @@
     "show_summary": true,
     "show_command": true,
   },
+  {
+    "label": "Format current",
+    "command": "clang-format -i $ZED_FILE",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "never",
+    "reveal_target": "dock",
+    "hide": "on_success",
+    "shell": "system",
+    "show_summary": true,
+    "show_command": true,
+  },
 ]
