@@ -921,6 +921,7 @@ void physics_reset(physics_world *world) {
   world->statics.first_outer_node = max_body_index;
 
   world->stats.incomplete_resolutions = 0;
+  world->stats.incomplete_collision_detections = 0;
 
   contacts_reset(world);
   shapes_reset(world);

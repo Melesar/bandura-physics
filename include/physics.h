@@ -129,6 +129,11 @@ struct physics_world_t {
   count_t generation;
 };
 
+typedef struct {
+  v3 points[4];
+  uint8_t size;
+} simplex;
+
 body_handle make_body_handle(const physics_world *world, body_type type, count_t index);
 count_t handle_to_inner_index(const physics_world *world, body_handle handle);
 

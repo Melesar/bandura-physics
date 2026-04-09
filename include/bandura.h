@@ -173,6 +173,7 @@ typedef struct {
   count_t body_count;
   count_t contacts_count;
   count_t incomplete_resolutions;
+  count_t incomplete_collision_detections;
 } physics_world_stats;
 
 typedef struct {

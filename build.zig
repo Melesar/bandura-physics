@@ -160,7 +160,7 @@ fn build_ccd(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.buil
     const module = b.createModule(.{ .link_libc = true, .optimize = optimize, .target = target });
 
     module.addIncludePath(b.path("ccd"));
-    module.addCSourceFiles(.{ .files = try collectSources(b, "ccd"), .flags = &.{ "-O3", "-fvisibility=hidden", "-DCCD_SINGLE" } });
+    module.addCSourceFiles(.{ .files = try collectSources(b, "ccd"), .flags = &.{ "-O0", "-g", "-fvisibility=hidden", "-DCCD_SINGLE" } });
 
     const lib = b.addLibrary(.{
         .linkage = .static,
