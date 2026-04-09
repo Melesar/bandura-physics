@@ -1,3 +1,4 @@
+#include "bandura.h"
 #define CCD_SINGLE
 
 #include "vec3.h"
@@ -78,7 +79,7 @@ static void box_support(const void *data, const ccd_vec3_t *dir, ccd_vec3_t *vec
   quat rotation = ccd_body_rotation(ctx);
   quat inv_rotation = qinvert(rotation);
 
-  v3 local_direction = rotate(direction, inv_rotation);
+  v3 local_direction = normalize(rotate(direction, inv_rotation));
   v3 v = vec3((local_direction.x > 0 ? 1 : -1) * ctx->shape.box.size.x * 0.5,
               (local_direction.y > 0 ? 1 : -1) * ctx->shape.box.size.y * 0.5,
               (local_direction.z > 0 ? 1 : -1) * ctx->shape.box.size.z * 0.5);
