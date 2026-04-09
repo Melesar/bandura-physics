@@ -82,6 +82,13 @@ typedef struct {
 } common_data;
 
 typedef struct {
+  const common_data *data_a;
+  const common_data *data_b;
+  count_t body_a, body_b;
+  body_shape shape_a, shape_b;
+} collision_detection_context;
+
+typedef struct {
   COMMON_FIELDS
 
   // Forces
@@ -155,5 +162,6 @@ body_shapes shapes_write(physics_world *world, shape_dimension_bracket bracket, 
 body_shape *shapes_get(const physics_world *world, body_shapes shapes);
 
 quat integrate_rotation_midpoint(quat rotation, v3 angular_momentum, m3 base_inv_inertia, float dt);
+bool gjk_check_intersection(const physics_world *world, const collision_detection_context *ctx);
 
 #endif

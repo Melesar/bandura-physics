@@ -1,4 +1,3 @@
-#include "bandura.h"
 #define CCD_SINGLE
 
 #include "vec3.h"
@@ -7,6 +6,7 @@
 
 #include <math.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #define ARRAY_RESIZE_IF_NEEDED(array, count, capacity, type)                                                           \
   while (count >= capacity) {                                                                                          \
@@ -28,17 +28,15 @@ typedef struct {
 } ccd_context;
 
 typedef struct {
-  const common_data *data_a;
-  const common_data *data_b;
-  count_t body_a, body_b;
-  body_shape shape_a, shape_b;
-} collision_detection_context;
-
-typedef struct {
   v3 center;
   v3 size;
   v3 axis[3];
 } collision_box;
+
+static void collision_validation_failure(const physics_world *world, const collision_detection_context *ctx, bool ccd_collision, bool custom_collision) {
+  printf("Collision detection failed\n");
+  exit(1);
+}
 
 static v3 body_center(v3 shape_offset, quat global_rotation, v3 body_position) {
   v3 center = shape_offset;
@@ -271,6 +269,12 @@ static count_t detect_collision_ccd(physics_world *world, const collision_detect
   ccd_vec3_t normal, point;
 
   int result = ccdGJKPenetration(&ctx_a, &ctx_b, &ccd, &depth, &normal, &point);
+  bool gjk_custom = gjk_check_intersection(world, ctx);
+
+  if ((!gjk_custom && !result) || (gjk_custom && result < 0)) {
+    collision_validation_failure(world, ctx, result == 0, gjk_custom);
+  }
+
   if (result < 0) {
     return 0;
   }
