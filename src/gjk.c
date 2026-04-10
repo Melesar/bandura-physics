@@ -1,4 +1,3 @@
-#include "bandura.h"
 #include "physics.h"
 #include <stdio.h>
 #include <float.h>
@@ -118,11 +117,20 @@ static void simplex_update_2(simplex *s, v3 *direction) {
   }
 }
 
-static void simplex_update_3(simplex *s, v3 *direction) {
+static bool simplex_update_3(simplex *s, v3 *direction) {
   printf("[BND] Simplex update 3\n");
   v3 a = s->points[0];
   v3 b = s->points[1];
   v3 c = s->points[2];
+
+  float distance = distance_to_triangle(zero(), a, b, c);
+  if (distance < TOLERANCE) {
+    return true;
+  }
+
+  if (distancesqr(a, b) < TOLERANCE || distancesqr(a, c) < TOLERANCE) {
+    return false;
+  }
 
   v3 ab = sub(b, a);
   v3 ac = sub(c, a);
@@ -156,6 +164,8 @@ static void simplex_update_3(simplex *s, v3 *direction) {
       }
     }
   }
+
+  return false;
 }
 
 static bool simplex_update_4(simplex *s, v3 *direction) {
@@ -164,6 +174,35 @@ static bool simplex_update_4(simplex *s, v3 *direction) {
   v3 b = s->points[1];
   v3 c = s->points[2];
   v3 d = s->points[3];
+
+  float distance = distance_to_triangle(a, b, c, d);
+  if (distance < TOLERANCE) {
+    return false;
+  }
+
+  distance = distance_to_triangle(zero(), a, b, c);
+  if (distance < TOLERANCE) {
+    printf("[BND] TriDist ABC\n");
+    return true;
+  }
+
+  distance = distance_to_triangle(zero(), a, c, d);
+  if (distance < TOLERANCE) {
+    printf("[BND] TriDist ACD\n");
+    return true;
+  }
+
+  distance = distance_to_triangle(zero(), a, b, d);
+  if (distance < TOLERANCE) {
+    printf("[BND] TriDist ADB\n");
+    return true;
+  }
+
+  distance = distance_to_triangle(zero(), b, c, d);
+  if (distance < TOLERANCE) {
+    printf("[BND] TriDist BCD\n");
+    return true;
+  }
 
   v3 ab = sub(b, a);
   v3 ac = sub(c, a);
@@ -177,19 +216,19 @@ static bool simplex_update_4(simplex *s, v3 *direction) {
   if (dot(abc, ao) > 0) {
     s->size = 3;
 
-    simplex_update_3(s, direction);
+    return simplex_update_3(s, direction);
   } else if (dot(acd, ao) > 0) {
     s->points[1] = c;
     s->points[2] = d;
     s->size = 3;
 
-    simplex_update_3(s, direction);
+    return simplex_update_3(s, direction);
   } else if (dot(adb, ao) > 0) {
     s->points[1] = d;
     s->points[2] = b;
     s->size = 3;
 
-    simplex_update_3(s, direction);
+    return simplex_update_3(s, direction);
   } else {
     return true;
   }
@@ -203,8 +242,7 @@ static bool simplex_update(simplex *s, v3 *direction) {
       return simplex_update_4(s, direction);
 
     case 3:
-      simplex_update_3(s, direction);
-      return false;
+      return simplex_update_3(s, direction);
 
     case 2:
       simplex_update_2(s, direction);

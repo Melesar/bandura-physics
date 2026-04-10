@@ -178,6 +178,72 @@ quat integrate_rotation_midpoint(quat rotation, v3 angular_momentum, m3 base_inv
   return qnormalize(qmul(step, rotation));
 }
 
+float distance_to_line_segment(v3 from, v3 a, v3 b) {
+  v3 d = sub(b, a);
+  v3 ao = sub(a, from);
+
+  float t = -1.0 * dot(ao, d);
+  t /= lensq(d);
+
+  if (t <= 0) {
+    return distancesqr(a, from);
+  } else if (t >= 1) {
+    return distancesqr(b, from);
+  } else {
+    d = scale(d, t);
+    d = add(d, a);
+
+    return lensq(d);
+  }
+}
+
+float distance_to_triangle(v3 from, v3 a, v3 b, v3 c) {
+  v3 d1 = sub(b, a);
+  v3 d2 = sub(c, a);
+  v3 ao = sub(a, from);
+
+  float u = dot(ao, ao);
+  float v = dot(d1, d1);
+  float w = dot(d2, d2);
+  float p = dot(ao, d1);
+  float q = dot(ao, d2);
+  float r = dot(d1, d2);
+
+  float s, t;
+  float distance = 0;
+  float d = w * v - r * r;
+  if (fabsf(d) < EPSILON) {
+    s = t = -1;
+  } else {
+    s = (q * r - w * p) / d;
+    t = (-s * r - q) / w;
+  }
+
+  if (s >= 0 && s <= 1 && t >= 0 && t <= 1 && t + s <= 1) {
+    distance = s * s * v;
+    distance += t * t * w;
+    distance += 2.0 * s * t * r;
+    distance += 2.0 * s * p;
+    distance += 2.0 * t * q;
+    distance += u;
+  } else {
+    distance = distance_to_line_segment(from, a, b);
+
+    float distance2 = distance_to_line_segment(from, a, c);
+    if (distance2 < distance) {
+      distance = distance2;
+    }
+
+    distance2 = distance_to_line_segment(from, b, c);
+    if (distance2 < distance) {
+      distance = distance2;
+    }
+  }
+
+  return distance;
+}
+
+
 float smooth_value_read(smooth_value v) {
   float result = 0;
   for (count_t i = 0; i < v.count; ++i) {
