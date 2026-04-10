@@ -193,12 +193,16 @@ static int __ccdGJK(const void *obj1, const void *obj2, const ccd_t *ccd,
   // initialize simplex struct
   ccdSimplexInit(simplex);
 
+  printf("[CCD] GJK start\n");
+
   // get first direction
   ccd->first_dir(obj1, obj2, &dir);
   // get first support point
   __ccdSupport(obj1, obj2, &dir, ccd, &last);
   // and add this point to simplex as last one
   ccdSimplexAdd(simplex, &last);
+
+  printf("[CCD] Initial point: (%.2f, %.2f, %.2f)\n", last.v.v[0], last.v.v[1], last.v.v[2]);
 
   // set up direction vector to as (O - last) which is exactly -last
   ccdVec3Copy(&dir, &last.v);
@@ -209,10 +213,13 @@ static int __ccdGJK(const void *obj1, const void *obj2, const ccd_t *ccd,
     // obtain support point
     __ccdSupport(obj1, obj2, &dir, ccd, &last);
 
+    printf("[CCD] Iteration %lu. Support (%.2f, %.2f, %.2f)\n", iterations, last.v.v[0], last.v.v[1], last.v.v[2]);
+
     // check if farthest point in Minkowski difference in direction dir
     // isn't somewhere before origin (the test on negative dot product)
     // - because if it is, objects are not intersecting at all.
     if (ccdVec3Dot(&last.v, &dir) < CCD_ZERO) {
+      printf("[CCD] Dot is negative. No collision\n");
       return -1; // intersection not found
     }
 
@@ -223,12 +230,17 @@ static int __ccdGJK(const void *obj1, const void *obj2, const ccd_t *ccd,
     // intersect and 0 if algorithm should continue
     do_simplex_res = doSimplex(simplex, &dir);
     if (do_simplex_res == 1) {
+      printf("[CCD] GJK finished, collision found\n");
       return 0; // intersection found
     } else if (do_simplex_res == -1) {
+      printf("[CCD] GJK failed, no collision\n");
       return -1; // intersection not found
     }
 
+    printf("[CCD] New direction: (%.4f, %.4f, %.4f)\n", dir.v[0], dir.v[1], dir.v[2]);
+
     if (ccdIsZero(ccdVec3Len2(&dir))) {
+      printf("[CCD] Direction zero, no collision\n");
       return -1; // intersection not found
     }
   }
@@ -285,6 +297,7 @@ static int __ccdGJKEPA(const void *obj1, const void *obj2, const ccd_t *ccd,
 }
 
 static int doSimplex2(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
+  printf("[CCD] Simplex size 2 check\n");
   const ccd_support_t *A, *B;
   ccd_vec3_t AB, AO, tmp;
   ccd_real_t dot;
@@ -305,6 +318,7 @@ static int doSimplex2(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
   // check if origin doesn't lie on AB segment
   ccdVec3Cross(&tmp, &AB, &AO);
   if (ccdIsZero(ccdVec3Len2(&tmp)) && dot > CCD_ZERO) {
+    printf("[CCD] Len2\n");
     return 1;
   }
 
@@ -326,6 +340,7 @@ static int doSimplex2(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
 }
 
 static int doSimplex3(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
+  printf("[CCD] Simplex size 3 check\n");
   const ccd_support_t *A, *B, *C;
   ccd_vec3_t AO, AB, AC, ABC, tmp;
   ccd_real_t dot, dist;
@@ -339,6 +354,7 @@ static int doSimplex3(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
   // check touching contact
   dist = ccdVec3PointTriDist2(ccd_vec3_origin, &A->v, &B->v, &C->v, NULL);
   if (ccdIsZero(dist)) {
+    printf("[CCD] TriDist ABC\n");
     return 1;
   }
 
@@ -366,6 +382,7 @@ static int doSimplex3(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
       ccdSimplexSet(simplex, 1, A);
       ccdSimplexSetSize(simplex, 2);
       tripleCross(&AC, &AO, &AC, dir);
+      printf("[CCD] Triple cross 1\n");
     } else {
     ccd_do_simplex3_45:
       dot = ccdVec3Dot(&AB, &AO);
@@ -374,10 +391,12 @@ static int doSimplex3(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
         ccdSimplexSet(simplex, 1, A);
         ccdSimplexSetSize(simplex, 2);
         tripleCross(&AB, &AO, &AB, dir);
+        printf("[CCD] Triple cross 2\n");
       } else {
         ccdSimplexSet(simplex, 0, A);
         ccdSimplexSetSize(simplex, 1);
         ccdVec3Copy(dir, &AO);
+        printf("[CCD] AO\n");
       }
     }
   } else {
@@ -389,6 +408,7 @@ static int doSimplex3(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
       dot = ccdVec3Dot(&ABC, &AO);
       if (ccdIsZero(dot) || dot > CCD_ZERO) {
         ccdVec3Copy(dir, &ABC);
+        printf("[CCD] ABC\n");
       } else {
         ccd_support_t Ctmp;
         ccdSupportCopy(&Ctmp, C);
@@ -397,6 +417,7 @@ static int doSimplex3(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
 
         ccdVec3Copy(dir, &ABC);
         ccdVec3Scale(dir, -CCD_ONE);
+        printf("[CCD] -ABC\n");
       }
     }
   }
@@ -405,6 +426,7 @@ static int doSimplex3(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
 }
 
 static int doSimplex4(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
+  printf("[CCD] Simplex size 4 check\n");
   const ccd_support_t *A, *B, *C, *D;
   ccd_vec3_t AO, AB, AC, AD, ABC, ACD, ADB;
   int B_on_ACD, C_on_ADB, D_on_ABC;
@@ -429,17 +451,25 @@ static int doSimplex4(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
   // check if origin lies on some of tetrahedron's face - if so objects
   // intersect
   dist = ccdVec3PointTriDist2(ccd_vec3_origin, &A->v, &B->v, &C->v, NULL);
-  if (ccdIsZero(dist))
+  if (ccdIsZero(dist)) {
+    printf("[CCD] TriDist ABC\n");
     return 1;
+  }
   dist = ccdVec3PointTriDist2(ccd_vec3_origin, &A->v, &C->v, &D->v, NULL);
-  if (ccdIsZero(dist))
+  if (ccdIsZero(dist)) {
+    printf("[CCD] TriDist ACD\n");
     return 1;
+  }
   dist = ccdVec3PointTriDist2(ccd_vec3_origin, &A->v, &B->v, &D->v, NULL);
-  if (ccdIsZero(dist))
+  if (ccdIsZero(dist)) {
+    printf("[CCD] TriDist ABD\n");
     return 1;
+  }
   dist = ccdVec3PointTriDist2(ccd_vec3_origin, &B->v, &C->v, &D->v, NULL);
-  if (ccdIsZero(dist))
+  if (ccdIsZero(dist)) {
+    printf("[CCD] TriDist BCD\n");
     return 1;
+  }
 
   // compute AO, AB, AC, AD segments and ABC, ACD, ADB normal vectors
   ccdVec3Copy(&AO, &A->v);

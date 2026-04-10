@@ -45,7 +45,7 @@ pub fn build(b: *std.Build) !void {
         const binarySources = try collectSources(b, "demos");
         defer b.allocator.free(binarySources);
 
-        const raylib = b.dependency("raylib", .{ .target = target, .optimize = optimize, .config = "-DPLATFORM_DESKTOP", .linkage = .dynamic });
+        const raylib = b.dependency("raylib", .{ .target = target, .optimize = optimize, .config = "-DPLATFORM_DESKTOP -DSUPPORT_PRAND_GENERATOR", .linkage = .dynamic });
         const clay = b.dependency("clay", .{});
         const raygui = b.dependency("raygui", .{});
         for (scenarioSources) |scenarioFile| {

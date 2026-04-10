@@ -139,11 +139,11 @@ void scenario_initialize(program_config *config,
   config->camera_target = (v3){0, 0, 0};
 
   physics_config->friction = 0.3;
-
-  SetRandomSeed((unsigned int)time(NULL));
 }
 
 void scenario_setup_scene(physics_world *world) {
+  SetRandomSeed(33);
+
   for (int i = 0; i < 15; ++i) {
     float radius = random_range(0.3f, 0.75f);
     float mass = random_range(1.2f, 4.8f);
