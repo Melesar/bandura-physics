@@ -107,4 +107,17 @@
     "show_summary": true,
     "show_command": true,
   },
+
+  {
+    "label": "Debug collisions",
+    "command": "zig build -Dcollisions-debug=true -Doptimize=ReleaseFast run-vortex",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "no_focus",
+    "reveal_target": "dock",
+    "hide": "never",
+    "shell": "system",
+    "show_summary": true,
+    "show_command": true,
+  },
 ]

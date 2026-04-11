@@ -4,6 +4,12 @@
 
 #define TOLERANCE FLT_EPSILON
 
+#ifdef COLLISIONS_DEBUG
+#define COLLISION_TRACE(...) printf(__VA_ARGS__)
+#else
+#define COLLISION_TRACE(...)
+#endif
+
 typedef struct {
   const common_data *data;
   body_shape shape;
@@ -101,24 +107,24 @@ static void simplex_add_point(simplex *s, v3 p) {
 }
 
 static void simplex_update_2(simplex *s, v3 *direction) {
-  printf("[BND] Simplex update 2\n");
+  COLLISION_TRACE("[BND] Simplex update 2\n");
   v3 a = s->points[0];
   v3 b = s->points[1];
   v3 ab = sub(b, a);
   v3 ao = negate(a);
 
   if (dot(ab, ao) > 0) {
-    printf("[BND] Triple cross 2\n");
+    COLLISION_TRACE("[BND] Triple cross 2\n");
     *direction = cross(cross(ab, ao), ab);
   } else {
     s->size = 1;
-    printf("[BND] AO 1\n");
+    COLLISION_TRACE("[BND] AO 1\n");
     *direction = ao;
   }
 }
 
 static bool simplex_update_3(simplex *s, v3 *direction) {
-  printf("[BND] Simplex update 3\n");
+  COLLISION_TRACE("[BND] Simplex update 3\n");
   v3 a = s->points[0];
   v3 b = s->points[1];
   v3 c = s->points[2];
@@ -142,7 +148,7 @@ static bool simplex_update_3(simplex *s, v3 *direction) {
       s->points[1] = c;
       s->size = 2;
       *direction = cross(cross(ac, ao), ac);
-      printf("[BND] Triple cross 1\n");
+      COLLISION_TRACE("[BND] Triple cross 1\n");
     } else {
       s->size = 2;
       simplex_update_2(s, direction);
@@ -154,13 +160,13 @@ static bool simplex_update_3(simplex *s, v3 *direction) {
     } else {
       if (dot(abc, ao) >= 0) {
         *direction = abc;
-        printf("[BND] ABC\n");
+        COLLISION_TRACE("[BND] ABC\n");
       } else {
         s->points[2] = b;
         s->points[1] = c;
 
         *direction = negate(abc);
-        printf("[BND] -ABC\n");
+        COLLISION_TRACE("[BND] -ABC\n");
       }
     }
   }
@@ -169,7 +175,7 @@ static bool simplex_update_3(simplex *s, v3 *direction) {
 }
 
 static bool simplex_update_4(simplex *s, v3 *direction) {
-  printf("[BND] Simplex update 4\n");
+  COLLISION_TRACE("[BND] Simplex update 4\n");
   v3 a = s->points[0];
   v3 b = s->points[1];
   v3 c = s->points[2];
@@ -182,25 +188,25 @@ static bool simplex_update_4(simplex *s, v3 *direction) {
 
   distance = distance_to_triangle(zero(), a, b, c);
   if (distance < TOLERANCE) {
-    printf("[BND] TriDist ABC\n");
+    COLLISION_TRACE("[BND] TriDist ABC\n");
     return true;
   }
 
   distance = distance_to_triangle(zero(), a, c, d);
   if (distance < TOLERANCE) {
-    printf("[BND] TriDist ACD\n");
+    COLLISION_TRACE("[BND] TriDist ACD\n");
     return true;
   }
 
   distance = distance_to_triangle(zero(), a, b, d);
   if (distance < TOLERANCE) {
-    printf("[BND] TriDist ADB\n");
+    COLLISION_TRACE("[BND] TriDist ADB\n");
     return true;
   }
 
   distance = distance_to_triangle(zero(), b, c, d);
   if (distance < TOLERANCE) {
-    printf("[BND] TriDist BCD\n");
+    COLLISION_TRACE("[BND] TriDist BCD\n");
     return true;
   }
 
@@ -256,36 +262,37 @@ bool gjk_check_intersection(physics_world *world, const collision_detection_cont
   v3 direction = initial_direction;
   simplex simplex = {0};
 
-  printf("[BND] GJK start\n");
+  COLLISION_TRACE("[BND] GJK start\n");
 
   v3 support_point = support(ctx, direction);
   simplex_add_point(&simplex, support_point);
   direction = normalize(negate(support_point));
 
-  printf("[BND] Initial point: (%.2f, %.2f, %.2f)\n", support_point.x, support_point.y, support_point.z);
+  COLLISION_TRACE("[BND] Initial point: (%.2f, %.2f, %.2f)\n", support_point.x, support_point.y, support_point.z);
 
   count_t iterations = 0;
   for (iterations = 0; iterations < world->config.max_gjk_iterations; ++iterations) {
     support_point = support(ctx, direction);
 
-    printf("[BND] Iteration %u. Support (%.2f, %.2f, %.2f)\n", iterations, support_point.x, support_point.y, support_point.z);
+    COLLISION_TRACE("[BND] Iteration %u. Support (%.2f, %.2f, %.2f)\n", iterations, support_point.x, support_point.y,
+                    support_point.z);
 
     if (dot(support_point, direction) < 0) {
-      printf("[BND] Dot is negative. No collision\n");
+      COLLISION_TRACE("[BND] Dot is negative. No collision\n");
       return false;
     }
 
     simplex_add_point(&simplex, support_point);
 
     if (simplex_update(&simplex, &direction)) {
-      printf("[BND] GJK finished, collision found\n");
+      COLLISION_TRACE("[BND] GJK finished, collision found\n");
       return true;
     }
 
-    printf("[BND] New direction: (%.4f, %.4f, %.4f)\n", direction.x, direction.y, direction.z);
+    COLLISION_TRACE("[BND] New direction: (%.4f, %.4f, %.4f)\n", direction.x, direction.y, direction.z);
 
     if (lensq(direction) < TOLERANCE) {
-      printf("[BND] Direction is zero, no collision\n");
+      COLLISION_TRACE("[BND] Direction is zero, no collision\n");
       return false;
     }
 

@@ -9,12 +9,14 @@ const Options = struct {
     profiling: bool,
     installTests: bool,
     includeDemos: bool,
+    collisionsDebug: bool,
 
     fn getOptions(b: *std.Build) Options {
         return .{
             .profiling = b.option(bool, "profiling", "Enable profiling") orelse false,
             .installTests = b.option(bool, "install-tests", "Install tests binary") orelse false,
             .includeDemos = b.option(bool, "include-demos", "Build demo projects") orelse true,
+            .collisionsDebug = b.option(bool, "collisions-debug", "DJK debug") orelse false,
         };
     }
 };
@@ -102,7 +104,7 @@ fn build_bandura(b: *std.Build, options: Options, target: std.Build.ResolvedTarg
         .link_libc = true,
     });
 
-    const ccd = try build_ccd(b, target, optimize);
+    const ccd = try build_ccd(b, options, target, optimize);
 
     banduraModule.addIncludePath(b.path("ccd"));
     banduraModule.addIncludePath(b.path("include"));
@@ -156,11 +158,19 @@ fn build_profiler(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std
     return lib;
 }
 
-fn build_ccd(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !*std.Build.Step.Compile {
+fn build_ccd(b: *std.Build, options: Options, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !*std.Build.Step.Compile {
     const module = b.createModule(.{ .link_libc = true, .optimize = optimize, .target = target });
+    var flags = try std.ArrayList([]const u8).initCapacity(b.allocator, 16);
+    flags.appendSliceAssumeCapacity(&.{ "-O3", "-fvisibility=hidden", "-DCCD_SINGLE" });
+    if (options.collisionsDebug) {
+        flags.appendAssumeCapacity("-DCOLLISIONS_DEBUG");
+    }
 
     module.addIncludePath(b.path("ccd"));
-    module.addCSourceFiles(.{ .files = try collectSources(b, "ccd"), .flags = &.{ "-O0", "-g", "-fvisibility=hidden", "-DCCD_SINGLE" } });
+    module.addCSourceFiles(.{
+        .files = try collectSources(b, "ccd"),
+        .flags = try flags.toOwnedSlice(b.allocator),
+    });
 
     const lib = b.addLibrary(.{
         .linkage = .static,
@@ -246,6 +256,9 @@ fn libraryFlags(b: *std.Build, options: Options, target: std.Target, optimize: s
     var flags = try compilerFlags(b, target, optimize);
     if (options.profiling)
         try flags.append(b.allocator, "-DBND_PROFILING");
+
+    if (options.collisionsDebug)
+        try flags.append(b.allocator, "-DCOLLISIONS_DEBUG");
 
     return flags.toOwnedSlice(b.allocator);
 }

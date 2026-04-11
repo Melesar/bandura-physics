@@ -24,16 +24,20 @@
 #include <float.h>
 #include <stdio.h>
 
+#ifdef COLLISIONS_DEBUG
+#define COLLISION_TRACE(...) printf(__VA_ARGS__)
+#else
+#define COLLISION_TRACE(...)
+#endif
+
 /** Performs GJK algorithm. Returns 0 if intersection was found and simplex
  *  is filled with resulting polytope. */
-static int __ccdGJK(const void *obj1, const void *obj2, const ccd_t *ccd,
-                    ccd_simplex_t *simplex);
+static int __ccdGJK(const void *obj1, const void *obj2, const ccd_t *ccd, ccd_simplex_t *simplex);
 
 /** Performs GJK+EPA algorithm. Returns 0 if intersection was found and
  *  pt is filled with resulting polytope and nearest with pointer to
  *  nearest element (vertex, edge, face) of polytope to origin. */
-static int __ccdGJKEPA(const void *obj1, const void *obj2, const ccd_t *ccd,
-                       ccd_pt_t *pt, ccd_pt_el_t **nearest);
+static int __ccdGJKEPA(const void *obj1, const void *obj2, const ccd_t *ccd, ccd_pt_t *pt, ccd_pt_el_t **nearest);
 
 /** Returns true if simplex contains origin.
  *  This function also alteres simplex and dir according to further
@@ -44,34 +48,28 @@ static int doSimplex3(ccd_simplex_t *simplex, ccd_vec3_t *dir);
 static int doSimplex4(ccd_simplex_t *simplex, ccd_vec3_t *dir);
 
 /** d = a x b x c */
-_ccd_inline void tripleCross(const ccd_vec3_t *a, const ccd_vec3_t *b,
-                             const ccd_vec3_t *c, ccd_vec3_t *d);
+_ccd_inline void tripleCross(const ccd_vec3_t *a, const ccd_vec3_t *b, const ccd_vec3_t *c, ccd_vec3_t *d);
 
 /** Transforms simplex to polytope. It is assumed that simplex has 4
  *  vertices. */
-static int simplexToPolytope4(const void *obj1, const void *obj2,
-                              const ccd_t *ccd, ccd_simplex_t *simplex,
+static int simplexToPolytope4(const void *obj1, const void *obj2, const ccd_t *ccd, ccd_simplex_t *simplex,
                               ccd_pt_t *pt, ccd_pt_el_t **nearest);
 
 /** Transforms simplex to polytope, three vertices required */
-static int simplexToPolytope3(const void *obj1, const void *obj2,
-                              const ccd_t *ccd, const ccd_simplex_t *simplex,
+static int simplexToPolytope3(const void *obj1, const void *obj2, const ccd_t *ccd, const ccd_simplex_t *simplex,
                               ccd_pt_t *pt, ccd_pt_el_t **nearest);
 
 /** Transforms simplex to polytope, two vertices required */
-static int simplexToPolytope2(const void *obj1, const void *obj2,
-                              const ccd_t *ccd, const ccd_simplex_t *simplex,
+static int simplexToPolytope2(const void *obj1, const void *obj2, const ccd_t *ccd, const ccd_simplex_t *simplex,
                               ccd_pt_t *pt, ccd_pt_el_t **nearest);
 
 /** Expands polytope using new vertex v.
  *  Return 0 on success, -2 on memory allocation failure.*/
-static int expandPolytope(ccd_pt_t *pt, ccd_pt_el_t *el,
-                          const ccd_support_t *newv);
+static int expandPolytope(ccd_pt_t *pt, ccd_pt_el_t *el, const ccd_support_t *newv);
 
 /** Finds next support point (at stores it in out argument).
  *  Returns 0 on success, -1 otherwise */
-static int nextSupport(const void *obj1, const void *obj2, const ccd_t *ccd,
-                       const ccd_pt_el_t *el, ccd_support_t *out);
+static int nextSupport(const void *obj1, const void *obj2, const ccd_t *ccd, const ccd_pt_el_t *el, ccd_support_t *out);
 
 void ccdFirstDirDefault(const void *o1, const void *o2, ccd_vec3_t *dir) {
   ccdVec3Set(dir, CCD_ONE, CCD_ZERO, CCD_ZERO);
@@ -82,8 +80,7 @@ int ccdGJKIntersect(const void *obj1, const void *obj2, const ccd_t *ccd) {
   return __ccdGJK(obj1, obj2, ccd, &simplex) == 0;
 }
 
-int ccdGJKSeparate(const void *obj1, const void *obj2, const ccd_t *ccd,
-                   ccd_vec3_t *sep) {
+int ccdGJKSeparate(const void *obj1, const void *obj2, const ccd_t *ccd, ccd_vec3_t *sep) {
   ccd_pt_t polytope;
   ccd_pt_el_t *nearest;
   int ret;
@@ -115,8 +112,7 @@ static int penEPAPosCmp(const void *a, const void *b) {
   }
 }
 
-static int penEPAPos(const ccd_pt_t *pt, const ccd_pt_el_t *nearest,
-                     ccd_vec3_t *pos) {
+static int penEPAPos(const ccd_pt_t *pt, const ccd_pt_el_t *nearest, ccd_vec3_t *pos) {
   ccd_pt_vertex_t *v;
   ccd_pt_vertex_t **vs;
   size_t i, len;
@@ -152,8 +148,8 @@ static int penEPAPos(const ccd_pt_t *pt, const ccd_pt_el_t *nearest,
   return 0;
 }
 
-int ccdGJKPenetration(const void *obj1, const void *obj2, const ccd_t *ccd,
-                      ccd_real_t *depth, ccd_vec3_t *dir, ccd_vec3_t *pos) {
+int ccdGJKPenetration(const void *obj1, const void *obj2, const ccd_t *ccd, ccd_real_t *depth, ccd_vec3_t *dir,
+                      ccd_vec3_t *pos) {
   ccd_pt_t polytope;
   ccd_pt_el_t *nearest;
   int ret;
@@ -183,8 +179,7 @@ int ccdGJKPenetration(const void *obj1, const void *obj2, const ccd_t *ccd,
   return ret;
 }
 
-static int __ccdGJK(const void *obj1, const void *obj2, const ccd_t *ccd,
-                    ccd_simplex_t *simplex) {
+static int __ccdGJK(const void *obj1, const void *obj2, const ccd_t *ccd, ccd_simplex_t *simplex) {
   unsigned long iterations;
   ccd_vec3_t dir;     // direction vector
   ccd_support_t last; // last support point
@@ -193,7 +188,7 @@ static int __ccdGJK(const void *obj1, const void *obj2, const ccd_t *ccd,
   // initialize simplex struct
   ccdSimplexInit(simplex);
 
-  printf("[CCD] GJK start\n");
+  COLLISION_TRACE("[CCD] GJK start\n");
 
   // get first direction
   ccd->first_dir(obj1, obj2, &dir);
@@ -202,7 +197,7 @@ static int __ccdGJK(const void *obj1, const void *obj2, const ccd_t *ccd,
   // and add this point to simplex as last one
   ccdSimplexAdd(simplex, &last);
 
-  printf("[CCD] Initial point: (%.2f, %.2f, %.2f)\n", last.v.v[0], last.v.v[1], last.v.v[2]);
+  COLLISION_TRACE("[CCD] Initial point: (%.2f, %.2f, %.2f)\n", last.v.v[0], last.v.v[1], last.v.v[2]);
 
   // set up direction vector to as (O - last) which is exactly -last
   ccdVec3Copy(&dir, &last.v);
@@ -213,13 +208,14 @@ static int __ccdGJK(const void *obj1, const void *obj2, const ccd_t *ccd,
     // obtain support point
     __ccdSupport(obj1, obj2, &dir, ccd, &last);
 
-    printf("[CCD] Iteration %lu. Support (%.2f, %.2f, %.2f)\n", iterations, last.v.v[0], last.v.v[1], last.v.v[2]);
+    COLLISION_TRACE("[CCD] Iteration %lu. Support (%.2f, %.2f, %.2f)\n", iterations, last.v.v[0], last.v.v[1],
+                    last.v.v[2]);
 
     // check if farthest point in Minkowski difference in direction dir
     // isn't somewhere before origin (the test on negative dot product)
     // - because if it is, objects are not intersecting at all.
     if (ccdVec3Dot(&last.v, &dir) < CCD_ZERO) {
-      printf("[CCD] Dot is negative. No collision\n");
+      COLLISION_TRACE("[CCD] Dot is negative. No collision\n");
       return -1; // intersection not found
     }
 
@@ -230,17 +226,17 @@ static int __ccdGJK(const void *obj1, const void *obj2, const ccd_t *ccd,
     // intersect and 0 if algorithm should continue
     do_simplex_res = doSimplex(simplex, &dir);
     if (do_simplex_res == 1) {
-      printf("[CCD] GJK finished, collision found\n");
+      COLLISION_TRACE("[CCD] GJK finished, collision found\n");
       return 0; // intersection found
     } else if (do_simplex_res == -1) {
-      printf("[CCD] GJK failed, no collision\n");
+      COLLISION_TRACE("[CCD] GJK failed, no collision\n");
       return -1; // intersection not found
     }
 
-    printf("[CCD] New direction: (%.4f, %.4f, %.4f)\n", dir.v[0], dir.v[1], dir.v[2]);
+    COLLISION_TRACE("[CCD] New direction: (%.4f, %.4f, %.4f)\n", dir.v[0], dir.v[1], dir.v[2]);
 
     if (ccdIsZero(ccdVec3Len2(&dir))) {
-      printf("[CCD] Direction zero, no collision\n");
+      COLLISION_TRACE("[CCD] Direction zero, no collision\n");
       return -1; // intersection not found
     }
   }
@@ -249,8 +245,8 @@ static int __ccdGJK(const void *obj1, const void *obj2, const ccd_t *ccd,
   return -1;
 }
 
-static int __ccdGJKEPA(const void *obj1, const void *obj2, const ccd_t *ccd,
-                       ccd_pt_t *polytope, ccd_pt_el_t **nearest) {
+static int __ccdGJKEPA(const void *obj1, const void *obj2, const ccd_t *ccd, ccd_pt_t *polytope,
+                       ccd_pt_el_t **nearest) {
   ccd_simplex_t simplex;
   ccd_support_t supp; // support point
   int ret, size;
@@ -297,7 +293,7 @@ static int __ccdGJKEPA(const void *obj1, const void *obj2, const ccd_t *ccd,
 }
 
 static int doSimplex2(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
-  printf("[CCD] Simplex size 2 check\n");
+  COLLISION_TRACE("[CCD] Simplex size 2 check\n");
   const ccd_support_t *A, *B;
   ccd_vec3_t AB, AO, tmp;
   ccd_real_t dot;
@@ -318,7 +314,7 @@ static int doSimplex2(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
   // check if origin doesn't lie on AB segment
   ccdVec3Cross(&tmp, &AB, &AO);
   if (ccdIsZero(ccdVec3Len2(&tmp)) && dot > CCD_ZERO) {
-    printf("[CCD] Len2\n");
+    COLLISION_TRACE("[CCD] Len2\n");
     return 1;
   }
 
@@ -340,7 +336,7 @@ static int doSimplex2(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
 }
 
 static int doSimplex3(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
-  printf("[CCD] Simplex size 3 check\n");
+  COLLISION_TRACE("[CCD] Simplex size 3 check\n");
   const ccd_support_t *A, *B, *C;
   ccd_vec3_t AO, AB, AC, ABC, tmp;
   ccd_real_t dot, dist;
@@ -354,7 +350,7 @@ static int doSimplex3(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
   // check touching contact
   dist = ccdVec3PointTriDist2(ccd_vec3_origin, &A->v, &B->v, &C->v, NULL);
   if (ccdIsZero(dist)) {
-    printf("[CCD] TriDist ABC\n");
+    COLLISION_TRACE("[CCD] TriDist ABC\n");
     return 1;
   }
 
@@ -382,7 +378,7 @@ static int doSimplex3(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
       ccdSimplexSet(simplex, 1, A);
       ccdSimplexSetSize(simplex, 2);
       tripleCross(&AC, &AO, &AC, dir);
-      printf("[CCD] Triple cross 1\n");
+      COLLISION_TRACE("[CCD] Triple cross 1\n");
     } else {
     ccd_do_simplex3_45:
       dot = ccdVec3Dot(&AB, &AO);
@@ -391,12 +387,12 @@ static int doSimplex3(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
         ccdSimplexSet(simplex, 1, A);
         ccdSimplexSetSize(simplex, 2);
         tripleCross(&AB, &AO, &AB, dir);
-        printf("[CCD] Triple cross 2\n");
+        COLLISION_TRACE("[CCD] Triple cross 2\n");
       } else {
         ccdSimplexSet(simplex, 0, A);
         ccdSimplexSetSize(simplex, 1);
         ccdVec3Copy(dir, &AO);
-        printf("[CCD] AO\n");
+        COLLISION_TRACE("[CCD] AO\n");
       }
     }
   } else {
@@ -408,7 +404,7 @@ static int doSimplex3(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
       dot = ccdVec3Dot(&ABC, &AO);
       if (ccdIsZero(dot) || dot > CCD_ZERO) {
         ccdVec3Copy(dir, &ABC);
-        printf("[CCD] ABC\n");
+        COLLISION_TRACE("[CCD] ABC\n");
       } else {
         ccd_support_t Ctmp;
         ccdSupportCopy(&Ctmp, C);
@@ -417,7 +413,7 @@ static int doSimplex3(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
 
         ccdVec3Copy(dir, &ABC);
         ccdVec3Scale(dir, -CCD_ONE);
-        printf("[CCD] -ABC\n");
+        COLLISION_TRACE("[CCD] -ABC\n");
       }
     }
   }
@@ -426,7 +422,7 @@ static int doSimplex3(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
 }
 
 static int doSimplex4(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
-  printf("[CCD] Simplex size 4 check\n");
+  COLLISION_TRACE("[CCD] Simplex size 4 check\n");
   const ccd_support_t *A, *B, *C, *D;
   ccd_vec3_t AO, AB, AC, AD, ABC, ACD, ADB;
   int B_on_ACD, C_on_ADB, D_on_ABC;
@@ -452,22 +448,22 @@ static int doSimplex4(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
   // intersect
   dist = ccdVec3PointTriDist2(ccd_vec3_origin, &A->v, &B->v, &C->v, NULL);
   if (ccdIsZero(dist)) {
-    printf("[CCD] TriDist ABC\n");
+    COLLISION_TRACE("[CCD] TriDist ABC\n");
     return 1;
   }
   dist = ccdVec3PointTriDist2(ccd_vec3_origin, &A->v, &C->v, &D->v, NULL);
   if (ccdIsZero(dist)) {
-    printf("[CCD] TriDist ACD\n");
+    COLLISION_TRACE("[CCD] TriDist ACD\n");
     return 1;
   }
   dist = ccdVec3PointTriDist2(ccd_vec3_origin, &A->v, &B->v, &D->v, NULL);
   if (ccdIsZero(dist)) {
-    printf("[CCD] TriDist ABD\n");
+    COLLISION_TRACE("[CCD] TriDist ABD\n");
     return 1;
   }
   dist = ccdVec3PointTriDist2(ccd_vec3_origin, &B->v, &C->v, &D->v, NULL);
   if (ccdIsZero(dist)) {
-    printf("[CCD] TriDist BCD\n");
+    COLLISION_TRACE("[CCD] TriDist BCD\n");
     return 1;
   }
 
@@ -536,8 +532,7 @@ static int doSimplex(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
   }
 }
 
-_ccd_inline void tripleCross(const ccd_vec3_t *a, const ccd_vec3_t *b,
-                             const ccd_vec3_t *c, ccd_vec3_t *d) {
+_ccd_inline void tripleCross(const ccd_vec3_t *a, const ccd_vec3_t *b, const ccd_vec3_t *c, ccd_vec3_t *d) {
   ccd_vec3_t e;
   ccdVec3Cross(&e, a, b);
   ccdVec3Cross(d, &e, c);
@@ -545,8 +540,7 @@ _ccd_inline void tripleCross(const ccd_vec3_t *a, const ccd_vec3_t *b,
 
 /** Transforms simplex to polytope. It is assumed that simplex has 4
  *  vertices! */
-static int simplexToPolytope4(const void *obj1, const void *obj2,
-                              const ccd_t *ccd, ccd_simplex_t *simplex,
+static int simplexToPolytope4(const void *obj1, const void *obj2, const ccd_t *ccd, ccd_simplex_t *simplex,
                               ccd_pt_t *pt, ccd_pt_el_t **nearest) {
   const ccd_support_t *a, *b, *c, *d;
   int use_polytope3;
@@ -607,10 +601,8 @@ static int simplexToPolytope4(const void *obj1, const void *obj2,
   // failed of if any of the input pointers are NULL, so the bad
   // allocation can be checked by the last calls of ccdPtAddFace()
   // because the rest of the bad allocations eventually "bubble up" here
-  if (ccdPtAddFace(pt, e[0], e[1], e[2]) == NULL ||
-      ccdPtAddFace(pt, e[3], e[4], e[0]) == NULL ||
-      ccdPtAddFace(pt, e[4], e[5], e[1]) == NULL ||
-      ccdPtAddFace(pt, e[5], e[3], e[2]) == NULL) {
+  if (ccdPtAddFace(pt, e[0], e[1], e[2]) == NULL || ccdPtAddFace(pt, e[3], e[4], e[0]) == NULL ||
+      ccdPtAddFace(pt, e[4], e[5], e[1]) == NULL || ccdPtAddFace(pt, e[5], e[3], e[2]) == NULL) {
     return -2;
   }
 
@@ -618,8 +610,7 @@ static int simplexToPolytope4(const void *obj1, const void *obj2,
 }
 
 /** Transforms simplex to polytope, three vertices required */
-static int simplexToPolytope3(const void *obj1, const void *obj2,
-                              const ccd_t *ccd, const ccd_simplex_t *simplex,
+static int simplexToPolytope3(const void *obj1, const void *obj2, const ccd_t *ccd, const ccd_simplex_t *simplex,
                               ccd_pt_t *pt, ccd_pt_el_t **nearest) {
   const ccd_support_t *a, *b, *c;
   ccd_support_t d, d2;
@@ -685,12 +676,10 @@ static int simplexToPolytope3(const void *obj1, const void *obj2,
   e[7] = ccdPtAddEdge(pt, v[4], v[1]);
   e[8] = ccdPtAddEdge(pt, v[4], v[2]);
 
-  if (ccdPtAddFace(pt, e[3], e[4], e[0]) == NULL ||
-      ccdPtAddFace(pt, e[4], e[5], e[1]) == NULL ||
+  if (ccdPtAddFace(pt, e[3], e[4], e[0]) == NULL || ccdPtAddFace(pt, e[4], e[5], e[1]) == NULL ||
       ccdPtAddFace(pt, e[5], e[3], e[2]) == NULL
 
-      || ccdPtAddFace(pt, e[6], e[7], e[0]) == NULL ||
-      ccdPtAddFace(pt, e[7], e[8], e[1]) == NULL ||
+      || ccdPtAddFace(pt, e[6], e[7], e[0]) == NULL || ccdPtAddFace(pt, e[7], e[8], e[1]) == NULL ||
       ccdPtAddFace(pt, e[8], e[6], e[2]) == NULL) {
     return -2;
   }
@@ -699,8 +688,7 @@ static int simplexToPolytope3(const void *obj1, const void *obj2,
 }
 
 /** Transforms simplex to polytope, two vertices required */
-static int simplexToPolytope2(const void *obj1, const void *obj2,
-                              const ccd_t *ccd, const ccd_simplex_t *simplex,
+static int simplexToPolytope2(const void *obj1, const void *obj2, const ccd_t *ccd, const ccd_simplex_t *simplex,
                               ccd_pt_t *pt, ccd_pt_el_t **nearest) {
   const ccd_support_t *a, *b;
   ccd_vec3_t ab, ac, dir;
@@ -787,15 +775,11 @@ simplexToPolytope2_not_touching_contact:
   e[10] = ccdPtAddEdge(pt, v[5], v[2]);
   e[11] = ccdPtAddEdge(pt, v[5], v[3]);
 
-  if (ccdPtAddFace(pt, e[4], e[5], e[0]) == NULL ||
-      ccdPtAddFace(pt, e[5], e[6], e[1]) == NULL ||
-      ccdPtAddFace(pt, e[6], e[7], e[2]) == NULL ||
-      ccdPtAddFace(pt, e[7], e[4], e[3]) == NULL
+  if (ccdPtAddFace(pt, e[4], e[5], e[0]) == NULL || ccdPtAddFace(pt, e[5], e[6], e[1]) == NULL ||
+      ccdPtAddFace(pt, e[6], e[7], e[2]) == NULL || ccdPtAddFace(pt, e[7], e[4], e[3]) == NULL
 
-      || ccdPtAddFace(pt, e[8], e[9], e[0]) == NULL ||
-      ccdPtAddFace(pt, e[9], e[10], e[1]) == NULL ||
-      ccdPtAddFace(pt, e[10], e[11], e[2]) == NULL ||
-      ccdPtAddFace(pt, e[11], e[8], e[3]) == NULL) {
+      || ccdPtAddFace(pt, e[8], e[9], e[0]) == NULL || ccdPtAddFace(pt, e[9], e[10], e[1]) == NULL ||
+      ccdPtAddFace(pt, e[10], e[11], e[2]) == NULL || ccdPtAddFace(pt, e[11], e[8], e[3]) == NULL) {
     return -2;
   }
 
@@ -804,8 +788,7 @@ simplexToPolytope2_not_touching_contact:
 
 /** Expands polytope's tri by new vertex v. Triangle tri is replaced by
  *  three triangles each with one vertex in v. */
-static int expandPolytope(ccd_pt_t *pt, ccd_pt_el_t *el,
-                          const ccd_support_t *newv) {
+static int expandPolytope(ccd_pt_t *pt, ccd_pt_el_t *el, const ccd_support_t *newv) {
   ccd_pt_vertex_t *v[5];
   ccd_pt_edge_t *e[8];
   ccd_pt_face_t *f[2];
@@ -879,14 +862,12 @@ static int expandPolytope(ccd_pt_t *pt, ccd_pt_el_t *el,
       if (f[1])
         e[7] = ccdPtAddEdge(pt, v[4], v[3]);
 
-      if (ccdPtAddFace(pt, e[1], e[4], e[6]) == NULL ||
-          ccdPtAddFace(pt, e[0], e[6], e[5]) == NULL) {
+      if (ccdPtAddFace(pt, e[1], e[4], e[6]) == NULL || ccdPtAddFace(pt, e[0], e[6], e[5]) == NULL) {
         return -2;
       }
 
       if (f[1]) {
-        if (ccdPtAddFace(pt, e[3], e[5], e[7]) == NULL ||
-            ccdPtAddFace(pt, e[4], e[7], e[2]) == NULL) {
+        if (ccdPtAddFace(pt, e[3], e[5], e[7]) == NULL || ccdPtAddFace(pt, e[4], e[7], e[2]) == NULL) {
           return -2;
         }
       } else {
@@ -923,8 +904,7 @@ static int expandPolytope(ccd_pt_t *pt, ccd_pt_el_t *el,
     e[4] = ccdPtAddEdge(pt, v[3], v[1]);
     e[5] = ccdPtAddEdge(pt, v[3], v[2]);
 
-    if (ccdPtAddFace(pt, e[3], e[4], e[0]) == NULL ||
-        ccdPtAddFace(pt, e[4], e[5], e[1]) == NULL ||
+    if (ccdPtAddFace(pt, e[3], e[4], e[0]) == NULL || ccdPtAddFace(pt, e[4], e[5], e[1]) == NULL ||
         ccdPtAddFace(pt, e[5], e[3], e[2]) == NULL) {
       return -2;
     }
@@ -935,8 +915,8 @@ static int expandPolytope(ccd_pt_t *pt, ccd_pt_el_t *el,
 
 /** Finds next support point (and stores it in out argument).
  *  Returns 0 on success, -1 otherwise */
-static int nextSupport(const void *obj1, const void *obj2, const ccd_t *ccd,
-                       const ccd_pt_el_t *el, ccd_support_t *out) {
+static int nextSupport(const void *obj1, const void *obj2, const ccd_t *ccd, const ccd_pt_el_t *el,
+                       ccd_support_t *out) {
   ccd_vec3_t *a, *b, *c;
   ccd_real_t dist;
 

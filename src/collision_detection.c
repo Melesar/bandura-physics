@@ -6,7 +6,10 @@
 
 #include <math.h>
 #include <stdlib.h>
+
+#ifdef COLLISIONS_DEBUG
 #include <stdio.h>
+#endif
 
 #define ARRAY_RESIZE_IF_NEEDED(array, count, capacity, type)                                                           \
   while (count >= capacity) {                                                                                          \
@@ -20,9 +23,6 @@
 #define CCD_DIR(dir) normalize(ccd_vec3_to_ray(*dir))
 
 typedef void (*support_func)(const void *, const ccd_vec3_t *, ccd_vec3_t *);
-
-bool replay_collision;
-collision_detection_context replay_context;
 
 typedef struct {
   const common_data *data;
@@ -38,8 +38,10 @@ typedef struct {
 
 static void collision_validation_failure(const physics_world *world, const collision_detection_context *ctx,
                                          bool ccd_collision, bool custom_collision) {
-  replay_collision = true;
-  replay_context = *ctx;
+#ifdef COLLISIONS_DEBUG
+  printf("Collision detection mismatch\n");
+  exit(1);
+#endif
 }
 
 static v3 body_center(v3 shape_offset, quat global_rotation, v3 body_position) {
@@ -248,8 +250,6 @@ static count_t cylinder_plane_collision(physics_world *world, const collision_de
   return 1;
 }
 
-static void debugger_anchor() {}
-
 static count_t detect_collision_ccd(physics_world *world, const collision_detection_context *ctx) {
   ccd_t ccd;
   CCD_INIT(&ccd);
@@ -274,14 +274,10 @@ static count_t detect_collision_ccd(physics_world *world, const collision_detect
   float depth;
   ccd_vec3_t normal, point;
 
-  if (replay_collision) {
-    debugger_anchor();
-  }
-
   int result = ccdGJKPenetration(&ctx_a, &ctx_b, &ccd, &depth, &normal, &point);
   bool gjk_custom = gjk_check_intersection(world, ctx);
 
-  if (!replay_collision && ((!gjk_custom && !result) || (gjk_custom && result < 0))) {
+  if ((!gjk_custom && !result) || (gjk_custom && result < 0)) {
     collision_validation_failure(world, ctx, result == 0, gjk_custom);
     return 0;
   }
@@ -327,11 +323,6 @@ count_t collisions_detect_dynamic(physics_world *world) {
           ctx.shape_b = shape_b;
 
           dyn_count += detect_collision_ccd(world, &ctx);
-
-          if (replay_collision) {
-            detect_collision_ccd(world, &replay_context);
-            replay_collision = false;
-          }
         }
       }
     }
@@ -388,11 +379,6 @@ void collisions_detect_static(physics_world *world) {
             default:
               detect_collision_ccd(world, &ctx);
               break;
-          }
-
-          if (replay_collision) {
-            detect_collision_ccd(world, &replay_context);
-            replay_collision = false;
           }
         }
       }
