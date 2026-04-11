@@ -371,6 +371,7 @@ static int doSimplex3(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
 
   ccdVec3Cross(&tmp, &ABC, &AC);
   dot = ccdVec3Dot(&tmp, &AO);
+  COLLISION_TRACE("[CCD] Dot: %.3f\n", dot);
   if (ccdIsZero(dot) || dot > CCD_ZERO) {
     dot = ccdVec3Dot(&AC, &AO);
     if (ccdIsZero(dot) || dot > CCD_ZERO) {

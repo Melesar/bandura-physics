@@ -1,3 +1,4 @@
+#include "bandura.h"
 #include "physics.h"
 #include <stdio.h>
 #include <float.h>
@@ -106,21 +107,31 @@ static void simplex_add_point(simplex *s, v3 p) {
   s->size += 1;
 }
 
-static void simplex_update_2(simplex *s, v3 *direction) {
+static bool simplex_update_2(simplex *s, v3 *direction) {
   COLLISION_TRACE("[BND] Simplex update 2\n");
   v3 a = s->points[0];
   v3 b = s->points[1];
   v3 ab = sub(b, a);
   v3 ao = negate(a);
 
-  if (dot(ab, ao) > 0) {
+  v3 cr = cross(ab, ao);
+  float c = dot(ab, ao);
+
+  if (lensq(cr) < TOLERANCE && c > 0) {
+    COLLISION_TRACE("[BND] Len2\n");
+    return true;
+  }
+
+  if (c > 0) {
     COLLISION_TRACE("[BND] Triple cross 2\n");
-    *direction = cross(cross(ab, ao), ab);
+    *direction = cross(cr, ab);
   } else {
     s->size = 1;
     COLLISION_TRACE("[BND] AO 1\n");
     *direction = ao;
   }
+
+  return false;
 }
 
 static bool simplex_update_3(simplex *s, v3 *direction) {
@@ -143,6 +154,7 @@ static bool simplex_update_3(simplex *s, v3 *direction) {
   v3 ao = negate(a);
 
   v3 abc = cross(ab, ac);
+  COLLISION_TRACE("[BND] Dot: %.3f\n", dot(cross(abc, ac), ao));
   if (dot(cross(abc, ac), ao) >= 0) {
     if (dot(ac, ao) >= 0) {
       s->points[1] = c;
@@ -150,13 +162,20 @@ static bool simplex_update_3(simplex *s, v3 *direction) {
       *direction = cross(cross(ac, ao), ac);
       COLLISION_TRACE("[BND] Triple cross 1\n");
     } else {
-      s->size = 2;
-      simplex_update_2(s, direction);
+    triple_cross_2:
+      if (dot(ab, ao) >= 0) {
+        s->size = 2;
+        *direction = cross(cross(ab, ao), ab);
+        COLLISION_TRACE("[BND] Triple cross 2\n");
+      } else {
+        s->size = 1;
+        *direction = ao;
+        COLLISION_TRACE("[BND] AO\n");
+      }
     }
   } else {
     if (dot(cross(ab, abc), ao) >= 0) {
-      s->size = 2;
-      simplex_update_2(s, direction);
+      goto triple_cross_2;
     } else {
       if (dot(abc, ao) >= 0) {
         *direction = abc;
@@ -221,6 +240,7 @@ static bool simplex_update_4(simplex *s, v3 *direction) {
 
   if (dot(abc, ao) > 0) {
     s->size = 3;
+    COLLISION_TRACE("[BND] ABC-AO\n");
 
     return simplex_update_3(s, direction);
   } else if (dot(acd, ao) > 0) {
@@ -228,11 +248,15 @@ static bool simplex_update_4(simplex *s, v3 *direction) {
     s->points[2] = d;
     s->size = 3;
 
+    COLLISION_TRACE("[BND] ACD-AO\n");
+
     return simplex_update_3(s, direction);
   } else if (dot(adb, ao) > 0) {
     s->points[1] = d;
     s->points[2] = b;
     s->size = 3;
+
+    COLLISION_TRACE("[BND] ADB-AO\n");
 
     return simplex_update_3(s, direction);
   } else {
@@ -251,8 +275,7 @@ static bool simplex_update(simplex *s, v3 *direction) {
       return simplex_update_3(s, direction);
 
     case 2:
-      simplex_update_2(s, direction);
-      return false;
+      return simplex_update_2(s, direction);
   }
 
   return false;
