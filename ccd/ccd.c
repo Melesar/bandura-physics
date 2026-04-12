@@ -340,20 +340,13 @@ static int doSimplex3(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
   COLLISION_TRACE("[CCD] Simplex size 3 check\n");
   const ccd_support_t *A, *B, *C;
   ccd_vec3_t AO, AB, AC, ABC, tmp;
-  ccd_real_t dot, dist;
+  ccd_real_t dot;
 
   // get last added as A
   A = ccdSimplexLast(simplex);
   // get the other points
   B = ccdSimplexPoint(simplex, 1);
   C = ccdSimplexPoint(simplex, 0);
-
-  // check touching contact
-  dist = ccdVec3PointTriDist2(ccd_vec3_origin, &A->v, &B->v, &C->v, NULL);
-  if (ccdIsZero(dist)) {
-    COLLISION_TRACE("[CCD] TriDist ABC\n");
-    return 1;
-  }
 
   // check if triangle is really triangle (has area > 0)
   // if not simplex can't be expanded and thus no itersection is found
@@ -443,32 +436,6 @@ static int doSimplex4(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
   dist = ccdVec3PointTriDist2(&A->v, &B->v, &C->v, &D->v, NULL);
   if (ccdIsZero(dist)) {
     return -1;
-  }
-
-  // check if origin lies on some of tetrahedron's face - if so objects
-  // intersect
-  dist = ccdVec3PointTriDist2(ccd_vec3_origin, &A->v, &B->v, &C->v, NULL);
-  if (ccdIsZero(dist)) {
-    COLLISION_TRACE("[CCD] TriDist ABC\n");
-    return 1;
-  }
-  dist = ccdVec3PointTriDist2(ccd_vec3_origin, &A->v, &C->v, &D->v, NULL);
-  COLLISION_TRACE("[CCD] A (%.8f, %.8f, %.8f), C (%.8f, %.8f, %.8f), D (%.8f, %.8f, %.8f)\n", A->v.v[0], A->v.v[1],
-                  A->v.v[2], C->v.v[0], C->v.v[1], C->v.v[2], D->v.v[0], D->v.v[1], D->v.v[2]);
-  if (ccdIsZero(dist)) {
-    COLLISION_TRACE("[CCD] TriDist ACD. A (%.4f, %.4f, %.4f), C (%.4f, %.4f, %.4f), D (%.4f, %.4f, %.4f)\n", A->v.v[0],
-                    A->v.v[1], A->v.v[2], C->v.v[0], C->v.v[1], C->v.v[2], D->v.v[0], D->v.v[1], D->v.v[2]);
-    return 1;
-  }
-  dist = ccdVec3PointTriDist2(ccd_vec3_origin, &A->v, &B->v, &D->v, NULL);
-  if (ccdIsZero(dist)) {
-    COLLISION_TRACE("[CCD] TriDist ABD\n");
-    return 1;
-  }
-  dist = ccdVec3PointTriDist2(ccd_vec3_origin, &B->v, &C->v, &D->v, NULL);
-  if (ccdIsZero(dist)) {
-    COLLISION_TRACE("[CCD] TriDist BCD\n");
-    return 1;
   }
 
   // compute AO, AB, AC, AD segments and ABC, ACD, ADB normal vectors

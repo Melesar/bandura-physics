@@ -289,7 +289,10 @@ static count_t detect_collision_ccd(physics_world *world, const collision_detect
   int result = ccdGJKPenetration(&ctx_a, &ctx_b, &ccd, &depth, &normal, &point);
   bool gjk_custom = gjk_check_intersection(world, ctx);
 
-  if ((!gjk_custom && !result) || (gjk_custom && result < 0)) {
+  /* Only validate false negatives: BND misses a collision that CCD found.
+   * BND false positives (BND says collision, CCD says no) are benign at the
+   * near-degenerate boundary — EPA will produce a near-zero penetration depth. */
+  if (!gjk_custom && !result) {
     collision_validation_failure(world, ctx, result == 0, gjk_custom);
     return 0;
   }

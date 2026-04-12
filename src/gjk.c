@@ -29,6 +29,8 @@ inline static int sign(float x) {
   return x > 0 ? 1 : -1;
 }
 
+static inline bool is_zero(float x) { return fabsf(x) < TOLERANCE; }
+
 static v3 body_center(const support_context *ctx) {
   v3 shape_offset = ctx->shape.offset;
   quat global_rotation = ctx->data->rotations[ctx->index];
@@ -130,7 +132,7 @@ static bool simplex_update_2(simplex *s, v3 *direction) {
     return true;
   }
 
-  if (c > 0) {
+  if (is_zero(c) || c > 0) {
     COLLISION_TRACE("[BND] Triple cross 2\n");
     *direction = cross(cr, ab);
   } else {
@@ -148,12 +150,8 @@ static bool simplex_update_3(simplex *s, v3 *direction) {
   v3 b = s->points[1];
   v3 c = s->points[2];
 
-  float distance = distance_to_triangle(zero(), a, b, c);
-  if (distance < TOLERANCE) {
-    return true;
-  }
-
   if (distancesqr(a, b) < TOLERANCE || distancesqr(a, c) < TOLERANCE) {
+    *direction = zero();
     return false;
   }
 
@@ -162,15 +160,19 @@ static bool simplex_update_3(simplex *s, v3 *direction) {
   v3 ao = negate(a);
 
   v3 abc = cross(ab, ac);
-  if (dot(cross(abc, ac), ao) >= 0) {
-    if (dot(ac, ao) >= 0) {
+
+  float d1 = dot(cross(abc, ac), ao);
+  if (is_zero(d1) || d1 > 0) {
+    float d2 = dot(ac, ao);
+    if (is_zero(d2) || d2 > 0) {
       s->points[1] = c;
       s->size = 2;
       *direction = cross(cross(ac, ao), ac);
       COLLISION_TRACE("[BND] Triple cross 1\n");
     } else {
-    triple_cross_2:
-      if (dot(ab, ao) >= 0) {
+    do_simplex3_edge_ab:;
+      float d3 = dot(ab, ao);
+      if (is_zero(d3) || d3 > 0) {
         s->size = 2;
         *direction = cross(cross(ab, ao), ab);
         COLLISION_TRACE("[BND] Triple cross 2\n");
@@ -181,16 +183,18 @@ static bool simplex_update_3(simplex *s, v3 *direction) {
       }
     }
   } else {
-    if (dot(cross(ab, abc), ao) >= 0) {
-      goto triple_cross_2;
+    float d4 = dot(cross(ab, abc), ao);
+    if (is_zero(d4) || d4 > 0) {
+      goto do_simplex3_edge_ab;
     } else {
-      if (dot(abc, ao) >= 0) {
+      float d5 = dot(abc, ao);
+      if (is_zero(d5) || d5 > 0) {
         *direction = abc;
         COLLISION_TRACE("[BND] ABC\n");
       } else {
-        s->points[2] = b;
-        s->points[1] = c;
-
+        v3 tmp = s->points[1];
+        s->points[1] = s->points[2];
+        s->points[2] = tmp;
         *direction = negate(abc);
         COLLISION_TRACE("[BND] -ABC\n");
       }
@@ -206,36 +210,6 @@ static bool simplex_update_4(simplex *s, v3 *direction) {
   v3 b = s->points[1];
   v3 c = s->points[2];
   v3 d = s->points[3];
-
-  float distance = distance_to_triangle(a, b, c, d);
-  if (distance < TOLERANCE) {
-    return false;
-  }
-
-  distance = distance_to_triangle(zero(), a, b, c);
-  if (distance < TOLERANCE) {
-    COLLISION_TRACE("[BND] TriDist ABC\n");
-    return true;
-  }
-
-  distance = distance_to_triangle(zero(), a, c, d);
-  if (distance < TOLERANCE) {
-    COLLISION_TRACE("[BND] TriDist ACD. A (%.8f, %.8f, %.8f), C (%.8f, %.8f, %.8f), D (%.8f, %.8f, %.8f)\n", a.x, a.y,
-                    a.z, c.x, c.y, c.z, d.x, d.y, d.z);
-    return true;
-  }
-
-  distance = distance_to_triangle(zero(), a, b, d);
-  if (distance < TOLERANCE) {
-    COLLISION_TRACE("[BND] TriDist ADB\n");
-    return true;
-  }
-
-  distance = distance_to_triangle(zero(), b, c, d);
-  if (distance < TOLERANCE) {
-    COLLISION_TRACE("[BND] TriDist BCD\n");
-    return true;
-  }
 
   v3 ab = sub(b, a);
   v3 ac = sub(c, a);
@@ -273,33 +247,6 @@ static bool simplex_update_4(simplex *s, v3 *direction) {
   }
 
   return simplex_update_3(s, direction);
-
-  if (dot(abc, ao) > 0) {
-    s->size = 3;
-    COLLISION_TRACE("[BND] ABC-AO\n");
-
-    return simplex_update_3(s, direction);
-  } else if (dot(acd, ao) > 0) {
-    s->points[1] = c;
-    s->points[2] = d;
-    s->size = 3;
-
-    COLLISION_TRACE("[BND] ACD-AO\n");
-
-    return simplex_update_3(s, direction);
-  } else if (dot(adb, ao) > 0) {
-    s->points[1] = d;
-    s->points[2] = b;
-    s->size = 3;
-
-    COLLISION_TRACE("[BND] ADB-AO\n");
-
-    return simplex_update_3(s, direction);
-  } else {
-    return true;
-  }
-
-  return false;
 }
 
 static bool simplex_update(simplex *s, v3 *direction) {
