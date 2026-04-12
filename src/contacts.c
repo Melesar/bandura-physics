@@ -1,5 +1,6 @@
 #include "physics.h"
 #include "profiler.h"
+#include "trace.h"
 #include <stdlib.h>
 
 void contacts_generate(physics_world *world) {

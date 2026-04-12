@@ -166,6 +166,7 @@ fn build_ccd(b: *std.Build, options: Options, target: std.Build.ResolvedTarget, 
         flags.appendAssumeCapacity("-DCOLLISIONS_DEBUG");
     }
 
+    module.addIncludePath(b.path("include"));
     module.addIncludePath(b.path("ccd"));
     module.addCSourceFiles(.{
         .files = try collectSources(b, "ccd"),

@@ -21,11 +21,12 @@
 #include "polytope.h"
 #include "simplex.h"
 #include "vec3.h"
+#include "trace.h"
 #include <float.h>
 #include <stdio.h>
 
 #ifdef COLLISIONS_DEBUG
-#define COLLISION_TRACE(...) printf(__VA_ARGS__)
+#define COLLISION_TRACE(...) trace_log(__VA_ARGS__)
 #else
 #define COLLISION_TRACE(...)
 #endif
@@ -371,7 +372,6 @@ static int doSimplex3(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
 
   ccdVec3Cross(&tmp, &ABC, &AC);
   dot = ccdVec3Dot(&tmp, &AO);
-  COLLISION_TRACE("[CCD] Dot: %.3f\n", dot);
   if (ccdIsZero(dot) || dot > CCD_ZERO) {
     dot = ccdVec3Dot(&AC, &AO);
     if (ccdIsZero(dot) || dot > CCD_ZERO) {
@@ -453,8 +453,11 @@ static int doSimplex4(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
     return 1;
   }
   dist = ccdVec3PointTriDist2(ccd_vec3_origin, &A->v, &C->v, &D->v, NULL);
+  COLLISION_TRACE("[CCD] A (%.8f, %.8f, %.8f), C (%.8f, %.8f, %.8f), D (%.8f, %.8f, %.8f)\n", A->v.v[0], A->v.v[1],
+                  A->v.v[2], C->v.v[0], C->v.v[1], C->v.v[2], D->v.v[0], D->v.v[1], D->v.v[2]);
   if (ccdIsZero(dist)) {
-    COLLISION_TRACE("[CCD] TriDist ACD\n");
+    COLLISION_TRACE("[CCD] TriDist ACD. A (%.4f, %.4f, %.4f), C (%.4f, %.4f, %.4f), D (%.4f, %.4f, %.4f)\n", A->v.v[0],
+                    A->v.v[1], A->v.v[2], C->v.v[0], C->v.v[1], C->v.v[2], D->v.v[0], D->v.v[1], D->v.v[2]);
     return 1;
   }
   dist = ccdVec3PointTriDist2(ccd_vec3_origin, &A->v, &B->v, &D->v, NULL);
@@ -491,6 +494,7 @@ static int doSimplex4(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
   AD_O = ccdSign(ccdVec3Dot(&ABC, &AO)) == D_on_ABC;
 
   if (AB_O && AC_O && AD_O) {
+    COLLISION_TRACE("[CCD] Tetrahedron inside\n");
     // origin is in tetrahedron
     return 1;
 
@@ -503,17 +507,20 @@ static int doSimplex4(ccd_simplex_t *simplex, ccd_vec3_t *dir) {
     // D and C are in place
     ccdSimplexSet(simplex, 2, A);
     ccdSimplexSetSize(simplex, 3);
+    COLLISION_TRACE("[CCD] AB_O\n");
   } else if (!AC_O) {
     // C is farthest
     ccdSimplexSet(simplex, 1, D);
     ccdSimplexSet(simplex, 0, B);
     ccdSimplexSet(simplex, 2, A);
     ccdSimplexSetSize(simplex, 3);
+    COLLISION_TRACE("[CCD] AC_O\n");
   } else { // (!AD_O)
     ccdSimplexSet(simplex, 0, C);
     ccdSimplexSet(simplex, 1, B);
     ccdSimplexSet(simplex, 2, A);
     ccdSimplexSetSize(simplex, 3);
+    COLLISION_TRACE("[CCD] AD_O\n");
   }
 
   return doSimplex3(simplex, dir);

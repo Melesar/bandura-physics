@@ -3,6 +3,7 @@
 #include "vec3.h"
 #include "ccd.h"
 #include "physics.h"
+#include "trace.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -36,13 +37,18 @@ typedef struct {
   v3 axis[3];
 } collision_box;
 
+bool replay_collision;
+
 static void collision_validation_failure(const physics_world *world, const collision_detection_context *ctx,
                                          bool ccd_collision, bool custom_collision) {
 #ifdef COLLISIONS_DEBUG
+  trace_print();
   printf("Collision detection mismatch\n");
   exit(1);
 #endif
 }
+
+static void debugger_anchor() { exit(1); }
 
 static v3 body_center(v3 shape_offset, quat global_rotation, v3 body_position) {
   v3 center = shape_offset;
@@ -274,6 +280,12 @@ static count_t detect_collision_ccd(physics_world *world, const collision_detect
   float depth;
   ccd_vec3_t normal, point;
 
+  if (replay_collision) {
+    debugger_anchor();
+  }
+
+  trace_clear();
+
   int result = ccdGJKPenetration(&ctx_a, &ctx_b, &ccd, &depth, &normal, &point);
   bool gjk_custom = gjk_check_intersection(world, ctx);
 
@@ -323,6 +335,10 @@ count_t collisions_detect_dynamic(physics_world *world) {
           ctx.shape_b = shape_b;
 
           dyn_count += detect_collision_ccd(world, &ctx);
+
+          if (replay_collision) {
+            detect_collision_ccd(world, &ctx);
+          }
         }
       }
     }
@@ -378,6 +394,10 @@ void collisions_detect_static(physics_world *world) {
 
             default:
               detect_collision_ccd(world, &ctx);
+
+              if (replay_collision) {
+                detect_collision_ccd(world, &ctx);
+              }
               break;
           }
         }

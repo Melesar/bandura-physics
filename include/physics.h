@@ -172,4 +172,5 @@ bool gjk_check_intersection(const physics_world *world, const collision_detectio
 float distance_to_triangle(v3 from, v3 a, v3 b, v3 c);
 float distance_to_line_segment(v3 from, v3 a, v3 b);
 
+
 #endif

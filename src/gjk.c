@@ -1,12 +1,12 @@
 #include "bandura.h"
 #include "physics.h"
-#include <stdio.h>
+#include "trace.h"
 #include <float.h>
 
 #define TOLERANCE FLT_EPSILON
 
 #ifdef COLLISIONS_DEBUG
-#define COLLISION_TRACE(...) printf(__VA_ARGS__)
+#define COLLISION_TRACE(...) trace_log(__VA_ARGS__)
 #else
 #define COLLISION_TRACE(...)
 #endif
@@ -20,6 +20,14 @@ typedef struct {
 typedef v3 (*support_func)(const support_context *, v3);
 
 const v3 initial_direction = vec3(1, 0, 0);
+
+inline static int sign(float x) {
+  if (fabsf(x) < TOLERANCE) {
+    return 0;
+  }
+
+  return x > 0 ? 1 : -1;
+}
 
 static v3 body_center(const support_context *ctx) {
   v3 shape_offset = ctx->shape.offset;
@@ -154,7 +162,6 @@ static bool simplex_update_3(simplex *s, v3 *direction) {
   v3 ao = negate(a);
 
   v3 abc = cross(ab, ac);
-  COLLISION_TRACE("[BND] Dot: %.3f\n", dot(cross(abc, ac), ao));
   if (dot(cross(abc, ac), ao) >= 0) {
     if (dot(ac, ao) >= 0) {
       s->points[1] = c;
@@ -213,7 +220,8 @@ static bool simplex_update_4(simplex *s, v3 *direction) {
 
   distance = distance_to_triangle(zero(), a, c, d);
   if (distance < TOLERANCE) {
-    COLLISION_TRACE("[BND] TriDist ACD\n");
+    COLLISION_TRACE("[BND] TriDist ACD. A (%.8f, %.8f, %.8f), C (%.8f, %.8f, %.8f), D (%.8f, %.8f, %.8f)\n", a.x, a.y,
+                    a.z, c.x, c.y, c.z, d.x, d.y, d.z);
     return true;
   }
 
@@ -237,6 +245,34 @@ static bool simplex_update_4(simplex *s, v3 *direction) {
   v3 abc = cross(ab, ac);
   v3 acd = cross(ac, ad);
   v3 adb = cross(ad, ab);
+
+  int b_acd = sign(dot(ab, acd));
+  int c_adb = sign(dot(ac, adb));
+  int d_abc = sign(dot(ad, abc));
+
+  bool acd_o = sign(dot(acd, ao)) == b_acd;
+  bool adb_o = sign(dot(adb, ao)) == c_adb;
+  bool abc_o = sign(dot(abc, ao)) == d_abc;
+
+  if (acd_o && adb_o && abc_o) {
+    return true;
+  } else if (!acd_o) {
+    s->points[1] = c;
+    s->points[2] = d;
+    s->size = 3;
+
+    COLLISION_TRACE("[BND] ACD_O\n");
+  } else if (!adb_o) {
+    s->points[2] = b;
+    s->points[1] = d;
+    s->size = 3;
+    COLLISION_TRACE("[BND] ADB_O\n");
+  } else if (!abc_o) {
+    s->size = 3;
+    COLLISION_TRACE("[BND] ABC_O\n");
+  }
+
+  return simplex_update_3(s, direction);
 
   if (dot(abc, ao) > 0) {
     s->size = 3;

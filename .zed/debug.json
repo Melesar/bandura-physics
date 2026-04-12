@@ -18,7 +18,7 @@
     "label": "Debug vortex",
     "build": {
       "command": "zig",
-      "args": ["build"],
+      "args": ["build", "-Dcollisions-debug=true"],
       "cwd": "$ZED_WORKTREE_ROOT",
     },
     "program": "$ZED_WORKTREE_ROOT/zig-out/bin/vortex",

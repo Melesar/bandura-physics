@@ -1,5 +1,6 @@
 #define RAYMATH_IMPLEMENTATION
 #include "bandura.h"
+#include <float.h>
 
 m3 matrix_identity() { return (m3){{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}; }
 
@@ -212,7 +213,7 @@ float distance_to_triangle(v3 from, v3 a, v3 b, v3 c) {
   float s, t;
   float distance = 0;
   float d = w * v - r * r;
-  if (fabsf(d) < EPSILON) {
+  if (fabsf(d) < FLT_EPSILON) {
     s = t = -1;
   } else {
     s = (q * r - w * p) / d;
@@ -242,7 +243,6 @@ float distance_to_triangle(v3 from, v3 a, v3 b, v3 c) {
 
   return distance;
 }
-
 
 float smooth_value_read(smooth_value v) {
   float result = 0;
