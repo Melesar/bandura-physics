@@ -179,7 +179,7 @@ quat integrate_rotation_midpoint(quat rotation, v3 angular_momentum, m3 base_inv
   return qnormalize(qmul(step, rotation));
 }
 
-float distance_to_line_segment(v3 from, v3 a, v3 b) {
+float distance_to_line_segment(v3 from, v3 a, v3 b, v3 *closest) {
   v3 d = sub(b, a);
   v3 ao = sub(a, from);
 
@@ -187,18 +187,19 @@ float distance_to_line_segment(v3 from, v3 a, v3 b) {
   t /= lensq(d);
 
   if (t <= 0) {
+    *closest = a;
     return distancesqr(a, from);
   } else if (t >= 1) {
+    *closest = b;
     return distancesqr(b, from);
   } else {
-    d = scale(d, t);
-    d = add(d, a);
+    *closest = add(a, scale(d, t));
 
-    return lensq(d);
+    return distancesqr(*closest, from);
   }
 }
 
-float distance_to_triangle(v3 from, v3 a, v3 b, v3 c) {
+float distance_to_triangle(v3 from, v3 a, v3 b, v3 c, v3 *closest) {
   v3 d1 = sub(b, a);
   v3 d2 = sub(c, a);
   v3 ao = sub(a, from);
@@ -221,23 +222,25 @@ float distance_to_triangle(v3 from, v3 a, v3 b, v3 c) {
   }
 
   if (s >= 0 && s <= 1 && t >= 0 && t <= 1 && t + s <= 1) {
-    distance = s * s * v;
-    distance += t * t * w;
-    distance += 2.0 * s * t * r;
-    distance += 2.0 * s * p;
-    distance += 2.0 * t * q;
-    distance += u;
-  } else {
-    distance = distance_to_line_segment(from, a, b);
+    d1 = scale(d1, s);
+    d2 = scale(d2, t);
 
-    float distance2 = distance_to_line_segment(from, a, c);
+    *closest = add(a, add(d1, d2));
+    distance = distancesqr(*closest, from);
+  } else {
+    distance = distance_to_line_segment(from, a, b, closest);
+
+    v3 closest_2;
+    float distance2 = distance_to_line_segment(from, a, c, &closest_2);
     if (distance2 < distance) {
       distance = distance2;
+      *closest = closest_2;
     }
 
-    distance2 = distance_to_line_segment(from, b, c);
+    distance2 = distance_to_line_segment(from, b, c, &closest_2);
     if (distance2 < distance) {
       distance = distance2;
+      *closest = closest_2;
     }
   }
 

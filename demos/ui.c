@@ -18,18 +18,21 @@ typedef enum {
 
 typedef struct {
   custom_element_type type;
+
   union {
     struct {
       int *value;
       int min_value;
       int max_value;
     } input_int;
+
     struct {
       float *value;
       float min_value;
       float max_value;
     } input_float;
   };
+
   GuiState state;
 } custom_element;
 
@@ -348,6 +351,11 @@ void ui_label_v3(const char *label, v3 value) {
   Clay_String vs = {.chars = v, .length = strlen(v), .isStaticallyAllocated = false};
 
   ui_value_label(label, vs);
+}
+
+void ui_label_bool(const char *label, bool value) {
+  Clay_String s = clay_from_string(value ? "true" : "false");
+  ui_value_label(label, s);
 }
 
 void ui_label_float(char *label, float value) {

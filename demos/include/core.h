@@ -73,6 +73,7 @@ bool ui_begin_area(const char *title, bool *collapsed);
 void ui_end_area();
 
 void ui_label(char *label);
+void ui_label_bool(const char *lable, bool value);
 void ui_label_float(char *label, float value);
 void ui_label_v3(const char *label, v3 value);
 void ui_label_stat(const char *label, float value);

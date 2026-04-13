@@ -169,8 +169,8 @@ body_shape *shapes_get(const physics_world *world, body_shapes shapes);
 quat integrate_rotation_midpoint(quat rotation, v3 angular_momentum, m3 base_inv_inertia, float dt);
 bool gjk_check_intersection(physics_world *world, const collision_detection_context *ctx);
 
-float distance_to_triangle(v3 from, v3 a, v3 b, v3 c);
-float distance_to_line_segment(v3 from, v3 a, v3 b);
+float distance_to_triangle(v3 from, v3 a, v3 b, v3 c, v3 *closest);
+float distance_to_line_segment(v3 from, v3 a, v3 b, v3 *closest);
 
 
 #endif
