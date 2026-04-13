@@ -7,10 +7,7 @@
 
 #include <math.h>
 #include <stdlib.h>
-
-#ifdef COLLISIONS_DEBUG
 #include <stdio.h>
-#endif
 
 #define ARRAY_RESIZE_IF_NEEDED(array, count, capacity, type)                                                           \
   while (count >= capacity) {                                                                                          \
@@ -43,9 +40,9 @@ static void collision_validation_failure(const physics_world *world, const colli
                                          bool ccd_collision, bool custom_collision) {
 #ifdef COLLISIONS_DEBUG
   trace_print();
+#endif
   printf("Collision detection mismatch\n");
   exit(1);
-#endif
 }
 
 static void debugger_anchor() { exit(1); }
@@ -286,8 +283,10 @@ static count_t detect_collision_ccd(physics_world *world, const collision_detect
 
   trace_clear();
 
+  simplex s;
+
   int result = ccdGJKPenetration(&ctx_a, &ctx_b, &ccd, &depth, &normal, &point);
-  bool gjk_custom = gjk_check_intersection(world, ctx);
+  bool gjk_custom = gjk_check_intersection(world, ctx, &s);
 
   /* Only validate false negatives: BND misses a collision that CCD found.
    * BND false positives (BND says collision, CCD says no) are benign at the

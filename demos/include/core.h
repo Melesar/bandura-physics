@@ -28,6 +28,7 @@
 
 typedef struct {
   char *window_title;
+  bool draw_ground;
   Vector3 camera_position;
   Vector3 camera_target;
 } program_config;

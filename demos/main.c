@@ -34,7 +34,7 @@ static void init_physics();
 static Shader setup_lighting();
 static Camera setup_camera(program_config config);
 static void update_camera(Camera *camera, float deltaTime);
-static void draw_scene(Camera camera, Shader shader, float dt);
+static void draw_scene(program_config config, Camera camera, Shader shader, float dt);
 static void build_ui();
 static void draw_physics_bodies();
 static void process_inputs(Camera *camera);
@@ -78,6 +78,8 @@ static physics_config config;
 
 int main(int argc, char **argv) {
   program_config program_config = {0};
+  program_config.draw_ground = true;
+
   config = physics_default_config();
 
   scenario_initialize(&program_config, &config);
@@ -126,7 +128,7 @@ int main(int argc, char **argv) {
       manipulate_gizmos(&camera);
     }
 
-    draw_scene(camera, shader, deltaTime);
+    draw_scene(program_config, camera, shader, deltaTime);
 
     accum -= sim_count * simulation_step;
     deltaTime = GetFrameTime();
@@ -218,7 +220,7 @@ static void draw_physics_bodies() {
   draw_physics_bodies_typed(BODY_STATIC);
 }
 
-static void draw_scene(Camera camera, Shader shader, float dt) {
+static void draw_scene(program_config program_config, Camera camera, Shader shader, float dt) {
   BeginDrawing();
 
   ClearBackground(COLOR_BACKGROUND);
@@ -231,7 +233,9 @@ static void draw_scene(Camera camera, Shader shader, float dt) {
   scenario_draw_scene(world);
 
   // Draw ground plane
-  DrawModel(groundModel, (Vector3){0.0f, 0.0f, 0.0f}, 1.0f, WHITE);
+  if (program_config.draw_ground) {
+    DrawModel(groundModel, (Vector3){0.0f, 0.0f, 0.0f}, 1.0f, WHITE);
+  }
   draw_custom_grid(32, 1.0f);
 
   if (edit_mode)

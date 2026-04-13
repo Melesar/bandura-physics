@@ -85,4 +85,5 @@ void main()
     float dist = length(viewPos - fragPosition);
     float fogFactor = clamp((fogEnd - dist) / (fogEnd - fogStart), 0.0, 1.0);
     finalColor.rgb = mix(fogColor, finalColor.rgb, fogFactor);
+    finalColor.a = fragColor.a;
 }
