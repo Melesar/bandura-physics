@@ -26,9 +26,7 @@ void scenario_setup_scene(physics_world *world) {
   *big_box.position = (v3){0, 1.5, 0};
 }
 
-void scenario_simulate(physics_world *world, float dt) {
-  physics_step(world, dt);
-}
+void scenario_simulate(physics_world *world, float dt) { physics_step(world, dt); }
 
 void scenario_handle_input(physics_world *world, Camera *cam) {
   if (IsKeyPressed(KEY_X)) {
@@ -37,14 +35,14 @@ void scenario_handle_input(physics_world *world, Camera *cam) {
     *big_box.angular_momentum = (v3){1, 1, 1};
   }
 
-  if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-    v3 direction = normalize(sub(cam->target, cam->position));
+  // if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+  //   v3 direction = normalize(sub(cam->target, cam->position));
 
-    body ball = physics_add_sphere_dynamic(world, 3, 0.7);
-    *ball.position = add(cam->position, direction);
+  //   body ball = physics_add_sphere_dynamic(world, 3, 0.7);
+  //   *ball.position = add(cam->position, direction);
 
-    physics_apply_impulse(world, ball.handle, scale(direction, 70));
-  }
+  //   physics_apply_impulse(world, ball.handle, scale(direction, 70));
+  // }
 
   if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
     Ray r = GetScreenToWorldRay(GetMousePosition(), *cam);

@@ -1,5 +1,4 @@
 #include "physics.h"
-#include "bandura.h"
 #include "profiler.h"
 
 #include <assert.h>
@@ -342,7 +341,7 @@ static count_t insert_new_dynamic_body(physics_world *world) {
     data->outer_lookup[prev_outer_index].index = prev_count;
     data->inner_lookup[prev_count] = prev_outer_index;
 
-    new_outer_lookup((common_data*)data, &data->outer_lookup[outer_index], outer_index, index);
+    new_outer_lookup((common_data *)data, &data->outer_lookup[outer_index], outer_index, index);
     data->inner_lookup[index] = outer_index;
 
     printf("[BND] Dynamic body added (inner: %u, outer: %u). Other one moved %d -> %d (outer: %d)\n", index,
@@ -555,11 +554,13 @@ void physics_remove_body(physics_world *world, body_handle handle) {
 
     if (index < awake_count) {
       world->dynamics.awake_count -= 1;
-      swap_bodies(world, handle.type, index, awake_count);
-    }
+      swap_bodies(world, handle.type, index, awake_count - 1);
 
-    if (awake_count < body_count) {
-      swap_bodies(world, handle.type, awake_count, body_count - 1);
+      if (awake_count < body_count) {
+        swap_bodies(world, handle.type, awake_count - 1, body_count - 1);
+      }
+    } else {
+      swap_bodies(world, handle.type, index, body_count - 1);
     }
   } else {
     swap_bodies(world, handle.type, index, data->count - 1);
@@ -813,6 +814,7 @@ bool physics_body_next_typed(const physics_world *world, body_enumerator_typed *
     }
 
     enumerator->handle.index = data->first_outer_node;
+    enumerator->handle.generation = data->generations[data->outer_lookup[enumerator->handle.index].index];
     return true;
   }
 
@@ -822,6 +824,7 @@ bool physics_body_next_typed(const physics_world *world, body_enumerator_typed *
   }
 
   enumerator->handle.index = node.next;
+  enumerator->handle.generation = data->generations[data->outer_lookup[enumerator->handle.index].index];
   return true;
 }
 
