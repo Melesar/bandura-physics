@@ -2,7 +2,7 @@
 #include "physics.h"
 #include <stdlib.h>
 
-static inline contact *new_contact(physics_world *world) {
+static inline contact *joint_new_contact(physics_world *world) {
   contacts *contacts = &world->contacts;
 
   if (contacts->count >= contacts->capacity) {
@@ -130,7 +130,7 @@ static count_t generate_contacts(physics_world *world, count_t start, count_t en
       continue;
     }
 
-    contact *contact = new_contact(world);
+    contact *contact = joint_new_contact(world);
     contact->index_a = indices[0];
     contact->index_b = indices[1];
     contact->point = scale(add(world_points[0], world_points[1]), 0.5);
