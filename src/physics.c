@@ -202,19 +202,55 @@ body_handle make_body_handle(const physics_world *world, body_type type, count_t
 }
 
 count_t handle_to_inner_index(const physics_world *world, body_handle handle) {
-  return as_common_const(world, handle.type)->outer_lookup[handle.index];
+  return as_common_const(world, handle.type)->outer_lookup[handle.index].index;
+}
+
+void new_outer_lookup(common_data *data, outer_lookup_node *target_node, count_t index, count_t value) {
+  if (data->first_outer_node == max_body_index) {
+    data->first_outer_node = index;
+
+    target_node->index = value;
+    target_node->prev = max_body_index;
+    target_node->next = max_body_index;
+    return;
+  }
+
+  count_t current_index = data->first_outer_node;
+  outer_lookup_node *node = &data->outer_lookup[current_index];
+  while (node->next < index) {
+    current_index = node->next;
+    node = &data->outer_lookup[node->next];
+  }
+
+  if (node->next == max_body_index) {
+    target_node->index = value;
+    target_node->prev = current_index;
+    target_node->next = max_body_index;
+
+    node->next = index;
+    return;
+  }
+
+  count_t next = node->next;
+  data->outer_lookup[next].prev = index;
+  node->next = index;
+
+  target_node->index = value;
+  target_node->prev = current_index;
+  target_node->next = next;
 }
 
 static void init_commons(common_data *data, count_t capacity) {
   data->capacity = capacity;
   data->count = 0;
   data->free_count = 0;
+  data->first_outer_node = max_body_index;
   data->positions = malloc(sizeof(v3) * capacity);
   data->rotations = malloc(sizeof(quat) * capacity);
   data->shapes = malloc(sizeof(body_shapes) * capacity);
   data->free_list = malloc(sizeof(count_t) * capacity);
   data->generations = malloc(sizeof(uint8_t) * capacity);
-  data->outer_lookup = malloc(sizeof(count_t) * capacity);
+  data->outer_lookup = malloc(sizeof(outer_lookup_node) * capacity);
   data->inner_lookup = malloc(sizeof(count_t) * capacity);
 }
 
@@ -225,7 +261,7 @@ static void realloc_commons(common_data *data) {
   data->shapes = realloc(data->shapes, sizeof(body_shapes) * data->capacity);
   data->free_list = realloc(data->free_list, sizeof(count_t) * data->capacity);
   data->generations = realloc(data->generations, sizeof(uint8_t) * data->capacity);
-  data->outer_lookup = realloc(data->outer_lookup, sizeof(count_t) * data->capacity);
+  data->outer_lookup = realloc(data->outer_lookup, sizeof(outer_lookup_node) * data->capacity);
   data->inner_lookup = realloc(data->inner_lookup, sizeof(count_t) * data->capacity);
 }
 
@@ -303,17 +339,17 @@ static count_t insert_new_dynamic_body(physics_world *world) {
     index = data->awake_count;
 
     count_t prev_outer_index = data->inner_lookup[index];
-    data->outer_lookup[prev_outer_index] = prev_count;
+    data->outer_lookup[prev_outer_index].index = prev_count;
     data->inner_lookup[prev_count] = prev_outer_index;
 
-    data->outer_lookup[outer_index] = index;
+    new_outer_lookup((common_data*)data, &data->outer_lookup[outer_index], outer_index, index);
     data->inner_lookup[index] = outer_index;
 
     printf("[BND] Dynamic body added (inner: %u, outer: %u). Other one moved %d -> %d (outer: %d)\n", index,
            outer_index, index, prev_count, prev_outer_index);
   } else {
     index = prev_count;
-    data->outer_lookup[outer_index] = index;
+    new_outer_lookup((common_data *)data, &data->outer_lookup[outer_index], outer_index, index);
     data->inner_lookup[index] = outer_index;
     printf("[BND] Dynamic body added (inner: %u, outer: %u)\n", index, outer_index);
   }
@@ -366,7 +402,7 @@ static body add_primitive_body_static(physics_world *world, body_shape shape) {
   init_body_common(world, data, BRACKET_PRIMITIVE, &shape, 1, index);
 
   count_t outer_index = data->free_count > 0 ? data->free_list[--data->free_count] : index;
-  data->outer_lookup[outer_index] = index;
+  new_outer_lookup(data, &data->outer_lookup[outer_index], outer_index, index);
   data->inner_lookup[index] = outer_index;
 
   printf("[BND] Static body added (inner: %u, outer: %u)\n", index, outer_index);
@@ -458,7 +494,7 @@ body physics_add_compound_body_static(physics_world *world, body_shape *shapes, 
   init_body_common(world, (common_data *)&world->statics, bracket, shapes, shapes_count, index);
 
   count_t outer_index = data->free_count > 0 ? data->free_list[--data->free_count] : index;
-  data->outer_lookup[outer_index] = index;
+  new_outer_lookup(data, &data->outer_lookup[outer_index], outer_index, index);
   data->inner_lookup[index] = outer_index;
 
   world->generation += 1;
@@ -530,7 +566,21 @@ void physics_remove_body(physics_world *world, body_handle handle) {
   }
 
   data->count -= 1;
-  data->outer_lookup[handle.index] = max_body_index;
+
+  outer_lookup_node *outer_node = &data->outer_lookup[handle.index];
+  outer_node->index = max_body_index;
+
+  if (data->first_outer_node == handle.index) {
+    data->first_outer_node = outer_node->next;
+  }
+
+  if (outer_node->prev != max_body_index) {
+    data->outer_lookup[outer_node->prev].next = outer_node->next;
+  }
+
+  if (outer_node->next != max_body_index) {
+    data->outer_lookup[outer_node->next].prev = outer_node->prev;
+  }
 
   world->generation += 1;
 }
@@ -762,18 +812,17 @@ bool physics_body_next_typed(const physics_world *world, body_enumerator_typed *
       return false;
     }
 
-    enumerator->handle.index = 0;
-    if (data->outer_lookup[0] != max_body_index) {
-      return true;
-    }
+    enumerator->handle.index = data->first_outer_node;
+    return true;
   }
 
-  count_t index = ++enumerator->handle.index;
-  while (index < data->count && data->outer_lookup[index] == max_body_index) {
-    enumerator->handle.index = ++index;
+  outer_lookup_node node = data->outer_lookup[enumerator->handle.index];
+  if (node.next == max_body_index) {
+    return false;
   }
 
-  return index < data->count;
+  enumerator->handle.index = node.next;
+  return true;
 }
 
 void integrate_bodies(physics_world *world, float dt) {
@@ -866,9 +915,12 @@ void physics_reset(physics_world *world) {
   world->dynamics.count = 0;
   world->dynamics.free_count = 0;
   world->dynamics.awake_count = 0;
+  world->dynamics.first_outer_node = max_body_index;
 
   world->statics.count = 0;
   world->statics.free_count = 0;
+  world->statics.first_outer_node = max_body_index;
+
   world->stats.incomplete_resolutions = 0;
 
   contacts_reset(world);
@@ -939,8 +991,8 @@ static void swap_bodies(physics_world *world, body_type type, count_t index_a, c
     SWAP_DYNAMIC(v3, accelerations)
   }
 
-  data->outer_lookup[data->inner_lookup[index_b]] = index_b;
-  data->outer_lookup[data->inner_lookup[index_a]] = index_a;
+  data->outer_lookup[data->inner_lookup[index_b]].index = index_b;
+  data->outer_lookup[data->inner_lookup[index_a]].index = index_a;
 
   world->generation += 1;
 

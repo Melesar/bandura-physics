@@ -37,16 +37,23 @@ typedef struct {
   count_t dynamic_count;
 } contacts;
 
+typedef struct {
+  count_t index;
+  count_t prev;
+  count_t next;
+} outer_lookup_node;
+
 #define COMMON_FIELDS                                                                                                  \
   count_t capacity;                                                                                                    \
   count_t count;                                                                                                       \
   count_t free_count;                                                                                                  \
+  count_t first_outer_node;                                                                                            \
   v3 *positions;                                                                                                       \
   quat *rotations;                                                                                                     \
   body_shapes *shapes;                                                                                                 \
   uint8_t *generations;                                                                                                \
   count_t *free_list;                                                                                                  \
-  count_t *outer_lookup;                                                                                               \
+  outer_lookup_node *outer_lookup;                                                                                     \
   count_t *inner_lookup;
 
 typedef enum {

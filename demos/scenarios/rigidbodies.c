@@ -47,10 +47,10 @@ void scenario_handle_input(physics_world *world, Camera *cam) {
   }
 
   if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
-    v3 direction = normalize(sub(cam->target, cam->position));
+    Ray r = GetScreenToWorldRay(GetMousePosition(), *cam);
 
     raycast_hit raycast_hit;
-    if (physics_raycast(world, cam->position, direction, 100.0, 1, &raycast_hit)) {
+    if (physics_raycast(world, r.position, r.direction, 100.0, 1, &raycast_hit)) {
       physics_remove_body(world, raycast_hit.body);
     }
   }

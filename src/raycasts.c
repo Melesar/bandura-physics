@@ -110,27 +110,28 @@ static count_t raycast_bodies(const physics_world *world, body_type type, v3 ori
   for (count_t i = 0; i < data->count; ++i) {
     body_shape shape = *shapes_get(world, data->shapes[i]);
     raycast_hit *hit = hits + hit_count + num_hits;
-    count_t prev_count = num_hits;
 
+    bool is_hit;
     switch (shape.type) {
       case SHAPE_BOX:
-        num_hits +=
-            raycast_box(origin, direction, max_distance, data->positions[i], shape.box.size, data->rotations[i], hit);
+        is_hit = raycast_box(origin, direction, max_distance, data->positions[i], shape.box.size, data->rotations[i], hit);
         break;
 
-      case SHAPE_PLANE:
-        num_hits += raycast_plane(origin, direction, max_distance, data->positions[i], shape.plane.normal, hit);
-        break;
+      // case SHAPE_PLANE:
+      //   is_hit = raycast_plane(origin, direction, max_distance, data->positions[i], shape.plane.normal, hit);
+      //   break;
 
       default:
+        is_hit = false;
         break;
     }
 
-    if (num_hits > prev_count) {
+    if (is_hit) {
       hit->body = make_body_handle(world, type, i);
     }
 
-    if (num_hits >= max_hits) {
+    num_hits += is_hit;
+    if (hit_count + num_hits == max_hits) {
       return num_hits;
     }
   }
