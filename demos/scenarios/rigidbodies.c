@@ -35,21 +35,31 @@ void scenario_handle_input(physics_world *world, Camera *cam) {
     *big_box.angular_momentum = (v3){1, 1, 1};
   }
 
-  // if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-  //   v3 direction = normalize(sub(cam->target, cam->position));
+  if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+    v3 direction = normalize(sub(cam->target, cam->position));
 
-  //   body ball = physics_add_sphere_dynamic(world, 3, 0.7);
-  //   *ball.position = add(cam->position, direction);
+    body ball = physics_add_sphere_dynamic(world, 3, 0.7);
+    *ball.position = add(cam->position, direction);
 
-  //   physics_apply_impulse(world, ball.handle, scale(direction, 70));
-  // }
+    physics_apply_impulse(world, ball.handle, scale(direction, 70));
+  }
 
   if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
     Ray r = GetScreenToWorldRay(GetMousePosition(), *cam);
 
-    raycast_hit raycast_hit;
-    if (physics_raycast(world, r.position, r.direction, 100.0, 1, &raycast_hit)) {
-      physics_remove_body(world, raycast_hit.body);
+    raycast_hit raycast_hits[3];
+    count_t hit_count = physics_raycast(world, r.position, r.direction, 100.0, 3, raycast_hits);
+
+    for (count_t i = 0; i < hit_count; ++i) {
+      count_t num_shapes;
+      body_shape *shapes = physics_get_shapes(world, raycast_hits[i].body, &num_shapes);
+
+      if (num_shapes > 0 && shapes[0].type == SHAPE_PLANE) {
+        continue;
+      }
+
+      physics_remove_body(world, raycast_hits[i].body);
+      break;
     }
   }
 }

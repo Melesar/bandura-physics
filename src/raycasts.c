@@ -114,12 +114,13 @@ static count_t raycast_bodies(const physics_world *world, body_type type, v3 ori
     bool is_hit;
     switch (shape.type) {
       case SHAPE_BOX:
-        is_hit = raycast_box(origin, direction, max_distance, data->positions[i], shape.box.size, data->rotations[i], hit);
+        is_hit =
+            raycast_box(origin, direction, max_distance, data->positions[i], shape.box.size, data->rotations[i], hit);
         break;
 
-      // case SHAPE_PLANE:
-      //   is_hit = raycast_plane(origin, direction, max_distance, data->positions[i], shape.plane.normal, hit);
-      //   break;
+      case SHAPE_PLANE:
+        is_hit = raycast_plane(origin, direction, max_distance, data->positions[i], shape.plane.normal, hit);
+        break;
 
       default:
         is_hit = false;
