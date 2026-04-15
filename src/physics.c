@@ -2,7 +2,6 @@
 #include "profiler.h"
 
 #include <assert.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -343,14 +342,10 @@ static count_t insert_new_dynamic_body(physics_world *world) {
 
     new_outer_lookup((common_data *)data, &data->outer_lookup[outer_index], outer_index, index);
     data->inner_lookup[index] = outer_index;
-
-    printf("[BND] Dynamic body added (inner: %u, outer: %u). Other one moved %d -> %d (outer: %d)\n", index,
-           outer_index, index, prev_count, prev_outer_index);
   } else {
     index = prev_count;
     new_outer_lookup((common_data *)data, &data->outer_lookup[outer_index], outer_index, index);
     data->inner_lookup[index] = outer_index;
-    printf("[BND] Dynamic body added (inner: %u, outer: %u)\n", index, outer_index);
   }
 
   return index;
@@ -403,8 +398,6 @@ static body add_primitive_body_static(physics_world *world, body_shape shape) {
   count_t outer_index = data->free_count > 0 ? data->free_list[--data->free_count] : index;
   new_outer_lookup(data, &data->outer_lookup[outer_index], outer_index, index);
   data->inner_lookup[index] = outer_index;
-
-  printf("[BND] Static body added (inner: %u, outer: %u)\n", index, outer_index);
 
   world->generation += 1;
 
@@ -545,8 +538,6 @@ void physics_remove_body(physics_world *world, body_handle handle) {
 
   data->generations[index] += 1;
   data->free_list[data->free_count++] = handle.index; // We keep the outer index in the free list
-
-  printf("[BND] Removing body (inner: %d, outer: %d)\n", index, handle.index);
 
   if (handle.type == BODY_DYNAMIC) {
     count_t body_count = data->count;
@@ -959,9 +950,6 @@ void physics_teardown(physics_world *world) {
 
 static void swap_bodies(physics_world *world, body_type type, count_t index_a, count_t index_b) {
   common_data *data = as_common(world, type);
-
-  printf("[BND] Swapping bodies (inner: %d <-> %d, outer: %d - %d)\n", index_a, index_b, data->inner_lookup[index_a],
-         data->inner_lookup[index_b]);
 
 #define SWAP_COMMON(t, arr)                                                                                            \
   t tmp_##arr = data->arr[index_a];                                                                                    \
