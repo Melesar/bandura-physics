@@ -143,6 +143,41 @@ m3 matrix_displacement_inertia(m3 i0, v3 offset, float mass) {
   return matrix_add(i0, matrix_scale(matrix_sub(a, b), mass));
 }
 
+quat integrate_rotation_midpoint(quat rotation, v3 angular_momentum, m3 base_inv_inertia, float dt) {
+  m3 inv_inertia = matrix_inertia(base_inv_inertia, rotation);
+  v3 omega = matrix_rotate(angular_momentum, inv_inertia);
+
+  const float qdt = 0.25f * dt;
+  const float hdt = 0.5f * dt;
+
+  float half_angle = len(omega) * qdt;
+  quat half_step;
+  if (half_angle < 1e-6f) {
+    half_step = (quat){omega.x * qdt, omega.y * qdt, omega.z * qdt, 1.0f};
+    half_step = qnormalize(half_step);
+  } else {
+    float scale_factor = sinf(half_angle) / len(omega);
+    half_step = (quat){omega.x * scale_factor, omega.y * scale_factor, omega.z * scale_factor, cosf(half_angle)};
+  }
+
+  quat mid_rotation = qnormalize(qmul(half_step, rotation));
+
+  inv_inertia = matrix_inertia(base_inv_inertia, mid_rotation);
+  omega = matrix_rotate(angular_momentum, inv_inertia);
+
+  float angle = len(omega) * hdt;
+  if (angle < 1e-6f) {
+    quat step = (quat){omega.x * hdt, omega.y * hdt, omega.z * hdt, 1.0f};
+    step = qnormalize(step);
+    return qnormalize(qmul(step, rotation));
+  }
+
+  float scale_factor = sinf(angle) / len(omega);
+  quat step = (quat){omega.x * scale_factor, omega.y * scale_factor, omega.z * scale_factor, cosf(angle)};
+
+  return qnormalize(qmul(step, rotation));
+}
+
 float smooth_value_read(smooth_value v) {
   float result = 0;
   for (count_t i = 0; i < v.count; ++i) {

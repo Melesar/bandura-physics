@@ -1,4 +1,3 @@
-#include "bandura.h"
 #include "core.h"
 #include "raymath.h"
 

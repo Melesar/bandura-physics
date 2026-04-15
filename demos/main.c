@@ -187,7 +187,7 @@ static void draw_physics_bodies_typed(body_type type) {
     m4 transform =
         MatrixMultiply(QuaternionToMatrix(rotation),
                        MatrixTranslate(position.x, position.y, position.z));
-    Material material = materials[i++ % 20];
+    Material material = materials[enumerator.handle.index % 20];
 
     for (count_t k = 0; k < shapes_count; ++k) {
       body_shape shape = shapes[k];

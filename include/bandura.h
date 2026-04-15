@@ -17,8 +17,7 @@
 #define lensq(x) Vector3LengthSqr(x)
 #define distance(x, y) Vector3Distance(x, y)
 #define distancesqr(x, y) Vector3DistanceSqr(x, y)
-#define vec3(x, y, z)                                                                                                  \
-  (v3) { x, y, z }
+#define vec3(x, y, z) (v3) { x, y, z }
 #define zero() Vector3Zero()
 #define one() Vector3One()
 #define up() ((Vector3){0, 1, 0})
@@ -115,7 +114,8 @@ typedef struct {
 
 typedef struct {
   count_t type : 1;
-  count_t index : 31;
+  count_t generation: 8;
+  count_t index : 23;
 } body_handle;
 
 typedef struct {
@@ -205,6 +205,8 @@ body physics_add_cylinder_static(physics_world *world, float radius, float heigh
 body physics_add_cylinder_dynamic(physics_world *world, float mass, float radius, float height);
 body physics_add_compound_body_static(physics_world *world, body_shape *shapes, count_t shapes_count);
 body physics_add_compound_body_dynamic(physics_world *world, body_shape *shapes, float *masses, count_t shapes_count);
+
+void physics_remove_body(physics_world *world, body_handle handle);
 
 count_t physics_add_joint(physics_world *world, body_handle body_a, body_handle body_b, v3 contact_offset_a,
                           v3 contact_offset_b, float max_distance);

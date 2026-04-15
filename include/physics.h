@@ -40,9 +40,12 @@ typedef struct {
 #define COMMON_FIELDS                                                                                                  \
   count_t capacity;                                                                                                    \
   count_t count;                                                                                                       \
+  count_t free_count;                                                                                                  \
   v3 *positions;                                                                                                       \
   quat *rotations;                                                                                                     \
   body_shapes *shapes;                                                                                                 \
+  uint8_t *generations;                                                                                                \
+  count_t *free_list;                                                                                                  \
   count_t *outer_lookup;                                                                                               \
   count_t *inner_lookup;
 
@@ -150,5 +153,7 @@ bool shapes_put_into_empty_slot(physics_world *world, shape_dimension_bracket br
                                 count_t shapes_count, count_t *slot_number);
 body_shapes shapes_write(physics_world *world, shape_dimension_bracket bracket, body_shape *shapes, count_t count);
 body_shape *shapes_get(const physics_world *world, body_shapes shapes);
+
+quat integrate_rotation_midpoint(quat rotation, v3 angular_momentum, m3 base_inv_inertia, float dt);
 
 #endif

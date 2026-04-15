@@ -1,5 +1,5 @@
-#include "bandura.h"
 #include "core.h"
+#include "raylib.h"
 
 #include <unistd.h>
 
@@ -44,6 +44,15 @@ void scenario_handle_input(physics_world *world, Camera *cam) {
     *ball.position = add(cam->position, direction);
 
     physics_apply_impulse(world, ball.handle, scale(direction, 70));
+  }
+
+  if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+    v3 direction = normalize(sub(cam->target, cam->position));
+
+    raycast_hit raycast_hit;
+    if (physics_raycast(world, cam->position, direction, 100.0, 1, &raycast_hit)) {
+      physics_remove_body(world, raycast_hit.body);
+    }
   }
 }
 
