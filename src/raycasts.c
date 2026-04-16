@@ -264,6 +264,10 @@ static count_t raycast_bodies(const physics_world *world, body_type type, v3 ori
       if (hit_count + num_hits == max_hits) {
         return num_hits;
       }
+
+      if (is_hit) {
+        break;
+      }
     }
   }
 
