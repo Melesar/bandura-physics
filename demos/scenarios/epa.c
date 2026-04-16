@@ -84,8 +84,8 @@ static void render_minkowski_difference(const physics_world *world);
 static void render_simplex(const simplex *s);
 static void render_polytope(const polytope *p);
 
-body_handle sphere_1;
-body_handle sphere_2;
+body_handle body_1;
+body_handle body_2;
 
 polytope *pt;
 
@@ -185,6 +185,19 @@ static void polytope_attach_face(polytope *polytope, uint16_t face, uint16_t edg
   polytope->nodes[face].face.next_attached_face = NIL;
 }
 
+static void polytope_get_face_vericies(const polytope *polytope, uint16_t face, v3 *v1, v3 *v2, v3 *v3) {
+  polytope_node node = polytope->nodes[face];
+  uint16_t e1 = node.face.edges[0];
+  uint16_t e2 = node.face.edges[1];
+
+  *v1 = polytope->nodes[polytope->nodes[e1].edge.verticies[0]].vertex.v;
+  *v2 = polytope->nodes[polytope->nodes[e1].edge.verticies[1]].vertex.v;
+
+  *v3 = polytope->nodes[e2].edge.verticies[1] != polytope->nodes[e1].edge.verticies[1]
+            ? polytope->nodes[polytope->nodes[e2].edge.verticies[1]].vertex.v
+            : polytope->nodes[polytope->nodes[e2].edge.verticies[0]].vertex.v;
+}
+
 static uint16_t polytope_add_vertex(polytope *polytope, v3 v) {
   uint16_t index = polytope_free_index(polytope);
   if (index == NIL) {
@@ -248,15 +261,10 @@ static uint16_t polytope_add_face(polytope *polytope, uint16_t e1, uint16_t e2, 
   node->face.edges[1] = e2;
   node->face.edges[2] = e3;
 
-  v3 nearest_point;
-  v3 v1 = polytope->nodes[polytope->nodes[e1].edge.verticies[0]].vertex.v;
-  v3 v2 = polytope->nodes[polytope->nodes[e1].edge.verticies[1]].vertex.v;
+  v3 v1, v2, v3;
+  polytope_get_face_vericies(polytope, index, &v1, &v2, &v3);
 
-  v3 v3 = polytope->nodes[e2].edge.verticies[1] != polytope->nodes[e1].edge.verticies[1]
-              ? polytope->nodes[polytope->nodes[e2].edge.verticies[1]].vertex.v
-              : polytope->nodes[polytope->nodes[e2].edge.verticies[0]].vertex.v;
-  node->distance = distance_to_triangle(zero(), v1, v2, v3, &nearest_point);
-  node->nearest_point = nearest_point;
+  node->distance = distance_to_triangle(zero(), v1, v2, v3, &node->nearest_point);
 
   polytope_attach_face(polytope, index, e1);
   polytope_attach_face(polytope, index, e2);
@@ -309,16 +317,16 @@ void scenario_initialize(program_config *config, physics_config *physics_config)
 }
 
 void scenario_setup_scene(physics_world *world) {
-  body s1 = physics_add_sphere_dynamic(world, 2, 1);
-  body s2 = physics_add_sphere_dynamic(world, 2, 1.5);
+  body b1 = physics_add_box_dynamic(world, 2, vec3(1, 1, 1));
+  body s2 = physics_add_box_dynamic(world, 2, vec3(1, 1.5, 2));
 
-  *s1.position = vec3(1, 3, 0);
+  *b1.position = vec3(1, 3, 0);
   *s2.position = vec3(0, 5, 0);
 
-  sphere_1 = s1.handle;
-  sphere_2 = s2.handle;
+  body_1 = b1.handle;
+  body_2 = s2.handle;
 
-  register_gizmo(s1.position, s1.rotation);
+  register_gizmo(b1.position, b1.rotation);
   register_gizmo(s2.position, s2.rotation);
 
   uint32_t memory_size = polytope_memory_size(POLYTOPE_MAX_NODES);
@@ -333,7 +341,7 @@ void scenario_draw_scene(physics_world *world) {
   render_minkowski_difference(world);
 
   simplex s = {0};
-  ui_state.is_collision = gjk_check_intersection_bodies(world, sphere_1, sphere_2, &s);
+  ui_state.is_collision = gjk_check_intersection_bodies(world, body_1, body_2, &s);
   if (!ui_state.is_collision) {
     return;
   }
@@ -356,16 +364,16 @@ static void render_minkowski_difference(const physics_world *world) {
 
   count_t n;
 
-  float r1 = physics_get_shapes(world, sphere_1, &n)[0].sphere.radius;
-  float r2 = physics_get_shapes(world, sphere_2, &n)[0].sphere.radius;
+  v3 s1 = physics_get_shapes(world, body_1, &n)[0].box.size;
+  v3 s2 = physics_get_shapes(world, body_2, &n)[0].box.size;
 
-  v3 p1 = physics_get_position(world, sphere_1);
-  v3 p2 = physics_get_position(world, sphere_2);
+  v3 p1 = physics_get_position(world, body_1);
+  v3 p2 = physics_get_position(world, body_2);
 
   v3 center = sub(p1, p2);
-  float radius = r1 + r2;
+  v3 size = add(s1, s2);
 
-  DrawSphereWires(center, radius, 32, 64, BLACK);
+  DrawCubeWires(center, size.x, size.y, size.z, RED);
 }
 
 static void render_simplex(const simplex *s) {
@@ -393,6 +401,15 @@ static void render_simplex(const simplex *s) {
   DrawLine3D(s->points[2], s->points[3], BLACK);
 }
 
+static void render_triangle(v3 v_1, v3 v_2, v3 v_3, v3 reference, Color color) {
+  v3 normal = cross(sub(v_2, v_1), sub(v_3, v_1));
+  if (dot(normal, reference) > 0) {
+    DrawTriangle3D(v_1, v_2, v_3, color);
+  } else {
+    DrawTriangle3D(v_1, v_3, v_2, color);
+  }
+}
+
 static void render_polytope(const polytope *p) {
   if (!ui_state.draw_polytope) {
     return;
@@ -404,24 +421,18 @@ static void render_polytope(const polytope *p) {
   color.a = (uint8_t)(ui_state.polytope_alpha * 255);
 
   BeginBlendMode(BLEND_ALPHA);
+  uint16_t face_index = last_face_index;
   polytope_node *face = &p->nodes[last_face_index];
-  while (face->prev != NIL) {
-    polytope_node first_edge = p->nodes[face->face.edges[0]];
-    polytope_node second_edge = p->nodes[face->face.edges[1]];
-
-    v3 v1 = p->nodes[first_edge.edge.verticies[0]].vertex.v;
-    v3 v2 = p->nodes[first_edge.edge.verticies[1]].vertex.v;
-
-    v3 v3 = second_edge.edge.verticies[1] != first_edge.edge.verticies[1]
-                ? p->nodes[second_edge.edge.verticies[1]].vertex.v
-                : p->nodes[second_edge.edge.verticies[0]].vertex.v;
-
-    DrawTriangle3D(v1, v2, v3, color);
+  while (face_index != NIL) {
+    v3 v1, v2, v3;
+    polytope_get_face_vericies(p, face_index, &v1, &v2, &v3);
+    render_triangle(v1, v2, v3, face->nearest_point, color);
 
     DrawLine3D(v1, v2, BLACK);
     DrawLine3D(v2, v3, BLACK);
     DrawLine3D(v3, v1, BLACK);
 
+    face_index = face->prev;
     face = &p->nodes[face->prev];
   }
   EndBlendMode();
