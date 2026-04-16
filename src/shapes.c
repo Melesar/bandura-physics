@@ -116,6 +116,16 @@ bool shapes_put_into_empty_slot(physics_world *world, shape_dimension_bracket br
   return false;
 }
 
+void shapes_clear_slot(physics_world *world, shape_dimension_bracket bracket, count_t slot) {
+  count_t block_count = bracket_block_count(world, bracket);
+
+  uint64_t *header = (uint64_t *)world->shape_brackets[bracket].bracket;
+  count_t block_index = slot / SHAPE_BRACKET_BLOCK_CAPACITY;
+  if (block_index < block_count) {
+    header[block_index] &= ~((uint64_t)1 << (slot % SHAPE_BRACKET_BLOCK_CAPACITY));
+  }
+}
+
 body_shapes shapes_write(physics_world *world, shape_dimension_bracket bracket, body_shape *shapes, count_t count) {
   const count_t max_count = 1 << (BRACKET_COUNT - 1);
   assert(count <= max_count);

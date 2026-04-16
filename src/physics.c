@@ -539,6 +539,9 @@ void physics_remove_body(physics_world *world, body_handle handle) {
   data->generations[index] += 1;
   data->free_list[data->free_count++] = handle.index; // We keep the outer index in the free list
 
+  body_shapes shapes = data->shapes[index];
+  shapes_clear_slot(world, shapes.bracket, shapes.offset);
+
   if (handle.type == BODY_DYNAMIC) {
     count_t body_count = data->count;
     count_t awake_count = world->dynamics.awake_count;
