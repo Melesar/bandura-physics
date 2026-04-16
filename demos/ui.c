@@ -366,6 +366,8 @@ void ui_label_float(char *label, float value) {
   ui_value_label(label, vs);
 }
 
+void ui_label_string(char *label, char *value) { ui_value_label(label, clay_from_string(value)); }
+
 void ui_label_int(const char *label, count_t value) {
   char *v = arena_alloc(80);
   snprintf(v, 80, "%d", value);
@@ -518,3 +520,19 @@ void ui_label_stat(const char *label, float value) {
     CLAY_TEXT(clay_from_string(value_text), {.textColor = clay_color_from_ray(LIME)});
   }
 }
+
+bool ui_button(const char *text) {
+  bool clicked = false;
+  CLAY(CLAY_SID(clay_string_concat("button", text)),
+       {.backgroundColor = clay_element_color(BUTTON, BASE, clay_gui_state()),
+        .border = {.width = {.top = 1, .bottom = 1, .left = 1, .right = 1},
+                   .color = clay_element_color(BUTTON, BORDER, clay_gui_state())},
+        .layout = {.padding = {.top = 5, .bottom = 5, .left = 10, .right = 10}}}) {
+    CLAY_TEXT(clay_from_string(text), {.textColor = clay_element_color(BUTTON, TEXT, clay_gui_state())});
+    clicked = clay_is_clicked();
+  }
+
+  return clicked;
+}
+
+Clay_Color ui_text_color(int control) { return clay_element_color(control, TEXT, clay_gui_state()); }

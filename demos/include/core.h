@@ -75,12 +75,18 @@ void ui_end_area();
 void ui_label(char *label);
 void ui_label_bool(const char *lable, bool value);
 void ui_label_float(char *label, float value);
+void ui_label_int(const char *label, count_t value);
 void ui_label_v3(const char *label, v3 value);
 void ui_label_stat(const char *label, float value);
 void ui_label_matrix(const char *label, m3 value);
+void ui_label_string(char *label, char *value);
 
 void ui_value_int(const char *label, int *value, int min_value, int max_value);
 void ui_value_float(const char *label, float *value, float min_value, float max_value);
 
+bool ui_button(const char *text);
+
 void ui_checkbox(const char *label, bool *is_checked);
+
+Clay_Color ui_text_color(int control);
 #endif

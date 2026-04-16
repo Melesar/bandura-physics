@@ -1,5 +1,7 @@
 #include "core.h"
 #include "raylib.h"
+#include "raygui.h"
+
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
@@ -65,12 +67,28 @@ typedef struct {
 } polytope;
 
 struct {
+  enum {
+    STATE_NONE,
+    STATE_PICK_NEAREST,
+    STATE_NEW_SUPPORT,
+    STATE_EXPANSION,
+    STATE_FINISHED,
+  } state;
+
+  union {
+    v3 new_support;
+  };
+
+  uint32_t step;
+  bool is_collision;
+  simplex simplex;
+  polytope *polytope;
+
+} simulation_state;
+
+struct {
   bool collapsed;
   bool draw_minkowski;
-  bool draw_simplex;
-  bool draw_polytope;
-
-  bool is_collision;
 
   float simplex_alpha;
   float polytope_alpha;
@@ -79,6 +97,7 @@ struct {
 float distance_to_triangle(v3 from, v3 a, v3 b, v3 c, v3 *closest);
 float distance_to_line_segment(v3 from, v3 a, v3 b, v3 *closest);
 bool gjk_check_intersection_bodies(physics_world *world, body_handle body_1, body_handle body_2, simplex *simplex);
+v3 support_bodies(physics_world *world, v3 direction, body_handle body_1, body_handle body_2);
 
 static void render_minkowski_difference(const physics_world *world);
 static void render_simplex(const simplex *s);
@@ -86,8 +105,6 @@ static void render_polytope(const polytope *p);
 
 body_handle body_1;
 body_handle body_2;
-
-polytope *pt;
 
 static uint32_t polytope_memory_size(uint16_t max_nodes) {
   return sizeof(polytope) + (max_nodes + 1) * sizeof(polytope_node) + max_nodes * sizeof(uint16_t);
@@ -198,6 +215,15 @@ static void polytope_get_face_vericies(const polytope *polytope, uint16_t face, 
             : polytope->nodes[polytope->nodes[e2].edge.verticies[0]].vertex.v;
 }
 
+static void polytope_get_edge_vertices(const polytope *polytope, uint16_t edge, v3 *v1, v3 *v2) {
+  polytope_node node = polytope->nodes[edge];
+  uint16_t vertex_1 = node.edge.verticies[0];
+  uint16_t vertex_2 = node.edge.verticies[1];
+
+  *v1 = polytope->nodes[vertex_1].vertex.v;
+  *v2 = polytope->nodes[vertex_2].vertex.v;
+}
+
 static uint16_t polytope_add_vertex(polytope *polytope, v3 v) {
   uint16_t index = polytope_free_index(polytope);
   if (index == NIL) {
@@ -275,6 +301,15 @@ static uint16_t polytope_add_face(polytope *polytope, uint16_t e1, uint16_t e2, 
   return index;
 }
 
+void polytope_delete_face(polytope *polytope, uint16_t face) {
+  if (face == NIL) {
+    return;
+  }
+
+  polytope->free_list[polytope->free_count++] = face;
+  polytope->node_count -= 1;
+}
+
 static bool polytope_from_simplex(polytope *polytope, const simplex *s) {
   polytope_clear(polytope);
 
@@ -302,6 +337,71 @@ static bool polytope_from_simplex(polytope *polytope, const simplex *s) {
   return true;
 }
 
+static void reset_simulation(physics_world *world) {
+  simulation_state.state = STATE_NONE;
+  simulation_state.step = 0;
+
+  polytope_clear(simulation_state.polytope);
+  simulation_state.is_collision = gjk_check_intersection_bodies(world, body_1, body_2, &simulation_state.simplex);
+}
+
+static void advance_simulation(physics_world *world) {
+  if (!simulation_state.is_collision) {
+    return;
+  }
+
+  v3 closest;
+  polytope_node closest_node = simulation_state.polytope->nodes[simulation_state.polytope->nearest];
+  v3 direction = closest_node.nearest_point;
+  float tolerance = physics_edit_config(world)->epa_tolerance;
+  switch (simulation_state.state) {
+    case STATE_NONE:
+      simulation_state.state = STATE_PICK_NEAREST;
+
+      if (!polytope_from_simplex(simulation_state.polytope, &simulation_state.simplex)) {
+        TraceLog(LOG_FATAL, "Polytope capacity exceeded");
+      }
+      break;
+
+    case STATE_PICK_NEAREST:
+      simulation_state.state = STATE_NEW_SUPPORT;
+      simulation_state.new_support = support_bodies(world, direction, body_1, body_2);
+      break;
+
+    case STATE_NEW_SUPPORT:
+      if (closest_node.type == NODE_VERTEX) {
+        simulation_state.state = STATE_FINISHED;
+        return;
+      }
+
+      float distance = dot(direction, simulation_state.new_support);
+      if (distance - closest_node.distance < tolerance) {
+        simulation_state.state = STATE_FINISHED;
+        return;
+      }
+
+      v3 a, b, c;
+      if (closest_node.type == NODE_EDGE) {
+        polytope_get_edge_vertices(simulation_state.polytope, simulation_state.polytope->nearest, &a, &b);
+        distance = distance_to_line_segment(simulation_state.new_support, a, b, &closest);
+      } else {
+        polytope_get_face_vericies(simulation_state.polytope, simulation_state.polytope->nearest, &a, &b, &c);
+        distance = distance_to_triangle(simulation_state.new_support, a, b, c, &closest);
+      }
+
+      if (distance < tolerance) {
+        simulation_state.state = STATE_FINISHED;
+        return;
+      }
+
+      simulation_state.state = STATE_EXPANSION;
+      break;
+
+    default:
+      break;
+  }
+}
+
 void scenario_initialize(program_config *config, physics_config *physics_config) {
   config->window_title = "EPA";
   config->draw_ground = false;
@@ -312,8 +412,6 @@ void scenario_initialize(program_config *config, physics_config *physics_config)
   ui_state.polytope_alpha = 0.5;
 
   ui_state.draw_minkowski = true;
-  ui_state.draw_simplex = true;
-  ui_state.draw_polytope = true;
 }
 
 void scenario_setup_scene(physics_world *world) {
@@ -332,29 +430,25 @@ void scenario_setup_scene(physics_world *world) {
   uint32_t memory_size = polytope_memory_size(POLYTOPE_MAX_NODES);
   uint8_t *polytope_memory = malloc(memory_size);
 
-  pt = polytope_init(polytope_memory, POLYTOPE_MAX_NODES);
+  simulation_state.polytope = polytope_init(polytope_memory, POLYTOPE_MAX_NODES);
+  reset_simulation(world);
 }
 
-void scenario_teardown() { free(pt); }
+void scenario_teardown() { free(simulation_state.polytope); }
 
 void scenario_draw_scene(physics_world *world) {
   render_minkowski_difference(world);
-
-  simplex s = {0};
-  ui_state.is_collision = gjk_check_intersection_bodies(world, body_1, body_2, &s);
-  if (!ui_state.is_collision) {
-    return;
+  if (simulation_state.state == STATE_NONE) {
+    render_simplex(&simulation_state.simplex);
+  } else {
+    render_polytope(simulation_state.polytope);
   }
 
-  render_simplex(&s);
-
-  if (!polytope_from_simplex(pt, &s)) {
-    TraceLog(LOG_FATAL, "Polytope exceeded its memory capacity. Try increasing max nodes count");
+  if (simulation_state.state == STATE_NEW_SUPPORT) {
+    v3 closest = simulation_state.polytope->nodes[simulation_state.polytope->nearest].nearest_point;
+    DrawSphere(simulation_state.new_support, 0.05, ORANGE);
+    DrawLine3D(closest, simulation_state.new_support, YELLOW);
   }
-
-  render_polytope(pt);
-
-  // Proceed with EPA
 }
 
 static void render_minkowski_difference(const physics_world *world) {
@@ -377,7 +471,7 @@ static void render_minkowski_difference(const physics_world *world) {
 }
 
 static void render_simplex(const simplex *s) {
-  if (!ui_state.draw_simplex) {
+  if (!simulation_state.is_collision) {
     return;
   }
 
@@ -411,19 +505,21 @@ static void render_triangle(v3 v_1, v3 v_2, v3 v_3, v3 reference, Color color) {
 }
 
 static void render_polytope(const polytope *p) {
-  if (!ui_state.draw_polytope) {
+  if (!simulation_state.is_collision) {
     return;
   }
 
   uint16_t last_face_index = p->last_nodes[NODE_FACE];
+  bool highlight = simulation_state.state == STATE_PICK_NEAREST || simulation_state.state == STATE_NEW_SUPPORT;
 
-  Color color = PINK;
-  color.a = (uint8_t)(ui_state.polytope_alpha * 255);
-
-  BeginBlendMode(BLEND_ALPHA);
   uint16_t face_index = last_face_index;
   polytope_node *face = &p->nodes[last_face_index];
   while (face_index != NIL) {
+    Color color = PINK;
+    if (highlight && p->nearest == face_index) {
+      color = GREEN;
+    }
+
     v3 v1, v2, v3;
     polytope_get_face_vericies(p, face_index, &v1, &v2, &v3);
     render_triangle(v1, v2, v3, face->nearest_point, color);
@@ -435,7 +531,10 @@ static void render_polytope(const polytope *p) {
     face_index = face->prev;
     face = &p->nodes[face->prev];
   }
-  EndBlendMode();
+
+  if (highlight) {
+    DrawSphere(p->nodes[p->nearest].nearest_point, 0.05, GREEN);
+  }
 }
 
 void scenario_handle_input(physics_world *world, Camera *camera) {}
@@ -446,10 +545,60 @@ void scenario_build_ui(physics_world *world) {
   ui_begin_area("EPA", &ui_state.collapsed);
 
   ui_checkbox("Draw Minkowski", &ui_state.draw_minkowski);
-  ui_checkbox("Draw simplex", &ui_state.draw_simplex);
-  ui_checkbox("Draw polytope", &ui_state.draw_polytope);
 
   ui_value_float("Simplex alpha", &ui_state.simplex_alpha, 0.0, 1.0);
   ui_value_float("Polytope alpha", &ui_state.polytope_alpha, 0.0, 1.0);
+
+  CLAY(CLAY_ID("EPA_spacer"), {.layout = {.sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(20)}}});
+
+  CLAY(CLAY_ID("EPA_title"), {.layout = {.childGap = 30}}) {
+    char *s;
+    switch (simulation_state.state) {
+      case STATE_NONE:
+        s = "None";
+        break;
+
+      case STATE_PICK_NEAREST:
+        s = "Pick nearest";
+        break;
+
+      case STATE_NEW_SUPPORT:
+        s = "New support";
+        break;
+
+      case STATE_EXPANSION:
+        s = "Expansion";
+        break;
+
+      case STATE_FINISHED:
+        s = "Finished";
+        break;
+    }
+    ui_label_int("Step", simulation_state.step);
+    CLAY_AUTO_ID({.layout = {.sizing = {.width = CLAY_SIZING_GROW()}}});
+    ui_label_string("State", s);
+  }
+
+  CLAY(CLAY_ID("EPA_space"), {.layout = {.sizing = {.height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW()}}})
+
+  CLAY(CLAY_ID("EPA_buttons"), {.layout = {
+                                    .padding = CLAY_PADDING_ALL(5),
+                                    .sizing = {.width = CLAY_SIZING_GROW()},
+                                    .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
+                                    .childGap = 10,
+                                }}) {
+    CLAY(CLAY_ID("EPA_buttons_left"), {.layout = {.sizing = {.width = CLAY_SIZING_GROW()}}});
+
+    if (ui_button("Reset")) {
+      reset_simulation(world);
+    }
+
+    if (ui_button("Next")) {
+      advance_simulation(world);
+    }
+
+    CLAY(CLAY_ID("EPA_buttons_right"), {.layout = {.sizing = {.width = CLAY_SIZING_GROW()}}});
+  }
+
   ui_end_area();
 }

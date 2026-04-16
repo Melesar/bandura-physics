@@ -108,6 +108,19 @@ static v3 support(const collision_detection_context *ctx, v3 direction) {
   return sub(s1, s2);
 }
 
+v3 support_bodies(physics_world *world, v3 direction, body_handle body_1, body_handle body_2) {
+  collision_detection_context ctx = {
+      .body_a = handle_to_inner_index(world, body_1),
+      .body_b = handle_to_inner_index(world, body_2),
+      .data_a = as_common_const(world, body_1.type),
+      .data_b = as_common_const(world, body_2.type),
+      .shape_a = *shapes_get(world, ctx.data_a->shapes[ctx.body_a]),
+      .shape_b = *shapes_get(world, ctx.data_b->shapes[ctx.body_b]),
+  };
+
+  return support(&ctx, normalize(direction));
+}
+
 static void simplex_add_point(simplex *s, v3 p) {
   s->points[3] = s->points[2];
   s->points[2] = s->points[1];
@@ -268,13 +281,12 @@ static bool simplex_update(simplex *s, v3 *direction) {
 bool gjk_check_intersection_bodies(physics_world *world, body_handle body_1, body_handle body_2, simplex *simplex) {
   count_t n;
   collision_detection_context ctx = {
-    .data_a = body_1.type == BODY_DYNAMIC ? (common_data*)&world->dynamics : &world->statics,
-    .data_b = body_2.type == BODY_DYNAMIC ? (common_data*)&world->dynamics : &world->statics,
-    .body_a = handle_to_inner_index(world, body_1),
-    .body_b = handle_to_inner_index(world, body_2),
-    .shape_a = physics_get_shapes(world, body_1, &n)[0],
-    .shape_b = physics_get_shapes(world, body_2, &n)[0]
-  };
+      .data_a = body_1.type == BODY_DYNAMIC ? (common_data *)&world->dynamics : &world->statics,
+      .data_b = body_2.type == BODY_DYNAMIC ? (common_data *)&world->dynamics : &world->statics,
+      .body_a = handle_to_inner_index(world, body_1),
+      .body_b = handle_to_inner_index(world, body_2),
+      .shape_a = physics_get_shapes(world, body_1, &n)[0],
+      .shape_b = physics_get_shapes(world, body_2, &n)[0]};
 
   return gjk_check_intersection(world, &ctx, simplex);
 }
@@ -283,6 +295,8 @@ bool gjk_check_intersection(physics_world *world, const collision_detection_cont
   v3 direction = initial_direction;
 
   COLLISION_TRACE("[BND] GJK start\n");
+
+  simplex->size = 0;
 
   v3 support_point = support(ctx, direction);
   simplex_add_point(simplex, support_point);
