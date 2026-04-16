@@ -174,7 +174,6 @@ static void draw_physics_bodies_typed(body_type type) {
   body_enumerator_typed enumerator;
   physics_enumerate_bodies_typed(world, type, &enumerator);
 
-  count_t i = 0;
   while (physics_body_next_typed(world, &enumerator)) {
     v3 position = physics_get_position(world, enumerator.handle);
     quat rotation = physics_get_rotation(world, enumerator.handle);
