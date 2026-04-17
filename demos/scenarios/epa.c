@@ -145,7 +145,7 @@ static uint16_t polytope_free_index(polytope *polytope) {
   }
 
   if (polytope->node_count < polytope->max_nodes) {
-    return polytope->node_count++ + 1;
+    return polytope->node_count + 1;
   }
 
   return NIL;
@@ -160,6 +160,8 @@ static void polytope_add_node(polytope *polytope, polytope_node *node, uint16_t 
 
   polytope->last_nodes[node->type] = index;
   last_node->next = index;
+
+  polytope->node_count += 1;
 }
 
 static void polytope_remove_node(polytope *polytope, uint16_t index) {
@@ -231,8 +233,8 @@ static void polytope_get_face_vericies(const polytope *polytope, uint16_t face, 
   *v2 = polytope->nodes[edge_verts_1[1]].vertex.v;
 
   *v3 = edge_verts_2[1] != edge_verts_1[1] && edge_verts_2[1] != edge_verts_1[0]
-    ? polytope->nodes[edge_verts_2[1]].vertex.v
-    : polytope->nodes[edge_verts_2[0]].vertex.v;
+            ? polytope->nodes[edge_verts_2[1]].vertex.v
+            : polytope->nodes[edge_verts_2[0]].vertex.v;
 }
 
 static void polytope_get_edge_vertices(const polytope *polytope, uint16_t edge, v3 *v1, v3 *v2) {
@@ -565,8 +567,8 @@ void scenario_setup_scene(physics_world *world) {
   body b2 = physics_add_box_dynamic(world, 2, vec3(1, 1.5, 2));
 
   *b1.position = vec3(0.762, 2.598, 0.762);
-  *b1.rotation = (quat) { -0.045, 0, 0, 0.99 };
-  *b2.position = vec3(-0.125,  3.442, -0.378);
+  *b1.rotation = (quat){-0.045, 0, 0, 0.99};
+  *b2.position = vec3(-0.125, 3.442, -0.378);
   *b2.rotation = qidentity();
 
   body_1 = b1.handle;
