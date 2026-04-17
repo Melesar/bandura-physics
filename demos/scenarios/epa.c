@@ -12,7 +12,7 @@
 #define NIL 0
 #define POLYTOPE_MAX_NODES 1024
 
-#define MAX_ATTACHED_EDGES 4
+#define MAX_ATTACHED_EDGES 2
 #define MAX_ATTACHED_FACES 2
 
 typedef struct {
@@ -40,11 +40,12 @@ typedef struct {
   union {
     struct {
       v3 v;
-      uint16_t attached_edges[MAX_ATTACHED_EDGES];
+      uint16_t first_attached_edge;
     } vertex;
 
     struct {
       uint16_t verticies[2];
+      uint16_t next_attached_edges[2];
       uint16_t attached_faces[MAX_ATTACHED_FACES];
     } edge;
 
@@ -102,6 +103,7 @@ float distance_to_line_segment(v3 from, v3 a, v3 b, v3 *closest);
 bool gjk_check_intersection_bodies(physics_world *world, body_handle body_1, body_handle body_2, simplex *simplex);
 v3 support_bodies(physics_world *world, v3 direction, body_handle body_1, body_handle body_2);
 
+static void dump_polytope(const polytope *polytope, const char *title);
 static void render_minkowski_difference(const physics_world *world);
 static void render_simplex(const simplex *s);
 static void render_polytope(const polytope *p);
@@ -193,11 +195,19 @@ static void polytope_remove_node(polytope *polytope, uint16_t index) {
 
 static void polytope_attach_edge(polytope *polytope, uint16_t edge, uint16_t vertex) {
   polytope_node *vertex_node = &polytope->nodes[vertex];
-  for (count_t i = 0; i < MAX_ATTACHED_EDGES; ++i) {
-    if (vertex_node->vertex.attached_edges[i] == NIL) {
-      vertex_node->vertex.attached_edges[i] = edge;
-      break;
-    }
+  if (vertex_node->vertex.first_attached_edge == NIL) {
+    vertex_node->vertex.first_attached_edge = edge;
+  } else {
+    uint16_t attached_edge = vertex_node->vertex.first_attached_edge;
+    polytope_node *edge_node;
+    int i;
+    do {
+      edge_node = &polytope->nodes[attached_edge];
+      i = edge_node->edge.verticies[0] == vertex ? 0 : 1;
+      attached_edge = edge_node->edge.next_attached_edges[i];
+    } while (attached_edge != NIL);
+
+    edge_node->edge.next_attached_edges[i] = edge;
   }
 }
 
@@ -246,44 +256,6 @@ static void polytope_get_edge_vertices(const polytope *polytope, uint16_t edge, 
   *v2 = polytope->nodes[vertex_2].vertex.v;
 }
 
-static void dump_polytope(const polytope *polytope, const char *title) {
-  printf("%s\n", title != NULL ? title : "Polytope");
-
-  if (polytope == NULL) {
-    printf("--- Vertices ---\n");
-    printf("<null>\n");
-    printf("--- Edges ---\n");
-    printf("<null>\n");
-    printf("--- Faces ---\n");
-    printf("<null>\n");
-    return;
-  }
-
-  printf("--- Vertices ---\n");
-  for (uint16_t index = polytope->last_nodes[NODE_VERTEX]; index != NIL; index = polytope->nodes[index].prev) {
-    v3 vertex = polytope->nodes[index].vertex.v;
-    printf("%u: (%.6f, %.6f, %.6f)\n", index, vertex.x, vertex.y, vertex.z);
-  }
-
-  printf("--- Edges ---\n");
-  for (uint16_t index = polytope->last_nodes[NODE_EDGE]; index != NIL; index = polytope->nodes[index].prev) {
-    uint16_t *vertices = polytope->nodes[index].edge.verticies;
-    printf("%u: (%u, %u)\n", index, vertices[0], vertices[1]);
-  }
-
-  printf("--- Faces ---\n");
-  for (uint16_t index = polytope->last_nodes[NODE_FACE]; index != NIL; index = polytope->nodes[index].prev) {
-    uint16_t *edges = polytope->nodes[index].face.edges;
-    v3 v1, v2, v3;
-    polytope_get_face_vericies(polytope, index, &v1, &v2, &v3);
-
-    printf("%u: (%u, %u, %u)\n", index, edges[0], edges[1], edges[2]);
-    printf("  v1: (%.6f, %.6f, %.6f)\n", v1.x, v1.y, v1.z);
-    printf("  v2: (%.6f, %.6f, %.6f)\n", v2.x, v2.y, v2.z);
-    printf("  v3: (%.6f, %.6f, %.6f)\n", v3.x, v3.y, v3.z);
-  }
-}
-
 static uint16_t polytope_add_vertex(polytope *polytope, v3 v) {
   uint16_t index = polytope_free_index(polytope);
   if (index == NIL) {
@@ -293,10 +265,9 @@ static uint16_t polytope_add_vertex(polytope *polytope, v3 v) {
   polytope_node *node = &polytope->nodes[index];
   node->type = NODE_VERTEX;
   node->vertex.v = v;
+  node->vertex.first_attached_edge = NIL;
   node->nearest_point = v;
   node->distance = lensq(v);
-
-  memset(node->vertex.attached_edges, 0, MAX_ATTACHED_EDGES * sizeof(uint16_t));
 
   polytope_add_node(polytope, node, index);
 
@@ -321,6 +292,7 @@ static uint16_t polytope_add_edge(polytope *polytope, uint16_t v1, uint16_t v2) 
                                             &node->nearest_point);
 
   memset(node->edge.attached_faces, 0, MAX_ATTACHED_FACES * sizeof(uint16_t));
+  memset(node->edge.next_attached_edges, 0, MAX_ATTACHED_EDGES * sizeof(uint16_t));
 
   polytope_attach_edge(polytope, index, v1);
   polytope_attach_edge(polytope, index, v2);
@@ -520,8 +492,6 @@ static void advance_simulation(physics_world *world) {
 
         polytope_remove_face(simulation_state.polytope, simulation_state.polytope->nearest);
 
-        TraceLog(LOG_INFO, "Removed face %d", simulation_state.polytope->nearest);
-
         verts[3] = polytope_add_vertex(simulation_state.polytope, simulation_state.new_support);
         edges[3] = polytope_add_edge(simulation_state.polytope, verts[3], verts[0]);
         edges[4] = polytope_add_edge(simulation_state.polytope, verts[3], verts[1]);
@@ -563,13 +533,11 @@ void scenario_initialize(program_config *config, physics_config *physics_config)
 }
 
 void scenario_setup_scene(physics_world *world) {
-  body b1 = physics_add_box_dynamic(world, 2, vec3(1, 1, 1));
-  body b2 = physics_add_box_dynamic(world, 2, vec3(1, 1.5, 2));
+  body b1 = physics_add_sphere_dynamic(world, 2, 1);
+  body b2 = physics_add_sphere_dynamic(world, 2, 0.7);
 
-  *b1.position = vec3(0.762, 2.598, 0.762);
-  *b1.rotation = (quat){-0.045, 0, 0, 0.99};
+  *b1.position = vec3(0.477, 2.598, 0.535);
   *b2.position = vec3(-0.125, 3.442, -0.378);
-  *b2.rotation = qidentity();
 
   body_1 = b1.handle;
   body_2 = b2.handle;
@@ -599,6 +567,8 @@ void scenario_draw_scene(physics_world *world) {
     DrawSphere(simulation_state.new_support, 0.05, ORANGE);
     DrawLine3D(closest, simulation_state.new_support, YELLOW);
   }
+
+  DrawSphere(zero(), 0.02, BLUE);
 }
 
 static void render_minkowski_difference(const physics_world *world) {
@@ -608,16 +578,16 @@ static void render_minkowski_difference(const physics_world *world) {
 
   count_t n;
 
-  v3 s1 = physics_get_shapes(world, body_1, &n)[0].box.size;
-  v3 s2 = physics_get_shapes(world, body_2, &n)[0].box.size;
+  float r1 = physics_get_shapes(world, body_1, &n)[0].sphere.radius;
+  float r2 = physics_get_shapes(world, body_2, &n)[0].sphere.radius;
 
   v3 p1 = physics_get_position(world, body_1);
   v3 p2 = physics_get_position(world, body_2);
 
   v3 center = sub(p1, p2);
-  v3 size = add(s1, s2);
+  float size = r1 + r2;
 
-  DrawCubeWires(center, size.x, size.y, size.z, RED);
+  DrawSphereWires(center, size, 32, 32, BLACK);
 }
 
 static void render_simplex(const simplex *s) {
@@ -751,4 +721,42 @@ void scenario_build_ui(physics_world *world) {
   }
 
   ui_end_area();
+}
+
+static void dump_polytope(const polytope *polytope, const char *title) {
+  printf("%s\n", title != NULL ? title : "Polytope");
+
+  if (polytope == NULL) {
+    printf("--- Vertices ---\n");
+    printf("<null>\n");
+    printf("--- Edges ---\n");
+    printf("<null>\n");
+    printf("--- Faces ---\n");
+    printf("<null>\n");
+    return;
+  }
+
+  printf("--- Vertices ---\n");
+  for (uint16_t index = polytope->last_nodes[NODE_VERTEX]; index != NIL; index = polytope->nodes[index].prev) {
+    v3 vertex = polytope->nodes[index].vertex.v;
+    printf("%u: (%.6f, %.6f, %.6f)\n", index, vertex.x, vertex.y, vertex.z);
+  }
+
+  printf("--- Edges ---\n");
+  for (uint16_t index = polytope->last_nodes[NODE_EDGE]; index != NIL; index = polytope->nodes[index].prev) {
+    uint16_t *vertices = polytope->nodes[index].edge.verticies;
+    printf("%u: (%u, %u)\n", index, vertices[0], vertices[1]);
+  }
+
+  printf("--- Faces ---\n");
+  for (uint16_t index = polytope->last_nodes[NODE_FACE]; index != NIL; index = polytope->nodes[index].prev) {
+    uint16_t *edges = polytope->nodes[index].face.edges;
+    v3 v1, v2, v3;
+    polytope_get_face_vericies(polytope, index, &v1, &v2, &v3);
+
+    printf("%u: (%u, %u, %u)\n", index, edges[0], edges[1], edges[2]);
+    printf("  v1: (%.6f, %.6f, %.6f)\n", v1.x, v1.y, v1.z);
+    printf("  v2: (%.6f, %.6f, %.6f)\n", v2.x, v2.y, v2.z);
+    printf("  v3: (%.6f, %.6f, %.6f)\n", v3.x, v3.y, v3.z);
+  }
 }
