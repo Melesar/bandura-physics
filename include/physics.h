@@ -130,7 +130,13 @@ struct physics_world_t {
 };
 
 typedef struct {
-  v3 points[4];
+  v3 v;
+  v3 v1;
+  v3 v2;
+} support_point;
+
+typedef struct {
+  support_point points[4];
   uint8_t size;
 } simplex;
 
