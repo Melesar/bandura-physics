@@ -153,7 +153,7 @@ static uint16_t polytope_free_index(polytope *polytope) {
   }
 
   if (polytope->node_count < polytope->max_nodes) {
-    return polytope->node_count + 1;
+    return polytope->node_count++ + 1;
   }
 
   return NIL;
@@ -168,8 +168,6 @@ static void polytope_add_node(polytope *polytope, polytope_node *node, uint16_t 
 
   polytope->last_nodes[node->type] = index;
   last_node->next = index;
-
-  polytope->node_count += 1;
 }
 
 static void polytope_remove_node(polytope *polytope, uint16_t index) {
@@ -196,7 +194,6 @@ static void polytope_remove_node(polytope *polytope, uint16_t index) {
   }
 
   polytope->free_list[polytope->free_count++] = index;
-  polytope->node_count -= 1;
 }
 
 static void polytope_attach_edge(polytope *polytope, uint16_t edge, uint16_t vertex) {
