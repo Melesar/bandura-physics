@@ -85,9 +85,13 @@ struct {
     STATE_FINISHED,
   } state;
 
-  union {
-    support_point new_support;
-  };
+  support_point new_support;
+
+  struct {
+    v3 point;
+    v3 normal;
+    float depth;
+  } contact;
 
   uint32_t step;
   bool is_collision;
@@ -116,6 +120,67 @@ static void render_polytope(const polytope *p);
 
 body_handle body_1;
 body_handle body_2;
+
+static int compare_vertex_distance(const void *a, const void *b) {
+  uint16_t i1 = *(uint16_t *)a;
+  uint16_t i2 = *(uint16_t *)b;
+
+  polytope *polytope = simulation_state.polytope;
+  polytope_node v1 = polytope->nodes[i1];
+  polytope_node v2 = polytope->nodes[i2];
+
+  if (fabsf(v1.distance - v2.distance) < EPSILON) {
+    return 0;
+  } else if (v1.distance > v2.distance) {
+    return 1;
+  } else {
+    return -1;
+  }
+}
+
+static void epa_calculate_contact(polytope *polytope) {
+  polytope_node nearest_node = polytope->nodes[polytope->nearest];
+  simulation_state.contact.depth = sqrt(nearest_node.distance);
+  simulation_state.contact.normal = normalize(nearest_node.nearest_point);
+
+  // The following algorithm for computing the contact point is taken from the
+  // libccd by Daniel Fiser.
+  //
+  // https://github.com/danfis/libccd/blob/master/src/ccd.c#L133
+
+  // We re-use the free_list array for storing the indicies of verticies.
+  // Since EPA is finished already, the polytope won't expand and we don't need to
+  // keep track of free indicies anymore.
+
+  count_t vertex_count = 0;
+
+  count_t node_index = polytope->last_nodes[NODE_VERTEX];
+  while (node_index != NIL) {
+    polytope_node *vertex = &polytope->nodes[node_index];
+
+    polytope->free_list[vertex_count++] = node_index;
+    node_index = vertex->prev;
+  }
+
+  qsort(polytope->free_list, vertex_count, sizeof(uint16_t), compare_vertex_distance);
+
+  if (vertex_count % 2 == 1) {
+    vertex_count += 1;
+  }
+
+  v3 point = zero();
+  float div = 0;
+  for (count_t i = 0; i < vertex_count / 2; ++i) {
+    uint16_t index = polytope->free_list[i];
+    polytope_node node = polytope->nodes[index];
+
+    point = add(point, node.vertex.v.v1);
+    point = add(point, node.vertex.v.v2);
+    div += 2.0;
+  }
+
+  simulation_state.contact.point = scale(point, 1 / div);
+}
 
 static uint32_t polytope_memory_size(uint16_t max_nodes) {
   return sizeof(polytope) + (max_nodes + 1) * sizeof(polytope_node) + max_nodes * sizeof(uint16_t);
@@ -437,8 +502,6 @@ static void advance_simulation(physics_world *world) {
       if (!polytope_from_simplex(simulation_state.polytope, &simulation_state.simplex)) {
         TraceLog(LOG_FATAL, "Polytope capacity exceeded");
       }
-
-      dump_polytope(simulation_state.polytope, "Initial polytope");
       break;
 
     case STATE_PICK_NEAREST:
@@ -449,12 +512,14 @@ static void advance_simulation(physics_world *world) {
     case STATE_NEW_SUPPORT:
       if (closest_node.type == NODE_VERTEX) {
         simulation_state.state = STATE_FINISHED;
+        epa_calculate_contact(simulation_state.polytope);
         return;
       }
 
       float distance = dot(direction, simulation_state.new_support.v);
       if (distance - closest_node.distance < tolerance) {
         simulation_state.state = STATE_FINISHED;
+        epa_calculate_contact(simulation_state.polytope);
         return;
       }
 
@@ -469,6 +534,7 @@ static void advance_simulation(physics_world *world) {
 
       if (distance < tolerance) {
         simulation_state.state = STATE_FINISHED;
+        epa_calculate_contact(simulation_state.polytope);
         return;
       }
 
@@ -509,12 +575,11 @@ static void advance_simulation(physics_world *world) {
 
         polytope_update_nearest(simulation_state.polytope);
 
-        dump_polytope(simulation_state.polytope, "Updated polytope");
-
         simulation_state.step += 1;
         simulation_state.state = STATE_PICK_NEAREST;
       } else {
         simulation_state.state = STATE_FINISHED;
+        epa_calculate_contact(simulation_state.polytope);
       }
       break;
 
@@ -571,7 +636,11 @@ void scenario_draw_scene(physics_world *world) {
     DrawLine3D(closest, simulation_state.new_support.v, YELLOW);
   }
 
-  DrawSphere(zero(), 0.02, BLUE);
+  if (simulation_state.state == STATE_FINISHED) {
+    draw_arrow(simulation_state.contact.point, scale(simulation_state.contact.normal, 0.3), ORANGE);
+  } else {
+    DrawSphere(zero(), 0.02, BLUE);
+  }
 }
 
 static void render_minkowski_difference(const physics_world *world) {
