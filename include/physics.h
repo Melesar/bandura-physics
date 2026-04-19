@@ -73,7 +73,8 @@ typedef struct {
 } body_shapes;
 
 typedef struct {
-  body_shape *bracket;
+  uint64_t *slots;
+  body_shape *shapes;
   count_t capacity;
 } shapes_bracket;
 
