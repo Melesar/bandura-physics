@@ -2,6 +2,7 @@
 #include "raylib.h"
 #include "raygui.h"
 #include "raymath.h"
+#include "sys/socket.h"
 
 #include <stdint.h>
 #include <string.h>
@@ -625,9 +626,79 @@ static void advance_simulation(physics_world *world) {
 
         simulation_state.step += 1;
         simulation_state.state = STATE_PICK_NEAREST;
-      } else {
-        simulation_state.state = STATE_FINISHED;
-        epa_calculate_contact(simulation_state.polytope);
+      } else if (closest_node.type == NODE_EDGE) {
+        uint16_t faces[2];
+        uint16_t edges[8];
+        uint16_t vertices[5];
+
+        vertices[0] = closest_node.edge.verticies[0];
+        vertices[2] = closest_node.edge.verticies[1];
+
+        memcpy(faces, closest_node.edge.attached_faces, 2 * sizeof(uint16_t));
+        memcpy(edges, simulation_state.polytope->nodes[faces[0]].face.edges, 3 * sizeof(uint16_t));
+
+        if (edges[0] == simulation_state.polytope->nearest) {
+          edges[0] = edges[2];
+        } else if (edges[1] == simulation_state.polytope->nearest) {
+          edges[1] = edges[2];
+        }
+
+        polytope_node e = simulation_state.polytope->nodes[edges[0]];
+        vertices[1] = e.edge.verticies[0];
+        vertices[3] = e.edge.verticies[1];
+
+        if (vertices[1] != vertices[0] && vertices[3] != vertices[0]) {
+          edges[2] = edges[0];
+          edges[0] = edges[1];
+          edges[1] = edges[2];
+
+          if (vertices[1] == vertices[2]) {
+            vertices[1] = vertices[3];
+          }
+        } else if (vertices[1] == vertices[0]) {
+          vertices[1] = vertices[3];
+        }
+
+        memcpy(edges + 2, simulation_state.polytope->nodes[faces[1]].face.edges, 3 * sizeof(uint16_t));
+
+        if (edges[2] == simulation_state.polytope->nearest) {
+          edges[2] = edges[4];
+        } else if (edges[3] == simulation_state.polytope->nearest) {
+          edges[3] = edges[4];
+        }
+
+        memcpy(vertices + 3, simulation_state.polytope->nodes[edges[2]].edge.verticies, 2 * sizeof(uint16_t));
+
+        if (vertices[3] != vertices[2] && vertices[4] != vertices[2]) {
+          edges[4] = edges[2];
+          edges[2] = edges[3];
+          edges[3] = edges[4];
+          if (vertices[3] == vertices[0]) {
+            vertices[3] = vertices[4];
+          }
+        } else if (vertices[3] == vertices[2]) {
+          vertices[3] = vertices[4];
+        }
+
+        vertices[4] = polytope_add_vertex(simulation_state.polytope, simulation_state.new_support);
+
+        polytope_remove_face(simulation_state.polytope, faces[0]);
+        polytope_remove_face(simulation_state.polytope, faces[1]);
+        polytope_remove_edge(simulation_state.polytope, simulation_state.polytope->nearest);
+
+        edges[4] = polytope_add_edge(simulation_state.polytope, vertices[4], vertices[2]);
+        edges[5] = polytope_add_edge(simulation_state.polytope, vertices[4], vertices[0]);
+        edges[6] = polytope_add_edge(simulation_state.polytope, vertices[4], vertices[1]);
+        edges[7] = polytope_add_edge(simulation_state.polytope, vertices[4], vertices[3]);
+
+        if (polytope_add_face(simulation_state.polytope, edges[1], edges[4], edges[6]) == NIL ||
+            polytope_add_face(simulation_state.polytope, edges[0], edges[6], edges[5]) == NIL ||
+            polytope_add_face(simulation_state.polytope, edges[3], edges[5], edges[7]) == NIL ||
+            polytope_add_face(simulation_state.polytope, edges[4], edges[7], edges[2]) == NIL) {
+          TraceLog(LOG_FATAL, "Polytope capacity exceeded");
+        }
+
+        polytope_update_nearest(simulation_state.polytope);
       }
       break;
 
