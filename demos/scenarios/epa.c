@@ -2,8 +2,6 @@
 #include "raylib.h"
 #include "raygui.h"
 #include "raymath.h"
-#include "sys/socket.h"
-
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
@@ -96,6 +94,7 @@ struct {
 
   uint32_t step;
   bool is_collision;
+  bool realtime;
   simplex simplex;
   polytope *polytope;
 
@@ -139,49 +138,9 @@ static int compare_vertex_distance(const void *a, const void *b) {
   }
 }
 
-static void epa_calculate_contact(polytope *polytope) {
-  polytope_node nearest_node = polytope->nodes[polytope->nearest];
-  simulation_state.contact.depth = sqrt(nearest_node.distance);
-  simulation_state.contact.normal = normalize(nearest_node.nearest_point);
 
-  // The following algorithm for computing the contact point is taken from the
-  // libccd by Daniel Fiser.
-  //
-  // https://github.com/danfis/libccd/blob/master/src/ccd.c#L133
 
-  // We re-use the free_list array for storing the indicies of verticies.
-  // Since EPA is finished already, the polytope won't expand and we don't need to
-  // keep track of free indicies anymore.
 
-  count_t vertex_count = 0;
-
-  count_t node_index = polytope->last_nodes[NODE_VERTEX];
-  while (node_index != NIL) {
-    polytope_node *vertex = &polytope->nodes[node_index];
-
-    polytope->free_list[vertex_count++] = node_index;
-    node_index = vertex->prev;
-  }
-
-  qsort(polytope->free_list, vertex_count, sizeof(uint16_t), compare_vertex_distance);
-
-  if (vertex_count % 2 == 1) {
-    vertex_count += 1;
-  }
-
-  v3 point = zero();
-  float div = 0;
-  for (count_t i = 0; i < vertex_count / 2; ++i) {
-    uint16_t index = polytope->free_list[i];
-    polytope_node node = polytope->nodes[index];
-
-    point = add(point, node.vertex.v.v1);
-    point = add(point, node.vertex.v.v2);
-    div += 2.0;
-  }
-
-  simulation_state.contact.point = scale(point, 1 / div);
-}
 
 static uint32_t polytope_memory_size(uint16_t max_nodes) {
   return sizeof(polytope) + (max_nodes + 1) * sizeof(polytope_node) + max_nodes * sizeof(uint16_t);
@@ -519,9 +478,165 @@ static bool polytope_from_simplex(polytope *polytope, const simplex *s) {
   return true;
 }
 
+static void epa_calculate_contact(polytope *polytope) {
+  polytope_node nearest_node = polytope->nodes[polytope->nearest];
+  simulation_state.contact.depth = sqrt(nearest_node.distance);
+  simulation_state.contact.normal = normalize(nearest_node.nearest_point);
+
+  // The following algorithm for computing the contact point is taken from the
+  // libccd by Daniel Fiser.
+  //
+  // https://github.com/danfis/libccd/blob/master/src/ccd.c#L133
+
+  // We re-use the free_list array for storing the indicies of verticies.
+  // Since EPA is finished already, the polytope won't expand and we don't need to
+  // keep track of free indicies anymore.
+
+  count_t vertex_count = 0;
+
+  count_t node_index = polytope->last_nodes[NODE_VERTEX];
+  while (node_index != NIL) {
+    polytope_node *vertex = &polytope->nodes[node_index];
+
+    polytope->free_list[vertex_count++] = node_index;
+    node_index = vertex->prev;
+  }
+
+  qsort(polytope->free_list, vertex_count, sizeof(uint16_t), compare_vertex_distance);
+
+  if (vertex_count % 2 == 1) {
+    vertex_count += 1;
+  }
+
+  v3 point = zero();
+  float div = 0;
+  for (count_t i = 0; i < vertex_count / 2; ++i) {
+    uint16_t index = polytope->free_list[i];
+    polytope_node node = polytope->nodes[index];
+
+    point = add(point, node.vertex.v.v1);
+    point = add(point, node.vertex.v.v2);
+    div += 2.0;
+  }
+
+  simulation_state.contact.point = scale(point, 1 / div);
+}
+
+static void epa_expand_polytope(polytope *polytope, support_point p) {
+  polytope_node closest_node = polytope->nodes[polytope->nearest];
+  if (closest_node.type == NODE_FACE) {
+    uint16_t edges[6];
+    uint16_t verts[5];
+    memcpy(edges, closest_node.face.edges, 3 * sizeof(uint16_t));
+    memcpy(verts, polytope->nodes[edges[0]].edge.verticies, 2 * sizeof(uint16_t));
+    memcpy(verts + 2, polytope->nodes[edges[1]].edge.verticies, 2 * sizeof(uint16_t));
+
+    if (verts[2] != verts[1] && verts[3] != verts[1]) {
+      edges[3] = edges[1];
+      edges[1] = edges[2];
+      edges[2] = edges[3];
+    }
+
+    if (verts[3] != verts[0] && verts[3] != verts[1]) {
+      verts[2] = verts[3];
+    }
+
+    polytope_remove_face(polytope, polytope->nearest);
+
+    verts[3] = polytope_add_vertex(polytope, p);
+    edges[3] = polytope_add_edge(polytope, verts[3], verts[0]);
+    edges[4] = polytope_add_edge(polytope, verts[3], verts[1]);
+    edges[5] = polytope_add_edge(polytope, verts[3], verts[2]);
+
+    if (polytope_add_face(polytope, edges[3], edges[4], edges[0]) == NIL ||
+      polytope_add_face(polytope, edges[4], edges[5], edges[1]) == NIL ||
+      polytope_add_face(polytope, edges[5], edges[3], edges[2]) == NIL) {
+
+        TraceLog(LOG_FATAL, "Polytope capacity exceeded");
+      }
+
+    polytope_update_nearest(polytope);
+
+  } else if (closest_node.type == NODE_EDGE) {
+    uint16_t faces[2];
+    uint16_t edges[8];
+    uint16_t vertices[5];
+
+    vertices[0] = closest_node.edge.verticies[0];
+    vertices[2] = closest_node.edge.verticies[1];
+
+    memcpy(faces, closest_node.edge.attached_faces, 2 * sizeof(uint16_t));
+    memcpy(edges, polytope->nodes[faces[0]].face.edges, 3 * sizeof(uint16_t));
+
+    if (edges[0] == polytope->nearest) {
+      edges[0] = edges[2];
+    } else if (edges[1] == polytope->nearest) {
+      edges[1] = edges[2];
+    }
+
+    polytope_node e = polytope->nodes[edges[0]];
+    vertices[1] = e.edge.verticies[0];
+    vertices[3] = e.edge.verticies[1];
+
+    if (vertices[1] != vertices[0] && vertices[3] != vertices[0]) {
+      edges[2] = edges[0];
+      edges[0] = edges[1];
+      edges[1] = edges[2];
+
+      if (vertices[1] == vertices[2]) {
+        vertices[1] = vertices[3];
+      }
+    } else if (vertices[1] == vertices[0]) {
+      vertices[1] = vertices[3];
+    }
+
+    memcpy(edges + 2, polytope->nodes[faces[1]].face.edges, 3 * sizeof(uint16_t));
+
+    if (edges[2] == polytope->nearest) {
+      edges[2] = edges[4];
+    } else if (edges[3] == polytope->nearest) {
+      edges[3] = edges[4];
+    }
+
+    memcpy(vertices + 3, polytope->nodes[edges[2]].edge.verticies, 2 * sizeof(uint16_t));
+
+    if (vertices[3] != vertices[2] && vertices[4] != vertices[2]) {
+      edges[4] = edges[2];
+      edges[2] = edges[3];
+      edges[3] = edges[4];
+      if (vertices[3] == vertices[0]) {
+        vertices[3] = vertices[4];
+      }
+    } else if (vertices[3] == vertices[2]) {
+      vertices[3] = vertices[4];
+    }
+
+    vertices[4] = polytope_add_vertex(polytope, simulation_state.new_support);
+
+    polytope_remove_face(polytope, faces[0]);
+    polytope_remove_face(polytope, faces[1]);
+    polytope_remove_edge(polytope, polytope->nearest);
+
+    edges[4] = polytope_add_edge(polytope, vertices[4], vertices[2]);
+    edges[5] = polytope_add_edge(polytope, vertices[4], vertices[0]);
+    edges[6] = polytope_add_edge(polytope, vertices[4], vertices[1]);
+    edges[7] = polytope_add_edge(polytope, vertices[4], vertices[3]);
+
+    if (polytope_add_face(polytope, edges[1], edges[4], edges[6]) == NIL ||
+      polytope_add_face(polytope, edges[0], edges[6], edges[5]) == NIL ||
+      polytope_add_face(polytope, edges[3], edges[5], edges[7]) == NIL ||
+      polytope_add_face(polytope, edges[4], edges[7], edges[2]) == NIL) {
+        TraceLog(LOG_FATAL, "Polytope capacity exceeded");
+      }
+
+    polytope_update_nearest(polytope);
+  }
+}
+
 static void reset_simulation(physics_world *world) {
   simulation_state.state = STATE_NONE;
   simulation_state.step = 0;
+  simulation_state.realtime = false;
 
   polytope_clear(simulation_state.polytope);
   simulation_state.is_collision = gjk_check_intersection_bodies(world, body_1, body_2, &simulation_state.simplex);
@@ -591,115 +706,10 @@ static void advance_simulation(physics_world *world) {
       break;
 
     case STATE_EXPANSION:
-      if (closest_node.type == NODE_FACE) {
-        uint16_t edges[6];
-        uint16_t verts[5];
-        memcpy(edges, closest_node.face.edges, 3 * sizeof(uint16_t));
-        memcpy(verts, simulation_state.polytope->nodes[edges[0]].edge.verticies, 2 * sizeof(uint16_t));
-        memcpy(verts + 2, simulation_state.polytope->nodes[edges[1]].edge.verticies, 2 * sizeof(uint16_t));
+      epa_expand_polytope(simulation_state.polytope, simulation_state.new_support);
 
-        if (verts[2] != verts[1] && verts[3] != verts[1]) {
-          edges[3] = edges[1];
-          edges[1] = edges[2];
-          edges[2] = edges[3];
-        }
-
-        if (verts[3] != verts[0] && verts[3] != verts[1]) {
-          verts[2] = verts[3];
-        }
-
-        polytope_remove_face(simulation_state.polytope, simulation_state.polytope->nearest);
-
-        verts[3] = polytope_add_vertex(simulation_state.polytope, simulation_state.new_support);
-        edges[3] = polytope_add_edge(simulation_state.polytope, verts[3], verts[0]);
-        edges[4] = polytope_add_edge(simulation_state.polytope, verts[3], verts[1]);
-        edges[5] = polytope_add_edge(simulation_state.polytope, verts[3], verts[2]);
-
-        if (polytope_add_face(simulation_state.polytope, edges[3], edges[4], edges[0]) == NIL ||
-            polytope_add_face(simulation_state.polytope, edges[4], edges[5], edges[1]) == NIL ||
-            polytope_add_face(simulation_state.polytope, edges[5], edges[3], edges[2]) == NIL) {
-
-          TraceLog(LOG_FATAL, "Polytope capacity exceeded");
-        }
-
-        polytope_update_nearest(simulation_state.polytope);
-
-        simulation_state.step += 1;
-        simulation_state.state = STATE_PICK_NEAREST;
-      } else if (closest_node.type == NODE_EDGE) {
-        uint16_t faces[2];
-        uint16_t edges[8];
-        uint16_t vertices[5];
-
-        vertices[0] = closest_node.edge.verticies[0];
-        vertices[2] = closest_node.edge.verticies[1];
-
-        memcpy(faces, closest_node.edge.attached_faces, 2 * sizeof(uint16_t));
-        memcpy(edges, simulation_state.polytope->nodes[faces[0]].face.edges, 3 * sizeof(uint16_t));
-
-        if (edges[0] == simulation_state.polytope->nearest) {
-          edges[0] = edges[2];
-        } else if (edges[1] == simulation_state.polytope->nearest) {
-          edges[1] = edges[2];
-        }
-
-        polytope_node e = simulation_state.polytope->nodes[edges[0]];
-        vertices[1] = e.edge.verticies[0];
-        vertices[3] = e.edge.verticies[1];
-
-        if (vertices[1] != vertices[0] && vertices[3] != vertices[0]) {
-          edges[2] = edges[0];
-          edges[0] = edges[1];
-          edges[1] = edges[2];
-
-          if (vertices[1] == vertices[2]) {
-            vertices[1] = vertices[3];
-          }
-        } else if (vertices[1] == vertices[0]) {
-          vertices[1] = vertices[3];
-        }
-
-        memcpy(edges + 2, simulation_state.polytope->nodes[faces[1]].face.edges, 3 * sizeof(uint16_t));
-
-        if (edges[2] == simulation_state.polytope->nearest) {
-          edges[2] = edges[4];
-        } else if (edges[3] == simulation_state.polytope->nearest) {
-          edges[3] = edges[4];
-        }
-
-        memcpy(vertices + 3, simulation_state.polytope->nodes[edges[2]].edge.verticies, 2 * sizeof(uint16_t));
-
-        if (vertices[3] != vertices[2] && vertices[4] != vertices[2]) {
-          edges[4] = edges[2];
-          edges[2] = edges[3];
-          edges[3] = edges[4];
-          if (vertices[3] == vertices[0]) {
-            vertices[3] = vertices[4];
-          }
-        } else if (vertices[3] == vertices[2]) {
-          vertices[3] = vertices[4];
-        }
-
-        vertices[4] = polytope_add_vertex(simulation_state.polytope, simulation_state.new_support);
-
-        polytope_remove_face(simulation_state.polytope, faces[0]);
-        polytope_remove_face(simulation_state.polytope, faces[1]);
-        polytope_remove_edge(simulation_state.polytope, simulation_state.polytope->nearest);
-
-        edges[4] = polytope_add_edge(simulation_state.polytope, vertices[4], vertices[2]);
-        edges[5] = polytope_add_edge(simulation_state.polytope, vertices[4], vertices[0]);
-        edges[6] = polytope_add_edge(simulation_state.polytope, vertices[4], vertices[1]);
-        edges[7] = polytope_add_edge(simulation_state.polytope, vertices[4], vertices[3]);
-
-        if (polytope_add_face(simulation_state.polytope, edges[1], edges[4], edges[6]) == NIL ||
-            polytope_add_face(simulation_state.polytope, edges[0], edges[6], edges[5]) == NIL ||
-            polytope_add_face(simulation_state.polytope, edges[3], edges[5], edges[7]) == NIL ||
-            polytope_add_face(simulation_state.polytope, edges[4], edges[7], edges[2]) == NIL) {
-          TraceLog(LOG_FATAL, "Polytope capacity exceeded");
-        }
-
-        polytope_update_nearest(simulation_state.polytope);
-      }
+      simulation_state.step += 1;
+      simulation_state.state = STATE_PICK_NEAREST;
       break;
 
     default:
@@ -743,23 +753,72 @@ void scenario_teardown() { free(simulation_state.polytope); }
 
 void scenario_draw_scene(physics_world *world) {
   render_minkowski_difference(world);
-  if (simulation_state.state == STATE_NONE) {
-    render_simplex(&simulation_state.simplex);
-  } else {
+
+  if (simulation_state.realtime) {
+    simulation_state.is_collision = gjk_check_intersection_bodies(world, body_1, body_2, &simulation_state.simplex);
+
+    if (!simulation_state.is_collision) {
+      return;
+    }
+
+    polytope_from_simplex(simulation_state.polytope, &simulation_state.simplex);
+
+    float tolerance = physics_edit_config(world)->epa_tolerance;
+    while(1) {
+      polytope_node closest_node = simulation_state.polytope->nodes[simulation_state.polytope->nearest];
+      v3 direction = closest_node.nearest_point;
+
+      support_point support = support_bodies(world, direction, body_1, body_2);
+      if (closest_node.type == NODE_VERTEX) {
+        epa_calculate_contact(simulation_state.polytope);
+        break;
+      }
+
+      float distance = dot(direction, support.v);
+      if (distance - closest_node.distance < tolerance) {
+        epa_calculate_contact(simulation_state.polytope);
+        break;
+      }
+
+      v3 a, b, c, closest;
+      if (closest_node.type == NODE_EDGE) {
+        polytope_get_edge_vertices(simulation_state.polytope, simulation_state.polytope->nearest, &a, &b);
+        distance = distance_to_line_segment(simulation_state.new_support.v, a, b, &closest);
+      } else {
+        polytope_get_face_verticies(simulation_state.polytope, simulation_state.polytope->nearest, &a, &b, &c);
+        distance = distance_to_triangle(support.v, a, b, c, &closest);
+      }
+
+      if (distance < tolerance) {
+        epa_calculate_contact(simulation_state.polytope);
+        break;
+      }
+
+      epa_expand_polytope(simulation_state.polytope, support);
+    }
+
     render_polytope(simulation_state.polytope);
-  }
-
-  if (simulation_state.state == STATE_NEW_SUPPORT) {
-    v3 closest = simulation_state.polytope->nodes[simulation_state.polytope->nearest].nearest_point;
-    DrawSphere(simulation_state.new_support.v, 0.05, ORANGE);
-    DrawLine3D(closest, simulation_state.new_support.v, YELLOW);
-  }
-
-  if (simulation_state.state == STATE_FINISHED) {
-    draw_arrow(simulation_state.contact.point, scale(simulation_state.contact.normal, 0.3), ORANGE);
   } else {
-    DrawSphere(zero(), 0.02, BLUE);
+    if (simulation_state.state == STATE_NONE) {
+      render_simplex(&simulation_state.simplex);
+    } else {
+      render_polytope(simulation_state.polytope);
+    }
+
+    if (simulation_state.state == STATE_NEW_SUPPORT) {
+      v3 closest = simulation_state.polytope->nodes[simulation_state.polytope->nearest].nearest_point;
+      DrawSphere(simulation_state.new_support.v, 0.05, ORANGE);
+      DrawLine3D(closest, simulation_state.new_support.v, YELLOW);
+    }
+
+    if (simulation_state.state == STATE_FINISHED) {
+      draw_arrow(simulation_state.contact.point, scale(simulation_state.contact.normal, 0.3), ORANGE);
+    } else {
+      DrawSphere(zero(), 0.02, BLUE);
+    }
+
   }
+
 }
 
 static void render_minkowski_difference(const physics_world *world) {
@@ -856,6 +915,7 @@ void scenario_build_ui(physics_world *world) {
   ui_begin_area("EPA", &ui_state.collapsed);
 
   ui_checkbox("Draw Minkowski", &ui_state.draw_minkowski);
+  ui_checkbox("Realtime detection", &simulation_state.realtime);
 
   ui_value_float("Simplex alpha", &ui_state.simplex_alpha, 0.0, 1.0);
   ui_value_float("Polytope alpha", &ui_state.polytope_alpha, 0.0, 1.0);
