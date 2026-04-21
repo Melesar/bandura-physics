@@ -300,6 +300,34 @@ static void polytope_detach_face(polytope *polytope, uint16_t face, uint16_t edg
   }
 }
 
+static void polytope_detach_edge(polytope *polytope, uint16_t edge, uint16_t vertex) {
+  polytope_node *vertex_node = &polytope->nodes[vertex];
+
+  uint16_t next_edge = vertex_node->vertex.first_attached_edge;
+  polytope_node *next_edge_node = &polytope->nodes[next_edge];
+  int i = next_edge_node->edge.verticies[0] == vertex ? 0 : 1;
+  if (next_edge == edge) {
+    vertex_node->vertex.first_attached_edge = next_edge_node->edge.next_attached_edges[i];
+    return;
+  }
+
+  next_edge = next_edge_node->edge.next_attached_edges[i];
+
+  while (next_edge != edge) {
+    next_edge_node = &polytope->nodes[next_edge];
+    i = next_edge_node->edge.verticies[0] == vertex ? 0 : 1;
+    next_edge = next_edge_node->edge.next_attached_edges[i];
+  }
+
+  polytope_node *current_node = next_edge_node;
+  int current_i = i;
+
+  next_edge_node = &polytope->nodes[next_edge];
+  i = next_edge_node->edge.verticies[0] == vertex ? 0 : 1;
+
+  current_node->edge.next_attached_edges[current_i] = next_edge_node->edge.next_attached_edges[i];
+}
+
 static void polytope_get_face_verticies(const polytope *polytope, uint16_t face, v3 *v1, v3 *v2, v3 *v3) {
   polytope_node node = polytope->nodes[face];
   uint16_t e1 = node.face.edges[0];
@@ -415,6 +443,26 @@ static void polytope_remove_face(polytope *polytope, uint16_t face) {
   polytope_detach_face(polytope, face, e3);
 
   polytope_remove_node(polytope, face);
+}
+
+static void polytope_remove_edge(polytope *polytope, uint16_t edge) {
+  if (edge == NIL) {
+    return;
+  }
+
+  polytope_node *edge_node = &polytope->nodes[edge];
+  if (edge_node->edge.attached_faces[0] != NIL || edge_node->edge.attached_faces[1] != NIL) {
+    TraceLog(LOG_FATAL, "Removing face with attached face");
+    return;
+  }
+
+  uint16_t v1 = edge_node->edge.verticies[0];
+  uint16_t v2 = edge_node->edge.verticies[1];
+
+  polytope_detach_edge(polytope, edge, v1);
+  polytope_detach_edge(polytope, edge, v2);
+
+  polytope_remove_node(polytope, edge);
 }
 
 static void polytope_update_nearest_for_type(polytope *polytope, uint16_t node_type) {
