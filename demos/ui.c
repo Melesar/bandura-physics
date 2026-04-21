@@ -1,3 +1,4 @@
+#include <limits.h>
 #define CLAY_IMPLEMENTATION
 #define RAYGUI_IMPLEMENTATION
 
@@ -429,6 +430,68 @@ void ui_checkbox(const char *label, bool *is_checked) {
 
     CLAY_TEXT(clay_from_string(label), {.textColor = clay_element_color(CHECKBOX, TEXT, state)});
   }
+}
+
+bool ui_dropdown(const char *label, char **values, count_t values_count, count_t *selected, bool *active) {
+  bool result = false;
+  CLAY(CLAY_SID(clay_string_concat(label, "dropdown")), {.layout = {
+                                                             .sizing = clay_container_sizing(),
+                                                             .childGap = 5,
+                                                         }}) {
+    CLAY_TEXT(clay_from_string(label), {.textColor = clay_element_color(DROPDOWNBOX, TEXT, clay_gui_state())});
+
+    CLAY_AUTO_ID({.layout = {.sizing = {.width = CLAY_SIZING_GROW()}}});
+
+    CLAY(CLAY_SID(clay_string_concat(label, "dropdown_box")),
+         {.border = {.width = {1, 1, 1, 1, 0}, .color = clay_element_color(DROPDOWNBOX, BORDER, clay_gui_state())},
+          .backgroundColor = clay_element_color(DROPDOWNBOX, BASE, clay_gui_state())}) {
+      if (!*active && clay_is_clicked()) {
+        *active = true;
+      }
+      char *text = values[*selected];
+      CLAY(CLAY_SID(clay_string_concat(label, "dropdown_text")),
+           {.layout = {.sizing = {.width = CLAY_SIZING_FIT(120, INT_MAX)},
+                       .childAlignment = {.x = CLAY_ALIGN_X_CENTER}}}) {
+
+        CLAY_TEXT(clay_from_string(text), {.textColor = clay_element_color(DROPDOWNBOX, TEXT, clay_gui_state()),
+                                           .textAlignment = CLAY_TEXT_ALIGN_CENTER});
+      }
+
+      if (*active) {
+        CLAY(CLAY_SID(clay_string_concat(label, "dropdown_options")),
+             {.floating = {.attachTo = CLAY_ATTACH_TO_PARENT,
+                           .attachPoints = {.parent = CLAY_ATTACH_POINT_LEFT_BOTTOM,
+                                            .element = CLAY_ATTACH_POINT_LEFT_TOP},
+                           .offset = {.y = 5}},
+              .border = {.width = {1, 1, 1, 1, 1}, .color = clay_element_color(DROPDOWNBOX, BORDER, STATE_NORMAL)},
+              .layout = {.layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = {.width = CLAY_SIZING_FIT(120, INT_MAX)}}}) {
+          for (count_t i = 0; i < values_count; ++i) {
+            CLAY(CLAY_SIDI(clay_string_concat(label, "dropdown_item"), i),
+                 {.layout = {.childAlignment = {.x = CLAY_ALIGN_X_CENTER}, .sizing = clay_container_sizing()},
+                  .backgroundColor = clay_element_color(DROPDOWNBOX, BASE, clay_gui_state())}) {
+              if (clay_is_clicked()) {
+                *active = false;
+                *selected = i;
+                result = true;
+              }
+              CLAY_TEXT(clay_from_string(values[i]),
+                        {.textColor = clay_element_color(DROPDOWNBOX, TEXT, clay_gui_state()),
+                         .textAlignment = CLAY_TEXT_ALIGN_CENTER});
+            }
+          }
+        }
+      }
+    }
+
+    CLAY_AUTO_ID() {
+      if (clay_is_clicked()) {
+        *active = !*active;
+      }
+      CLAY_TEXT(clay_icon_string(ICON_ARROW_DOWN),
+                {.textColor = clay_element_color(DROPDOWNBOX, TEXT, clay_gui_state())});
+    }
+  }
+  return result;
 }
 
 void ui_value_int(const char *label, int *value, int min_value, int max_value) {

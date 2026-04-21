@@ -87,6 +87,7 @@ void ui_value_float(const char *label, float *value, float min_value, float max_
 bool ui_button(const char *text);
 
 void ui_checkbox(const char *label, bool *is_checked);
+bool ui_dropdown(const char *label, char **values, count_t values_count, count_t *selected, bool *active);
 
 Clay_Color ui_text_color(int control);
 #endif

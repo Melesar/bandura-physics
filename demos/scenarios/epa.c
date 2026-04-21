@@ -106,6 +106,9 @@ struct {
 
   float simplex_alpha;
   float polytope_alpha;
+
+  bool dropdown_active;
+  count_t dropdown_selected;
 } ui_state;
 
 float distance_to_triangle(v3 from, v3 a, v3 b, v3 c, v3 *closest);
@@ -137,10 +140,6 @@ static int compare_vertex_distance(const void *a, const void *b) {
     return -1;
   }
 }
-
-
-
-
 
 static uint32_t polytope_memory_size(uint16_t max_nodes) {
   return sizeof(polytope) + (max_nodes + 1) * sizeof(polytope_node) + max_nodes * sizeof(uint16_t);
@@ -549,11 +548,11 @@ static void epa_expand_polytope(polytope *polytope, support_point p) {
     edges[5] = polytope_add_edge(polytope, verts[3], verts[2]);
 
     if (polytope_add_face(polytope, edges[3], edges[4], edges[0]) == NIL ||
-      polytope_add_face(polytope, edges[4], edges[5], edges[1]) == NIL ||
-      polytope_add_face(polytope, edges[5], edges[3], edges[2]) == NIL) {
+        polytope_add_face(polytope, edges[4], edges[5], edges[1]) == NIL ||
+        polytope_add_face(polytope, edges[5], edges[3], edges[2]) == NIL) {
 
-        TraceLog(LOG_FATAL, "Polytope capacity exceeded");
-      }
+      TraceLog(LOG_FATAL, "Polytope capacity exceeded");
+    }
 
     polytope_update_nearest(polytope);
 
@@ -623,11 +622,11 @@ static void epa_expand_polytope(polytope *polytope, support_point p) {
     edges[7] = polytope_add_edge(polytope, vertices[4], vertices[3]);
 
     if (polytope_add_face(polytope, edges[1], edges[4], edges[6]) == NIL ||
-      polytope_add_face(polytope, edges[0], edges[6], edges[5]) == NIL ||
-      polytope_add_face(polytope, edges[3], edges[5], edges[7]) == NIL ||
-      polytope_add_face(polytope, edges[4], edges[7], edges[2]) == NIL) {
-        TraceLog(LOG_FATAL, "Polytope capacity exceeded");
-      }
+        polytope_add_face(polytope, edges[0], edges[6], edges[5]) == NIL ||
+        polytope_add_face(polytope, edges[3], edges[5], edges[7]) == NIL ||
+        polytope_add_face(polytope, edges[4], edges[7], edges[2]) == NIL) {
+      TraceLog(LOG_FATAL, "Polytope capacity exceeded");
+    }
 
     polytope_update_nearest(polytope);
   }
@@ -764,7 +763,7 @@ void scenario_draw_scene(physics_world *world) {
     polytope_from_simplex(simulation_state.polytope, &simulation_state.simplex);
 
     float tolerance = physics_edit_config(world)->epa_tolerance;
-    while(1) {
+    while (1) {
       polytope_node closest_node = simulation_state.polytope->nodes[simulation_state.polytope->nearest];
       v3 direction = closest_node.nearest_point;
 
@@ -812,13 +811,11 @@ void scenario_draw_scene(physics_world *world) {
     }
 
     if (simulation_state.state == STATE_FINISHED) {
-      draw_arrow(simulation_state.contact.point, scale(simulation_state.contact.normal, 0.3), ORANGE);
+      draw_arrow(simulation_state.contact.point, scale(simulation_state.contact.normal, 1.3), ORANGE);
     } else {
       DrawSphere(zero(), 0.02, BLUE);
     }
-
   }
-
 }
 
 static void render_minkowski_difference(const physics_world *world) {
@@ -917,6 +914,9 @@ void scenario_build_ui(physics_world *world) {
   ui_checkbox("Draw Minkowski", &ui_state.draw_minkowski);
   ui_checkbox("Realtime detection", &simulation_state.realtime);
 
+  char *values[] = {"Boxes", "Spheres", "Cylinders"};
+  ui_dropdown("Bodies", values, 3, &ui_state.dropdown_selected, &ui_state.dropdown_active);
+
   ui_value_float("Simplex alpha", &ui_state.simplex_alpha, 0.0, 1.0);
   ui_value_float("Polytope alpha", &ui_state.polytope_alpha, 0.0, 1.0);
 
@@ -948,6 +948,19 @@ void scenario_build_ui(physics_world *world) {
     ui_label_int("Step", simulation_state.step);
     CLAY_AUTO_ID({.layout = {.sizing = {.width = CLAY_SIZING_GROW()}}});
     ui_label_string("State", s);
+  }
+
+  if (simulation_state.is_collision) {
+    if (simulation_state.realtime || simulation_state.state == STATE_FINISHED) {
+      ui_label_v3("Normal", simulation_state.contact.normal);
+      ui_label_float("Depth", simulation_state.contact.depth);
+      ui_label_v3("Point", simulation_state.contact.point);
+    } else if (simulation_state.state != STATE_NONE) {
+      polytope_node nearest_node = simulation_state.polytope->nodes[simulation_state.polytope->nearest];
+      ui_label_v3("Nearest point", nearest_node.nearest_point);
+      ui_label_float("Nearest distance", simulation_state.polytope->nearest_distance);
+      ui_label_int("Nearest node type", nearest_node.type);
+    }
   }
 
   CLAY(CLAY_ID("EPA_space"), {.layout = {.sizing = {.height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW()}}})
