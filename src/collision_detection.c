@@ -1,3 +1,4 @@
+#include "bandura.h"
 #define CCD_SINGLE
 
 #include "vec3.h"
@@ -130,6 +131,30 @@ static contact *new_contact(physics_world *world, const collision_detection_cont
   c->restitution = world->config.restitution;
 
   return c;
+}
+
+static count_t sphere_sphere_collision(physics_world *world, const collision_detection_context *ctx) {
+  v3 center_a = ctx->data_a->positions[ctx->body_a];
+  v3 center_b = ctx->data_b->positions[ctx->body_b];
+
+  float radius_a = ctx->shape_a.sphere.radius;
+  float radius_b = ctx->shape_b.sphere.radius;
+
+  v3 offset = sub(center_b, center_a);
+  float distance = len(offset);
+  float penetration = distance - radius_a - radius_b;
+  if (penetration < 0) {
+    return 0;
+  }
+
+  ARRAY_RESIZE_IF_NEEDED(world->contacts.values, world->contacts.count + 1, world->contacts.capacity, contact);
+
+  contact *c = new_contact(world, ctx);
+  c->point = add(center_b, scale(offset, -0.5));
+  c->normal = scale(offset, 1 / distance);
+  c->depth = penetration;
+
+  return 1;
 }
 
 static count_t box_plane_collision(physics_world *world, const collision_detection_context *ctx) {
@@ -322,7 +347,11 @@ count_t collisions_detect_dynamic(physics_world *world) {
           body_shape shape_b = shapes_get(world, shapes_b)[sb];
           ctx.shape_b = shape_b;
 
-          dyn_count += detect_collision_ccd(world, &ctx);
+          if (shape_a.type == SHAPE_SPHERE && shape_b.type == SHAPE_SPHERE) {
+            dyn_count += sphere_sphere_collision(world, &ctx);
+          } else {
+            dyn_count += detect_collision_ccd(world, &ctx);
+          }
         }
       }
     }
@@ -355,6 +384,11 @@ void collisions_detect_static(physics_world *world) {
         for (count_t sb = 0; sb < shapes_b.count; ++sb) {
           body_shape shape_b = shapes_get(world, shapes_b)[sb];
           ctx.shape_b = shape_b;
+
+          if (shape_a.type == SHAPE_SPHERE && shape_b.type == SHAPE_SPHERE) {
+            sphere_sphere_collision(world, &ctx);
+            continue;
+          }
 
           switch (shape_b.type) {
             case SHAPE_PLANE:
