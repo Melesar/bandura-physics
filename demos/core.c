@@ -22,6 +22,9 @@ void draw_arrow(Vector3 start, Vector3 direction, Color color) {
 
   Vector3 end = Vector3Add(start, direction);
   float distance = Vector3Length(direction);
+  if (distance < EPSILON) {
+    return;
+  }
   Vector3 n = Vector3Scale(direction, 1.0 / distance);
 
   set_arrow_color(color);

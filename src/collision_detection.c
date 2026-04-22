@@ -3,7 +3,6 @@
 #include "vec3.h"
 #include "ccd.h"
 #include "physics.h"
-#include "trace.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -33,19 +32,6 @@ typedef struct {
   v3 size;
   v3 axis[3];
 } collision_box;
-
-bool replay_collision;
-
-static void collision_validation_failure(const physics_world *world, const collision_detection_context *ctx,
-                                         bool ccd_collision, bool custom_collision) {
-#ifdef COLLISIONS_DEBUG
-  trace_print();
-#endif
-  printf("Collision detection mismatch\n");
-  exit(1);
-}
-
-static void debugger_anchor() { exit(1); }
 
 static v3 body_center(v3 shape_offset, quat global_rotation, v3 body_position) {
   v3 center = shape_offset;
@@ -276,25 +262,7 @@ static count_t detect_collision_ccd(physics_world *world, const collision_detect
 
   float depth;
   ccd_vec3_t normal, point;
-
-  if (replay_collision) {
-    debugger_anchor();
-  }
-
-  trace_clear();
-
-  simplex s;
-
   int result = ccdGJKPenetration(&ctx_a, &ctx_b, &ccd, &depth, &normal, &point);
-  bool gjk_custom = gjk_check_intersection(world, ctx, &s);
-
-  /* Only validate false negatives: BND misses a collision that CCD found.
-   * BND false positives (BND says collision, CCD says no) are benign at the
-   * near-degenerate boundary — EPA will produce a near-zero penetration depth. */
-  if (!gjk_custom && !result) {
-    collision_validation_failure(world, ctx, result == 0, gjk_custom);
-    return 0;
-  }
 
   if (result < 0) {
     return 0;
@@ -308,6 +276,24 @@ static count_t detect_collision_ccd(physics_world *world, const collision_detect
   c->depth = depth;
 
   return 1;
+}
+
+bool epa_for_bodies(physics_world *world, body_handle body_1, body_handle body_2, contact_t *out_contact) {
+  collision_detection_context ctx = {.body_a = handle_to_inner_index(world, body_1),
+                                     .body_b = handle_to_inner_index(world, body_2),
+                                     .data_a = as_common_const(world, body_1.type),
+                                     .data_b = as_common_const(world, body_2.type),
+                                     .shape_a = shapes_get(world, ctx.data_a->shapes[ctx.body_a])[0],
+                                     .shape_b = shapes_get(world, ctx.data_b->shapes[ctx.body_b])[0]};
+
+  count_t num_contacts = detect_collision_ccd(world, &ctx);
+  if (num_contacts > 0) {
+    contact c = world->contacts.values[world->contacts.count - 1];
+    *out_contact = (contact_t){c.point, c.normal, c.depth, body_1, body_2};
+    return true;
+  }
+
+  return false;
 }
 
 count_t collisions_detect_dynamic(physics_world *world) {
@@ -337,10 +323,6 @@ count_t collisions_detect_dynamic(physics_world *world) {
           ctx.shape_b = shape_b;
 
           dyn_count += detect_collision_ccd(world, &ctx);
-
-          if (replay_collision) {
-            detect_collision_ccd(world, &ctx);
-          }
         }
       }
     }
@@ -396,10 +378,6 @@ void collisions_detect_static(physics_world *world) {
 
             default:
               detect_collision_ccd(world, &ctx);
-
-              if (replay_collision) {
-                detect_collision_ccd(world, &ctx);
-              }
               break;
           }
         }

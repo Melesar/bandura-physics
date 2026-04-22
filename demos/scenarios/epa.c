@@ -98,6 +98,8 @@ struct {
     float depth;
   } contact;
 
+  contact_t ccd_contact;
+
   uint32_t step;
   bool is_collision;
   bool realtime;
@@ -121,6 +123,7 @@ float distance_to_triangle(v3 from, v3 a, v3 b, v3 c, v3 *closest);
 float distance_to_line_segment(v3 from, v3 a, v3 b, v3 *closest);
 bool gjk_check_intersection_bodies(physics_world *world, body_handle body_1, body_handle body_2, simplex *simplex);
 support_point support_bodies(physics_world *world, v3 direction, body_handle body_1, body_handle body_2);
+bool epa_for_bodies(physics_world *world, body_handle body_1, body_handle body_2, contact_t *out_contact);
 
 static void dump_polytope(const polytope *polytope, const char *title);
 static void render_minkowski_difference(const physics_world *world);
@@ -486,10 +489,10 @@ static bool polytope_from_simplex(polytope *polytope, const simplex *s) {
   return true;
 }
 
-static void epa_calculate_contact(polytope *polytope) {
+static void epa_calculate_contact(physics_world *world, polytope *polytope) {
   polytope_node nearest_node = polytope->nodes[polytope->nearest];
   simulation_state.contact.depth = sqrt(nearest_node.distance);
-  simulation_state.contact.normal = normalize(nearest_node.nearest_point);
+  simulation_state.contact.normal = negate(normalize(nearest_node.nearest_point));
 
   // The following algorithm for computing the contact point is taken from the
   // libccd by Daniel Fiser.
@@ -528,6 +531,8 @@ static void epa_calculate_contact(polytope *polytope) {
   }
 
   simulation_state.contact.point = scale(point, 1 / div);
+
+  epa_for_bodies(world, body_1, body_2, &simulation_state.ccd_contact);
 }
 
 static void epa_expand_polytope(polytope *polytope, support_point p) {
@@ -684,15 +689,14 @@ static void advance_simulation(physics_world *world) {
     case STATE_NEW_SUPPORT:
       if (closest_node.type == NODE_VERTEX) {
         simulation_state.state = STATE_FINISHED;
-        epa_calculate_contact(simulation_state.polytope);
+        epa_calculate_contact(world, simulation_state.polytope);
         return;
       }
 
       float distance = dot(direction, simulation_state.new_support.v);
       if (distance - closest_node.distance < tolerance) {
-        TraceLog(LOG_DEBUG, "Dot distance");
         simulation_state.state = STATE_FINISHED;
-        epa_calculate_contact(simulation_state.polytope);
+        epa_calculate_contact(world, simulation_state.polytope);
         return;
       }
 
@@ -706,9 +710,8 @@ static void advance_simulation(physics_world *world) {
       }
 
       if (distance < tolerance) {
-        TraceLog(LOG_DEBUG, "Face distance");
         simulation_state.state = STATE_FINISHED;
-        epa_calculate_contact(simulation_state.polytope);
+        epa_calculate_contact(world, simulation_state.polytope);
         return;
       }
 
@@ -803,13 +806,13 @@ void scenario_draw_scene(physics_world *world) {
 
       support_point support = support_bodies(world, direction, body_1, body_2);
       if (closest_node.type == NODE_VERTEX) {
-        epa_calculate_contact(simulation_state.polytope);
+        epa_calculate_contact(world, simulation_state.polytope);
         break;
       }
 
       float distance = dot(direction, support.v);
       if (distance - closest_node.distance < tolerance) {
-        epa_calculate_contact(simulation_state.polytope);
+        epa_calculate_contact(world, simulation_state.polytope);
         break;
       }
 
@@ -823,7 +826,7 @@ void scenario_draw_scene(physics_world *world) {
       }
 
       if (distance < tolerance) {
-        epa_calculate_contact(simulation_state.polytope);
+        epa_calculate_contact(world, simulation_state.polytope);
         break;
       }
 
@@ -831,6 +834,8 @@ void scenario_draw_scene(physics_world *world) {
     }
 
     render_polytope(simulation_state.polytope);
+    draw_arrow(simulation_state.contact.point, scale(simulation_state.contact.normal, 1.3), ORANGE);
+    draw_arrow(simulation_state.ccd_contact.point, scale(simulation_state.ccd_contact.normal, 1.3), VIOLET);
   } else {
     if (simulation_state.state == STATE_NONE) {
       render_simplex(&simulation_state.simplex);
@@ -846,6 +851,7 @@ void scenario_draw_scene(physics_world *world) {
 
     if (simulation_state.state == STATE_FINISHED) {
       draw_arrow(simulation_state.contact.point, scale(simulation_state.contact.normal, 1.3), ORANGE);
+      draw_arrow(simulation_state.ccd_contact.point, scale(simulation_state.ccd_contact.normal, 1.3), VIOLET);
     }
   }
 }

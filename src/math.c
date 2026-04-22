@@ -204,7 +204,6 @@ float distance_to_triangle(v3 from, v3 a, v3 b, v3 c, v3 *closest) {
   v3 d2 = sub(c, a);
   v3 ao = sub(a, from);
 
-  float u = dot(ao, ao);
   float v = dot(d1, d1);
   float w = dot(d2, d2);
   float p = dot(ao, d1);
