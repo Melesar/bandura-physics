@@ -22,6 +22,12 @@ typedef enum {
   NODE_TYPE_COUNT,
 } node_type;
 
+typedef enum {
+  BODIES_SPHERES,
+  BODIES_BOXES,
+  BODIES_CYLINDERS,
+} body_types;
+
 typedef struct {
   v3 v;
   v3 v1;
@@ -97,7 +103,7 @@ struct {
   bool realtime;
   simplex simplex;
   polytope *polytope;
-
+  body_types bodies;
 } simulation_state;
 
 struct {
@@ -120,6 +126,9 @@ static void dump_polytope(const polytope *polytope, const char *title);
 static void render_minkowski_difference(const physics_world *world);
 static void render_simplex(const simplex *s);
 static void render_polytope(const polytope *p);
+
+int gizmo_1;
+int gizmo_2;
 
 body_handle body_1;
 body_handle body_2;
@@ -681,6 +690,7 @@ static void advance_simulation(physics_world *world) {
 
       float distance = dot(direction, simulation_state.new_support.v);
       if (distance - closest_node.distance < tolerance) {
+        TraceLog(LOG_DEBUG, "Dot distance");
         simulation_state.state = STATE_FINISHED;
         epa_calculate_contact(simulation_state.polytope);
         return;
@@ -696,6 +706,7 @@ static void advance_simulation(physics_world *world) {
       }
 
       if (distance < tolerance) {
+        TraceLog(LOG_DEBUG, "Face distance");
         simulation_state.state = STATE_FINISHED;
         epa_calculate_contact(simulation_state.polytope);
         return;
@@ -716,6 +727,38 @@ static void advance_simulation(physics_world *world) {
   }
 }
 
+static void reset_bodies(physics_world *world) {
+  physics_reset(world);
+
+  unregister_gizmo(gizmo_1);
+  unregister_gizmo(gizmo_2);
+
+  body b1, b2;
+  switch (simulation_state.bodies) {
+    case BODIES_SPHERES:
+      b1 = physics_add_sphere_dynamic(world, 2, 1);
+      b2 = physics_add_sphere_dynamic(world, 2, 0.7);
+      break;
+
+    case BODIES_BOXES:
+      b1 = physics_add_box_dynamic(world, 2, vec3(1.5, 1, 2));
+      b2 = physics_add_box_dynamic(world, 2, vec3(1, 1, 1));
+      break;
+
+    default:
+      return;
+  }
+
+  *b1.position = vec3(0.477, 2.598, 0.535);
+  *b2.position = vec3(-0.125, 3.442, -0.378);
+
+  body_1 = b1.handle;
+  body_2 = b2.handle;
+
+  gizmo_1 = register_gizmo(b1.position, b1.rotation);
+  gizmo_2 = register_gizmo(b2.position, b2.rotation);
+}
+
 void scenario_initialize(program_config *config, physics_config *physics_config) {
   config->window_title = "EPA";
   config->draw_ground = false;
@@ -729,17 +772,7 @@ void scenario_initialize(program_config *config, physics_config *physics_config)
 }
 
 void scenario_setup_scene(physics_world *world) {
-  body b1 = physics_add_sphere_dynamic(world, 2, 1);
-  body b2 = physics_add_sphere_dynamic(world, 2, 0.7);
-
-  *b1.position = vec3(0.477, 2.598, 0.535);
-  *b2.position = vec3(-0.125, 3.442, -0.378);
-
-  body_1 = b1.handle;
-  body_2 = b2.handle;
-
-  register_gizmo(b1.position, b1.rotation);
-  register_gizmo(b2.position, b2.rotation);
+  reset_bodies(world);
 
   uint32_t memory_size = polytope_memory_size(POLYTOPE_MAX_NODES);
   uint8_t *polytope_memory = malloc(memory_size);
@@ -752,6 +785,7 @@ void scenario_teardown() { free(simulation_state.polytope); }
 
 void scenario_draw_scene(physics_world *world) {
   render_minkowski_difference(world);
+  DrawSphere(zero(), 0.02, BLUE);
 
   if (simulation_state.realtime) {
     simulation_state.is_collision = gjk_check_intersection_bodies(world, body_1, body_2, &simulation_state.simplex);
@@ -812,8 +846,6 @@ void scenario_draw_scene(physics_world *world) {
 
     if (simulation_state.state == STATE_FINISHED) {
       draw_arrow(simulation_state.contact.point, scale(simulation_state.contact.normal, 1.3), ORANGE);
-    } else {
-      DrawSphere(zero(), 0.02, BLUE);
     }
   }
 }
@@ -825,16 +857,37 @@ static void render_minkowski_difference(const physics_world *world) {
 
   count_t n;
 
-  float r1 = physics_get_shapes(world, body_1, &n)[0].sphere.radius;
-  float r2 = physics_get_shapes(world, body_2, &n)[0].sphere.radius;
-
+  body_shape s1 = physics_get_shapes(world, body_1, &n)[0];
+  body_shape s2 = physics_get_shapes(world, body_2, &n)[0];
   v3 p1 = physics_get_position(world, body_1);
   v3 p2 = physics_get_position(world, body_2);
 
-  v3 center = sub(p1, p2);
-  float size = r1 + r2;
+  float r1, r2;
+  v3 e1, e2, center;
+  switch (simulation_state.bodies) {
+    case BODIES_SPHERES:
+      r1 = s1.sphere.radius;
+      r2 = s2.sphere.radius;
 
-  DrawSphereWires(center, size, 32, 32, BLACK);
+      center = sub(p1, p2);
+      float size = r1 + r2;
+
+      DrawSphereWires(center, size, 32, 32, BLACK);
+      break;
+
+    case BODIES_BOXES:
+      e1 = s1.box.size;
+      e2 = s2.box.size;
+
+      center = sub(p1, p2);
+      v3 ss = add(e1, e2);
+
+      DrawCubeWires(center, ss.x, ss.y, ss.z, RED);
+      break;
+
+    default:
+      break;
+  }
 }
 
 static void render_simplex(const simplex *s) {
@@ -887,6 +940,8 @@ static void render_polytope(const polytope *p) {
       color = GREEN;
     }
 
+    color.a = (unsigned char)(255 * ui_state.polytope_alpha);
+
     v3 v1, v2, v3;
     polytope_get_face_verticies(p, face_index, &v1, &v2, &v3);
     render_triangle(v1, v2, v3, face->nearest_point, color);
@@ -914,8 +969,10 @@ void scenario_build_ui(physics_world *world) {
   ui_checkbox("Draw Minkowski", &ui_state.draw_minkowski);
   ui_checkbox("Realtime detection", &simulation_state.realtime);
 
-  char *values[] = {"Boxes", "Spheres", "Cylinders"};
-  ui_dropdown("Bodies", values, 3, &ui_state.dropdown_selected, &ui_state.dropdown_active);
+  char *values[] = {"Spheres", "Boxes", "Cylinders"};
+  if (ui_dropdown("Bodies", values, 3, &simulation_state.bodies, &ui_state.dropdown_active)) {
+    reset_bodies(world);
+  }
 
   ui_value_float("Simplex alpha", &ui_state.simplex_alpha, 0.0, 1.0);
   ui_value_float("Polytope alpha", &ui_state.polytope_alpha, 0.0, 1.0);
