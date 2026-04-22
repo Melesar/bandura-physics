@@ -1,15 +1,7 @@
-#include "bandura.h"
 #include "physics.h"
-#include "trace.h"
 #include <float.h>
 
 #define TOLERANCE FLT_EPSILON
-
-#ifdef COLLISIONS_DEBUG
-#define COLLISION_TRACE(...) trace_log(__VA_ARGS__)
-#else
-#define COLLISION_TRACE(...)
-#endif
 
 typedef struct {
   const common_data *data;
@@ -98,7 +90,7 @@ static v3 cylinder_support(const support_context *ctx, v3 direction) {
 
 support_func support_functions[] = {box_support, sphere_support, cylinder_support};
 
-static support_point support(const collision_detection_context *ctx, v3 direction) {
+support_point support(const collision_detection_context *ctx, v3 direction) {
   support_context sa = {ctx->data_a, ctx->shape_a, ctx->body_a};
   support_context sb = {ctx->data_b, ctx->shape_b, ctx->body_b};
 
@@ -133,7 +125,6 @@ static void simplex_add_point(simplex *s, support_point p) {
 }
 
 static bool simplex_update_2(simplex *s, v3 *direction) {
-  COLLISION_TRACE("[BND] Simplex update 2\n");
   v3 a = s->points[0].v;
   v3 b = s->points[1].v;
   v3 ab = sub(b, a);
@@ -143,17 +134,14 @@ static bool simplex_update_2(simplex *s, v3 *direction) {
   float c = dot(ab, ao);
 
   if (lensq(cr) < TOLERANCE && c > 0) {
-    COLLISION_TRACE("[BND] Len2\n");
     *direction = zero();
     return false;
   }
 
   if (is_zero(c) || c > 0) {
-    COLLISION_TRACE("[BND] Triple cross 2\n");
     *direction = cross(cr, ab);
   } else {
     s->size = 1;
-    COLLISION_TRACE("[BND] AO 1\n");
     *direction = ao;
   }
 
@@ -161,7 +149,6 @@ static bool simplex_update_2(simplex *s, v3 *direction) {
 }
 
 static bool simplex_update_3(simplex *s, v3 *direction) {
-  COLLISION_TRACE("[BND] Simplex update 3\n");
   support_point a = s->points[0];
   support_point b = s->points[1];
   support_point c = s->points[2];
@@ -184,18 +171,15 @@ static bool simplex_update_3(simplex *s, v3 *direction) {
       s->points[1] = c;
       s->size = 2;
       *direction = cross(cross(ac, ao), ac);
-      COLLISION_TRACE("[BND] Triple cross 1\n");
     } else {
     do_simplex3_edge_ab:;
       float d3 = dot(ab, ao);
       if (is_zero(d3) || d3 > 0) {
         s->size = 2;
         *direction = cross(cross(ab, ao), ab);
-        COLLISION_TRACE("[BND] Triple cross 2\n");
       } else {
         s->size = 1;
         *direction = ao;
-        COLLISION_TRACE("[BND] AO\n");
       }
     }
   } else {
@@ -206,13 +190,11 @@ static bool simplex_update_3(simplex *s, v3 *direction) {
       float d5 = dot(abc, ao);
       if (is_zero(d5) || d5 > 0) {
         *direction = abc;
-        COLLISION_TRACE("[BND] ABC\n");
       } else {
         support_point tmp = s->points[1];
         s->points[1] = s->points[2];
         s->points[2] = tmp;
         *direction = negate(abc);
-        COLLISION_TRACE("[BND] -ABC\n");
       }
     }
   }
@@ -221,7 +203,6 @@ static bool simplex_update_3(simplex *s, v3 *direction) {
 }
 
 static bool simplex_update_4(simplex *s, v3 *direction) {
-  COLLISION_TRACE("[BND] Simplex update 4\n");
   support_point a = s->points[0];
   support_point b = s->points[1];
   support_point c = s->points[2];
@@ -250,16 +231,12 @@ static bool simplex_update_4(simplex *s, v3 *direction) {
     s->points[1] = c;
     s->points[2] = d;
     s->size = 3;
-
-    COLLISION_TRACE("[BND] ACD_O\n");
   } else if (!adb_o) {
     s->points[2] = b;
     s->points[1] = d;
     s->size = 3;
-    COLLISION_TRACE("[BND] ADB_O\n");
   } else if (!abc_o) {
     s->size = 3;
-    COLLISION_TRACE("[BND] ABC_O\n");
   }
 
   return simplex_update_3(s, direction);
@@ -296,39 +273,27 @@ bool gjk_check_intersection_bodies(physics_world *world, body_handle body_1, bod
 bool gjk_check_intersection(physics_world *world, const collision_detection_context *ctx, simplex *simplex) {
   v3 direction = initial_direction;
 
-  COLLISION_TRACE("[BND] GJK start\n");
-
   simplex->size = 0;
 
   support_point support_point = support(ctx, direction);
   simplex_add_point(simplex, support_point);
   direction = normalize(negate(support_point.v));
 
-  COLLISION_TRACE("[BND] Initial point: (%.2f, %.2f, %.2f)\n", support_point.x, support_point.y, support_point.z);
-
   count_t iterations = 0;
   for (iterations = 0; iterations < world->config.max_gjk_iterations; ++iterations) {
     support_point = support(ctx, direction);
 
-    COLLISION_TRACE("[BND] Iteration %u. Support (%.2f, %.2f, %.2f)\n", iterations, support_point.x, support_point.y,
-                    support_point.z);
-
     if (dot(support_point.v, direction) < 0) {
-      COLLISION_TRACE("[BND] Dot is negative. No collision\n");
       return false;
     }
 
     simplex_add_point(simplex, support_point);
 
     if (simplex_update(simplex, &direction)) {
-      COLLISION_TRACE("[BND] GJK finished, collision found\n");
       return true;
     }
 
-    COLLISION_TRACE("[BND] New direction: (%.4f, %.4f, %.4f)\n", direction.x, direction.y, direction.z);
-
     if (lensq(direction) < TOLERANCE) {
-      COLLISION_TRACE("[BND] Direction is zero, no collision\n");
       return false;
     }
 

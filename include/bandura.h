@@ -151,6 +151,7 @@ typedef struct {
 
   count_t max_gjk_iterations;
   float epa_tolerance;
+  count_t epa_max_nodes;
 
   count_t resolution_attempts_factor;
 

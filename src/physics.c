@@ -183,6 +183,7 @@ physics_config physics_default_config() {
       .friction = 0.9,
       .max_gjk_iterations = 100,
       .epa_tolerance = 0.01,
+      .epa_max_nodes = 512,
       .resolution_attempts_factor = 15,
       .sleep_base_bias = 0.5,
       .sleep_threshold = 0.3,
@@ -383,6 +384,7 @@ physics_world *physics_init(const physics_config *config) {
   contacts_init(world);
   joints_init(world);
   shapes_init(world);
+  epa_init(config);
   profiler_init_default();
 
   return world;

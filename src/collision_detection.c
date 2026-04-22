@@ -143,15 +143,16 @@ static count_t sphere_sphere_collision(physics_world *world, const collision_det
   v3 offset = sub(center_b, center_a);
   float distance = len(offset);
   float penetration = distance - radius_a - radius_b;
-  if (penetration < 0) {
+  if (penetration > 0) {
     return 0;
   }
 
   ARRAY_RESIZE_IF_NEEDED(world->contacts.values, world->contacts.count + 1, world->contacts.capacity, contact);
 
+  float inv_distance = 1 / distance;
   contact *c = new_contact(world, ctx);
-  c->point = add(center_b, scale(offset, -0.5));
-  c->normal = scale(offset, 1 / distance);
+  c->point = add(center_b, scale(offset, -(radius_b + penetration) * inv_distance));
+  c->normal = scale(offset, -inv_distance);
   c->depth = penetration;
 
   return 1;
@@ -264,6 +265,21 @@ static count_t cylinder_plane_collision(physics_world *world, const collision_de
   return 1;
 }
 
+static count_t detect_collisions(physics_world *world, const collision_detection_context *ctx) {
+  simplex s;
+  if (!gjk_check_intersection(world, ctx, &s)) {
+    return 0;
+  }
+
+  contacts *contacts = &world->contacts;
+  ARRAY_RESIZE_IF_NEEDED(contacts->values, contacts->count + 1, contacts->capacity, contact);
+
+  contact *c = new_contact(world, ctx);
+  epa_get_contact(ctx, &s, world->config.epa_tolerance, c);
+
+  return 1;
+}
+
 static count_t detect_collision_ccd(physics_world *world, const collision_detection_context *ctx) {
   ccd_t ccd;
   CCD_INIT(&ccd);
@@ -350,7 +366,7 @@ count_t collisions_detect_dynamic(physics_world *world) {
           if (shape_a.type == SHAPE_SPHERE && shape_b.type == SHAPE_SPHERE) {
             dyn_count += sphere_sphere_collision(world, &ctx);
           } else {
-            dyn_count += detect_collision_ccd(world, &ctx);
+            dyn_count += detect_collisions(world, &ctx);
           }
         }
       }
@@ -411,7 +427,7 @@ void collisions_detect_static(physics_world *world) {
               break;
 
             default:
-              detect_collision_ccd(world, &ctx);
+              detect_collisions(world, &ctx);
               break;
           }
         }
