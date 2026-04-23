@@ -1,4 +1,3 @@
-#include <limits.h>
 #define CLAY_IMPLEMENTATION
 #define RAYGUI_IMPLEMENTATION
 
@@ -11,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 typedef enum {
   ELEMENT_INPUT_INT,

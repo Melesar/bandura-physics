@@ -46,8 +46,6 @@
 #define lerp(x, y, t) Lerp(x, y, t)
 #define slerp(x, y, t) QuaternionSlerp(x, y, t)
 
-#define SMOOTH_VALUE_CAPACITY 8
-
 typedef Vector3 v3;
 typedef Vector4 v4;
 typedef Quaternion quat;
@@ -165,12 +163,6 @@ typedef struct {
 } physics_config;
 
 typedef struct {
-  float buffer[SMOOTH_VALUE_CAPACITY];
-  uint8_t count;
-  uint8_t pointer;
-} smooth_value;
-
-typedef struct {
   count_t body_count;
   count_t contacts_count;
   count_t incomplete_resolutions;
@@ -253,8 +245,4 @@ count_t physics_raycast(const physics_world *world, v3 origin, v3 direction, flo
                         raycast_hit *hits);
 
 void physics_teardown(physics_world *world);
-
-float smooth_value_read(smooth_value v);
-void smooth_value_post(smooth_value *v, float x);
-
 #endif

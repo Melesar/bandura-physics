@@ -245,21 +245,3 @@ float distance_to_triangle(v3 from, v3 a, v3 b, v3 c, v3 *closest) {
 
   return distance;
 }
-
-float smooth_value_read(smooth_value v) {
-  float result = 0;
-  for (count_t i = 0; i < v.count; ++i) {
-    result += v.buffer[i];
-  }
-
-  return result / v.count;
-}
-
-void smooth_value_post(smooth_value *v, float x) {
-  if (v->pointer == SMOOTH_VALUE_CAPACITY) {
-    v->pointer = 0;
-  }
-
-  v->buffer[v->pointer++] = x;
-  v->count += v->count < SMOOTH_VALUE_CAPACITY;
-}
