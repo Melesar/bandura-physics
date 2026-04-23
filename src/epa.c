@@ -56,6 +56,22 @@ typedef struct {
 
 polytope *pt;
 
+static int compare_vertex_distance(const void *a, const void *b) {
+  uint16_t i1 = *(uint16_t *)a;
+  uint16_t i2 = *(uint16_t *)b;
+
+  polytope_node v1 = pt->nodes[i1];
+  polytope_node v2 = pt->nodes[i2];
+
+  if (fabsf(v1.distance - v2.distance) < EPSILON) {
+    return 0;
+  } else if (v1.distance > v2.distance) {
+    return 1;
+  } else {
+    return -1;
+  }
+}
+
 static uint32_t polytope_memory_size(count_t max_nodes) {
   return sizeof(polytope) + (max_nodes + 1) * sizeof(polytope_node) + max_nodes * sizeof(uint16_t);
 }
@@ -341,13 +357,17 @@ static void polytope_remove_edge(polytope *polytope, uint16_t edge) {
 static void polytope_update_nearest_for_type(polytope *polytope, uint16_t node_type) {
   uint16_t index = polytope->last_nodes[node_type];
 
+  polytope_node current_nearest = polytope->nodes[polytope->nearest];
   while (index != NIL) {
     polytope_node node = polytope->nodes[index];
 
     float distance = node.distance;
-    if (distance < polytope->nearest_distance) {
+    bool closer_than_same_type = node.type == current_nearest.type && distance < polytope->nearest_distance;
+    bool much_closer_than_other_type = node.type != current_nearest.type && distance - polytope->nearest_distance < -0.01;
+    if (closer_than_same_type || much_closer_than_other_type) {
       polytope->nearest_distance = distance;
       polytope->nearest = index;
+      current_nearest = node;
     }
 
     index = node.prev;
@@ -415,8 +435,7 @@ static void epa_calculate_contact(polytope *polytope, contact *out_contact) {
     node_index = vertex->prev;
   }
 
-  // TODO rethink how to sort the nodes
-  //  qsort(polytope->free_list, vertex_count, sizeof(uint16_t), compare_vertex_distance);
+  qsort(polytope->free_list, vertex_count, sizeof(uint16_t), compare_vertex_distance);
 
   if (vertex_count % 2 == 1) {
     vertex_count += 1;

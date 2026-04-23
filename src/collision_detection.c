@@ -140,7 +140,7 @@ static count_t sphere_sphere_collision(physics_world *world, const collision_det
   float radius_a = ctx->shape_a.sphere.radius;
   float radius_b = ctx->shape_b.sphere.radius;
 
-  v3 offset = sub(center_b, center_a);
+  v3 offset = sub(center_a, center_b);
   float distance = len(offset);
   float penetration = distance - radius_a - radius_b;
   if (penetration > 0) {
@@ -149,11 +149,12 @@ static count_t sphere_sphere_collision(physics_world *world, const collision_det
 
   ARRAY_RESIZE_IF_NEEDED(world->contacts.values, world->contacts.count + 1, world->contacts.capacity, contact);
 
-  float inv_distance = 1 / distance;
+  v3 normal = scale(offset, 1 / distance);
+
   contact *c = new_contact(world, ctx);
-  c->point = add(center_b, scale(offset, -(radius_b + penetration) * inv_distance));
-  c->normal = scale(offset, -inv_distance);
-  c->depth = penetration;
+  c->point = add(center_b, scale(normal, radius_b + penetration));
+  c->normal = normal;
+  c->depth = -penetration;
 
   return 1;
 }

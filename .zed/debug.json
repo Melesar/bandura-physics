@@ -25,7 +25,17 @@
     "request": "launch",
     "adapter": "CodeLLDB",
   },
-
+  {
+    "label": "Debug rigidbodies",
+    "build": {
+      "command": "zig",
+      "args": ["build"],
+      "cwd": "$ZED_WORKTREE_ROOT",
+    },
+    "program": "$ZED_WORKTREE_ROOT/zig-out/bin/rigidbodies",
+    "request": "launch",
+    "adapter": "CodeLLDB",
+  },
   {
     "label": "Debug ragdolls",
     "build": {

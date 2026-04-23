@@ -439,13 +439,17 @@ static void polytope_remove_edge(polytope *polytope, uint16_t edge) {
 static void polytope_update_nearest_for_type(polytope *polytope, uint16_t node_type) {
   uint16_t index = polytope->last_nodes[node_type];
 
+  polytope_node current_nearest = polytope->nodes[polytope->nearest];
   while (index != NIL) {
     polytope_node node = polytope->nodes[index];
 
     float distance = node.distance;
-    if (distance < polytope->nearest_distance) {
+    bool closer_than_same_type = node.type == current_nearest.type && distance < polytope->nearest_distance;
+    bool much_closer_than_other_type = node.type != current_nearest.type && distance - polytope->nearest_distance < -0.01;
+    if (closer_than_same_type || much_closer_than_other_type) {
       polytope->nearest_distance = distance;
       polytope->nearest = index;
+      current_nearest = node;
     }
 
     index = node.prev;
@@ -744,16 +748,18 @@ static void reset_bodies(physics_world *world) {
       break;
 
     case BODIES_BOXES:
-      b1 = physics_add_box_dynamic(world, 2, vec3(1.5, 1, 2));
-      b2 = physics_add_box_dynamic(world, 2, vec3(1, 1, 1));
+      b1 = physics_add_box_dynamic(world, 2, vec3(1.3, 1.3, 1.3));
+      b2 = physics_add_box_dynamic(world, 2, vec3(1.3, 1.3, 1.3));
       break;
 
     default:
       return;
   }
 
-  *b1.position = vec3(0.477, 2.598, 0.535);
-  *b2.position = vec3(-0.125, 3.442, -0.378);
+  *b2.position = vec3(0, 7, 0);
+  *b1.position = vec3(0, 6.41, 0);
+  *b2.rotation = (quat){.x = 0.0582429692, .y = 0.0582429692, .z = 0.0582429692, .w =  0.994898676};
+  *b1.rotation = (quat){.x = 0.00147654035, .y = 0.00147654035, .z = 0.00147654035, .w = 0.999996721};
 
   body_1 = b1.handle;
   body_2 = b2.handle;
@@ -775,6 +781,7 @@ void scenario_initialize(program_config *config, physics_config *physics_config)
 }
 
 void scenario_setup_scene(physics_world *world) {
+  simulation_state.bodies = BODIES_BOXES;
   reset_bodies(world);
 
   uint32_t memory_size = polytope_memory_size(POLYTOPE_MAX_NODES);
