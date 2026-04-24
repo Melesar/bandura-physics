@@ -6,6 +6,12 @@
 bool is_collision;
 raycast_hit hit;
 
+void handle_error(bnd_error error_type, char *error_message, void *error_data) {
+  if (error_type == BND_ERROR_INVALID_POLYTOPE) {
+    TraceLog(LOG_FATAL, error_message);
+  }
+}
+
 void scenario_initialize(program_config *config, physics_config *physics) {
   config->window_title = "Rigidbodies";
   config->camera_position = (v3){22.542, 11.645, 20.752};
@@ -13,6 +19,8 @@ void scenario_initialize(program_config *config, physics_config *physics) {
 }
 
 void scenario_setup_scene(physics_world *world) {
+  bnd_register_error_callback(handle_error);
+
   body big_box = physics_add_box_static(world, (v3){10, 3, 1});
   *big_box.position = (v3){0, 1.5, -5};
 

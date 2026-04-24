@@ -1,4 +1,6 @@
+#include "bandura.h"
 #include "bnd-core.h"
+#include "raymath.h"
 #include <string.h>
 #include <float.h>
 #include <stdlib.h>
@@ -267,6 +269,15 @@ static uint16_t polytope_add_edge(polytope *polytope, uint16_t v1, uint16_t v2) 
 
   uint16_t index = polytope_free_index(polytope);
   if (index == NIL) {
+    return NIL;
+  }
+
+  v3 vert1 = polytope->nodes[v1].vertex.v.v;
+  v3 vert2 = polytope->nodes[v2].vertex.v.v;
+  if (distancesqr(vert1, vert2) < EPSILON) {
+    raise_error(BND_ERROR_INVALID_POLYTOPE, polytope, "Degenerate polytope expansion. New egde from (%.4f, %.4f, %.4f) to (%.4f, %.4f, %.4f)",
+      vert1.x, vert1.y, vert1.z, vert2.x, vert2.y, vert2.z);
+
     return NIL;
   }
 

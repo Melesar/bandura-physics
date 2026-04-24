@@ -74,6 +74,12 @@ m3 matrix_displacement_inertia(m3 i0, v3 offset, float mass);
 typedef uint32_t count_t;
 
 typedef enum {
+  BND_ERROR_INVALID_POLYTOPE
+} bnd_error;
+
+typedef void (*bnd_error_callback)(bnd_error error_type, char *error_message, void *error_data);
+
+typedef enum {
   BODY_DYNAMIC,
   BODY_STATIC,
 } body_type;
@@ -194,6 +200,8 @@ typedef body_enumerator body_enumerator_typed;
 physics_config physics_default_config();
 
 physics_world *physics_init(const physics_config *config);
+
+void bnd_register_error_callback(bnd_error_callback callback);
 
 void physics_add_plane(physics_world *world, v3 point, v3 normal);
 body physics_add_box_dynamic(physics_world *world, float mass, v3 size);

@@ -141,6 +141,8 @@ typedef struct {
   uint8_t size;
 } simplex;
 
+void raise_error(bnd_error type, void *data, const char *template, ...);
+
 body_handle make_body_handle(const physics_world *world, body_type type, count_t index);
 count_t handle_to_inner_index(const physics_world *world, body_handle handle);
 
