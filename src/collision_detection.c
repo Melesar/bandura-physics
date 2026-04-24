@@ -3,7 +3,7 @@
 
 #include "vec3.h"
 #include "ccd.h"
-#include "physics.h"
+#include "bnd-core.h"
 
 #include <math.h>
 #include <stdlib.h>

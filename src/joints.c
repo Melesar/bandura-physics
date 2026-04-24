@@ -1,5 +1,4 @@
-#include "bandura.h"
-#include "physics.h"
+#include "bnd-core.h"
 #include <stdlib.h>
 
 static inline contact *joint_new_contact(physics_world *world) {

@@ -1,4 +1,4 @@
-#include "core.h"
+#include "scenario-core.h"
 #include "raygui.h"
 #include "raylib.h"
 #include <stdlib.h>

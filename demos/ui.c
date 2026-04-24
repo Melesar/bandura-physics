@@ -1,7 +1,7 @@
 #define CLAY_IMPLEMENTATION
 #define RAYGUI_IMPLEMENTATION
 
-#include "core.h"
+#include "scenario-core.h"
 #include "raygui.h"
 #include "cyber/style_cyber.h"
 

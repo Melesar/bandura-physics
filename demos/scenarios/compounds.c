@@ -1,4 +1,4 @@
-#include "core.h"
+#include "scenario-core.h"
 #include "raymath.h"
 
 void scenario_initialize(program_config *config, physics_config *physics_config) {
