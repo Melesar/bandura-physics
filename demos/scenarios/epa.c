@@ -15,6 +15,9 @@
 #define MAX_ATTACHED_EDGES 2
 #define MAX_ATTACHED_FACES 2
 
+#define polytope_for_each_node(p, index, type)                                                                         \
+  for (count_t index = p->last_nodes[type]; index != NIL; index = p->nodes[index].prev)
+
 typedef enum {
   NODE_VERTEX,
   NODE_EDGE,
@@ -260,6 +263,9 @@ static void polytope_detach_edge(polytope *polytope, uint16_t edge, uint16_t ver
   int i = next_edge_node->edge.verticies[0] == vertex ? 0 : 1;
   if (next_edge == edge) {
     vertex_node->vertex.first_attached_edge = next_edge_node->edge.next_attached_edges[i];
+    if (vertex_node->vertex.first_attached_edge == NIL) {
+      vertex_node->flags |= FLAG_FOR_REMOVAL;
+    }
     return;
   }
 
@@ -413,6 +419,8 @@ static void polytope_remove_edge(polytope *polytope, uint16_t edge) {
   polytope_remove_node(polytope, edge);
 }
 
+static void polytope_remove_vertex(polytope *polytope, uint16_t vertex) {}
+
 static void polytope_update_nearest(polytope *polytope) {
   polytope->nearest_distance = FLT_MAX;
 
@@ -507,7 +515,77 @@ static void epa_update_visible_faces(polytope *polytope) {
   }
 }
 
-static void epa_expand_polytope(polytope *polytope, support_point p) { epa_update_visible_faces(polytope); }
+static void epa_expand_polytope(polytope *polytope, support_point p) {
+  epa_update_visible_faces(polytope);
+
+  polytope_for_each_node(polytope, index, NODE_FACE) {
+    if (polytope->nodes[index].flags & FLAG_FOR_REMOVAL) {
+      polytope_remove_face(polytope, index);
+    }
+  }
+
+  polytope_for_each_node(polytope, index, NODE_EDGE) {
+    if (polytope->nodes[index].flags & FLAG_FOR_REMOVAL) {
+      polytope_remove_edge(polytope, index);
+    }
+  }
+
+  polytope_for_each_node(polytope, index, NODE_VERTEX) {
+    if (polytope->nodes[index].flags & FLAG_FOR_REMOVAL) {
+      polytope_remove_vertex(polytope, index);
+    }
+  }
+
+  uint16_t new_vertex = polytope_add_vertex(polytope, simulation_state.new_support);
+
+  polytope_for_each_node(polytope, index, NODE_EDGE) {
+    polytope_node *edge_node = &polytope->nodes[index];
+    if ((edge_node->flags & FLAG_BORDER_EDGE) == 0) {
+      continue;
+    }
+
+    uint16_t edge_index = index;
+    uint16_t first_connected_vertex_index = edge_node->edge.verticies[0];
+    uint16_t first_new_edge = polytope_add_edge(polytope, new_vertex, first_connected_vertex_index);
+    uint16_t prev_edge = first_new_edge;
+
+    uint16_t connected_vertex_index = edge_node->edge.verticies[1];
+    while (connected_vertex_index != first_connected_vertex_index) {
+      polytope->nodes[edge_index].flags = 0;
+
+      uint16_t new_edge = polytope_add_edge(polytope, new_vertex, connected_vertex_index);
+      polytope_add_face(polytope, prev_edge, new_edge, edge_index);
+
+      polytope_node *connected_vertex_node = &polytope->nodes[connected_vertex_index];
+      uint16_t attached_edge_index = connected_vertex_node->vertex.first_attached_edge;
+      while (attached_edge_index != NIL) {
+        polytope_node attached_edge_node = polytope->nodes[attached_edge_index];
+        count_t i = attached_edge_node.edge.verticies[0] == connected_vertex_index ? 0 : 1;
+
+        if (attached_edge_index == new_edge || attached_edge_index == edge_index) {
+          attached_edge_index = attached_edge_node.edge.next_attached_edges[i];
+          continue;
+        }
+
+        if (attached_edge_node.flags & FLAG_BORDER_EDGE) {
+          edge_index = attached_edge_index;
+          connected_vertex_index = attached_edge_node.edge.verticies[1 - i];
+          break;
+        }
+
+        attached_edge_index = attached_edge_node.edge.next_attached_edges[i];
+      }
+
+      prev_edge = new_edge;
+    }
+
+    polytope_add_face(polytope, first_new_edge, prev_edge, edge_index);
+
+    break;
+  }
+
+  polytope_update_nearest(polytope);
+}
 
 static void reset_simulation(physics_world *world) {
   simulation_state.state = STATE_NONE;
