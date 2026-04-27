@@ -24,6 +24,11 @@ typedef enum {
 } node_type;
 
 typedef enum {
+  FLAG_VISIBLE_FACE,
+  FLAG_BORDER_EDGE,
+} node_flags;
+
+typedef enum {
   BODIES_SPHERES,
   BODIES_BOXES,
   BODIES_CYLINDERS,
@@ -46,6 +51,7 @@ typedef struct {
   v3 nearest_point;
   float distance;
 
+  uint8_t flags;
   uint16_t next;
   uint16_t prev;
 
@@ -460,7 +466,15 @@ static void polytope_update_nearest(polytope *polytope) {
 }
 
 static bool polytope_is_face_visible(polytope *polytope, uint16_t face) {
-  return false;
+  v3 v1, v2, vv3;
+  polytope_get_face_verticies(polytope, face, &v1, &v2, &vv3);
+
+  v3 c = scale(add(v1, add(v2, vv3)), 0.333);
+  v3 np = cross(sub(vv3, v1), sub(v2, v1));
+
+  if (dot(np, c) < 0) { np = negate(np); }
+
+  return dot(normalize(np), normalize(simulation_state.new_support.v)) > visibility_epsilon;
 }
 
 static bool polytope_from_simplex(polytope *polytope, const simplex *s) {
