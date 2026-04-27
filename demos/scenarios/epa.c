@@ -11,6 +11,7 @@
 #define NIL 0
 #define POLYTOPE_MAX_NODES 1024
 
+#define MAX_VISIBLE_FACES 16
 #define MAX_ATTACHED_EDGES 2
 #define MAX_ATTACHED_FACES 2
 
@@ -135,6 +136,10 @@ int gizmo_2;
 
 body_handle body_1;
 body_handle body_2;
+
+static float visibility_epsilon = 0.25;
+static uint16_t visible_faces[MAX_VISIBLE_FACES];
+static uint16_t visible_faces_count;
 
 static int compare_vertex_distance(const void *a, const void *b) {
   uint16_t i1 = *(uint16_t *)a;
@@ -436,32 +441,26 @@ static void polytope_remove_edge(polytope *polytope, uint16_t edge) {
   polytope_remove_node(polytope, edge);
 }
 
-static void polytope_update_nearest_for_type(polytope *polytope, uint16_t node_type) {
-  uint16_t index = polytope->last_nodes[node_type];
+static void polytope_update_nearest(polytope *polytope) {
+  polytope->nearest_distance = FLT_MAX;
 
-  polytope_node current_nearest = polytope->nodes[polytope->nearest];
+  uint16_t index = polytope->last_nodes[NODE_FACE];
+
   while (index != NIL) {
     polytope_node node = polytope->nodes[index];
 
     float distance = node.distance;
-    bool closer_than_same_type = node.type == current_nearest.type && distance < polytope->nearest_distance;
-    bool much_closer_than_other_type = node.type != current_nearest.type && distance - polytope->nearest_distance < -0.01;
-    if (closer_than_same_type || much_closer_than_other_type) {
+    if (distance < polytope->nearest_distance) {
       polytope->nearest_distance = distance;
       polytope->nearest = index;
-      current_nearest = node;
     }
 
     index = node.prev;
   }
 }
 
-static void polytope_update_nearest(polytope *polytope) {
-  polytope->nearest_distance = FLT_MAX;
-
-  polytope_update_nearest_for_type(polytope, NODE_VERTEX);
-  polytope_update_nearest_for_type(polytope, NODE_EDGE);
-  polytope_update_nearest_for_type(polytope, NODE_FACE);
+static bool polytope_is_face_visible(polytope *polytope, uint16_t face) {
+  return false;
 }
 
 static bool polytope_from_simplex(polytope *polytope, const simplex *s) {
@@ -539,115 +538,53 @@ static void epa_calculate_contact(physics_world *world, polytope *polytope) {
   epa_for_bodies(world, body_1, body_2, &simulation_state.ccd_contact);
 }
 
-static void epa_expand_polytope(polytope *polytope, support_point p) {
-  polytope_node closest_node = polytope->nodes[polytope->nearest];
-  if (closest_node.type == NODE_FACE) {
-    uint16_t edges[6];
-    uint16_t verts[5];
-    memcpy(edges, closest_node.face.edges, 3 * sizeof(uint16_t));
-    memcpy(verts, polytope->nodes[edges[0]].edge.verticies, 2 * sizeof(uint16_t));
-    memcpy(verts + 2, polytope->nodes[edges[1]].edge.verticies, 2 * sizeof(uint16_t));
+static void epa_collect_visible_faces(polytope *polytope) {
+  uint16_t stack_ptr = 1;
+  uint16_t stack[MAX_VISIBLE_FACES] = { polytope->nearest };
 
-    if (verts[2] != verts[1] && verts[3] != verts[1]) {
-      edges[3] = edges[1];
-      edges[1] = edges[2];
-      edges[2] = edges[3];
-    }
+  visible_faces[0] = polytope->nearest;
+  visible_faces_count = 1;
 
-    if (verts[3] != verts[0] && verts[3] != verts[1]) {
-      verts[2] = verts[3];
-    }
+  while (stack_ptr > 0) {
+    uint16_t face_index = stack[--stack_ptr];
+    polytope_node face_node = polytope->nodes[face_index];
 
-    polytope_remove_face(polytope, polytope->nearest);
+    for (count_t i = 0; i < 3; ++i) {
+      uint16_t edge_index = face_node.face.edges[i];
+      polytope_node edge_node = polytope->nodes[edge_index];
 
-    verts[3] = polytope_add_vertex(polytope, p);
-    edges[3] = polytope_add_edge(polytope, verts[3], verts[0]);
-    edges[4] = polytope_add_edge(polytope, verts[3], verts[1]);
-    edges[5] = polytope_add_edge(polytope, verts[3], verts[2]);
+      count_t visible_count = 0;
+      for (count_t j = 0; j < 2; ++j) {
+        uint16_t adjasent_face_index = edge_node.edge.attached_faces[j];
+        bool already_visible = false;
+        for (count_t k = 0; k < visible_count; ++k) {
+          if (visible_faces[k] == adjasent_face_index) {
+            already_visible = true;
+            break;
+          }
+        }
 
-    if (polytope_add_face(polytope, edges[3], edges[4], edges[0]) == NIL ||
-        polytope_add_face(polytope, edges[4], edges[5], edges[1]) == NIL ||
-        polytope_add_face(polytope, edges[5], edges[3], edges[2]) == NIL) {
+        if (already_visible) {
+          visible_count += 1;
+          continue;
+        }
 
-      TraceLog(LOG_FATAL, "Polytope capacity exceeded");
-    }
-
-    polytope_update_nearest(polytope);
-
-  } else if (closest_node.type == NODE_EDGE) {
-    uint16_t faces[2];
-    uint16_t edges[8];
-    uint16_t vertices[5];
-
-    vertices[0] = closest_node.edge.verticies[0];
-    vertices[2] = closest_node.edge.verticies[1];
-
-    memcpy(faces, closest_node.edge.attached_faces, 2 * sizeof(uint16_t));
-    memcpy(edges, polytope->nodes[faces[0]].face.edges, 3 * sizeof(uint16_t));
-
-    if (edges[0] == polytope->nearest) {
-      edges[0] = edges[2];
-    } else if (edges[1] == polytope->nearest) {
-      edges[1] = edges[2];
-    }
-
-    polytope_node e = polytope->nodes[edges[0]];
-    vertices[1] = e.edge.verticies[0];
-    vertices[3] = e.edge.verticies[1];
-
-    if (vertices[1] != vertices[0] && vertices[3] != vertices[0]) {
-      edges[2] = edges[0];
-      edges[0] = edges[1];
-      edges[1] = edges[2];
-
-      if (vertices[1] == vertices[2]) {
-        vertices[1] = vertices[3];
+        if (polytope_is_face_visible(polytope, adjasent_face_index)) {
+          visible_count += 1;
+          visible_faces[visible_faces_count++] = adjasent_face_index;
+          stack[stack_ptr++] = adjasent_face_index;
+        }
       }
-    } else if (vertices[1] == vertices[0]) {
-      vertices[1] = vertices[3];
-    }
 
-    memcpy(edges + 2, polytope->nodes[faces[1]].face.edges, 3 * sizeof(uint16_t));
-
-    if (edges[2] == polytope->nearest) {
-      edges[2] = edges[4];
-    } else if (edges[3] == polytope->nearest) {
-      edges[3] = edges[4];
-    }
-
-    memcpy(vertices + 3, polytope->nodes[edges[2]].edge.verticies, 2 * sizeof(uint16_t));
-
-    if (vertices[3] != vertices[2] && vertices[4] != vertices[2]) {
-      edges[4] = edges[2];
-      edges[2] = edges[3];
-      edges[3] = edges[4];
-      if (vertices[3] == vertices[0]) {
-        vertices[3] = vertices[4];
+      if (visible_count == 2) {
+        continue;
       }
-    } else if (vertices[3] == vertices[2]) {
-      vertices[3] = vertices[4];
     }
-
-    vertices[4] = polytope_add_vertex(polytope, simulation_state.new_support);
-
-    polytope_remove_face(polytope, faces[0]);
-    polytope_remove_face(polytope, faces[1]);
-    polytope_remove_edge(polytope, polytope->nearest);
-
-    edges[4] = polytope_add_edge(polytope, vertices[4], vertices[2]);
-    edges[5] = polytope_add_edge(polytope, vertices[4], vertices[0]);
-    edges[6] = polytope_add_edge(polytope, vertices[4], vertices[1]);
-    edges[7] = polytope_add_edge(polytope, vertices[4], vertices[3]);
-
-    if (polytope_add_face(polytope, edges[1], edges[4], edges[6]) == NIL ||
-        polytope_add_face(polytope, edges[0], edges[6], edges[5]) == NIL ||
-        polytope_add_face(polytope, edges[3], edges[5], edges[7]) == NIL ||
-        polytope_add_face(polytope, edges[4], edges[7], edges[2]) == NIL) {
-      TraceLog(LOG_FATAL, "Polytope capacity exceeded");
-    }
-
-    polytope_update_nearest(polytope);
   }
+}
+
+static void epa_expand_polytope(polytope *polytope, support_point p) {
+  epa_collect_visible_faces(polytope);
 }
 
 static void reset_simulation(physics_world *world) {
@@ -719,6 +656,7 @@ static void advance_simulation(physics_world *world) {
         return;
       }
 
+      epa_collect_visible_faces(simulation_state.polytope);
       simulation_state.state = STATE_EXPANSION;
       break;
 
@@ -951,17 +889,35 @@ static void render_polytope(const polytope *p) {
     Color color = PINK;
     if (highlight && p->nearest == face_index) {
       color = GREEN;
+    } else if (simulation_state.state == STATE_EXPANSION) {
+      for (count_t j = 0; j < visible_faces_count; ++j) {
+        if (visible_faces[j] == face_index) {
+          color = GOLD;
+          break;
+        }
+      }
     }
 
     color.a = (unsigned char)(255 * ui_state.polytope_alpha);
 
-    v3 v1, v2, v3;
-    polytope_get_face_verticies(p, face_index, &v1, &v2, &v3);
-    render_triangle(v1, v2, v3, face->nearest_point, color);
+    v3 v1, v2, vv3;
+    polytope_get_face_verticies(p, face_index, &v1, &v2, &vv3);
+    render_triangle(v1, v2, vv3, face->nearest_point, color);
 
     DrawLine3D(v1, v2, BLACK);
-    DrawLine3D(v2, v3, BLACK);
-    DrawLine3D(v3, v1, BLACK);
+    DrawLine3D(v2, vv3, BLACK);
+    DrawLine3D(vv3, v1, BLACK);
+
+    if (simulation_state.state == STATE_NEW_SUPPORT) {
+      v3 c = scale(add(v1, add(v2, vv3)), 0.333);
+      v3 np = cross(sub(vv3, v1), sub(v2, v1));
+
+      if (dot(np, c) < 0) { np = negate(np); }
+
+      if (dot(normalize(np), normalize(simulation_state.new_support.v)) > visibility_epsilon) {
+        draw_arrow(c, scale(normalize(np), 0.1), RED);
+      }
+    }
 
     face_index = face->prev;
     face = &p->nodes[face->prev];
@@ -989,6 +945,7 @@ void scenario_build_ui(physics_world *world) {
 
   ui_value_float("Simplex alpha", &ui_state.simplex_alpha, 0.0, 1.0);
   ui_value_float("Polytope alpha", &ui_state.polytope_alpha, 0.0, 1.0);
+  ui_value_float("Visibility epsilon", &visibility_epsilon, 0.001, 0.5);
 
   CLAY(CLAY_ID("EPA_spacer"), {.layout = {.sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(20)}}});
 
