@@ -275,8 +275,9 @@ static uint16_t polytope_add_edge(polytope *polytope, uint16_t v1, uint16_t v2) 
   v3 vert1 = polytope->nodes[v1].vertex.v.v;
   v3 vert2 = polytope->nodes[v2].vertex.v.v;
   if (distancesqr(vert1, vert2) < EPSILON) {
-    raise_error(BND_ERROR_INVALID_POLYTOPE, polytope, "Degenerate polytope expansion. New egde from (%.4f, %.4f, %.4f) to (%.4f, %.4f, %.4f)",
-      vert1.x, vert1.y, vert1.z, vert2.x, vert2.y, vert2.z);
+    raise_error(BND_ERROR_INVALID_POLYTOPE, polytope,
+                "Degenerate polytope expansion. New egde from (%.4f, %.4f, %.4f) to (%.4f, %.4f, %.4f)", vert1.x,
+                vert1.y, vert1.z, vert2.x, vert2.y, vert2.z);
 
     return NIL;
   }
@@ -374,7 +375,8 @@ static void polytope_update_nearest_for_type(polytope *polytope, uint16_t node_t
 
     float distance = node.distance;
     bool closer_than_same_type = node.type == current_nearest.type && distance < polytope->nearest_distance;
-    bool much_closer_than_other_type = node.type != current_nearest.type && distance - polytope->nearest_distance < -0.01;
+    bool much_closer_than_other_type =
+        node.type != current_nearest.type && distance - polytope->nearest_distance < -0.01;
     if (closer_than_same_type || much_closer_than_other_type) {
       polytope->nearest_distance = distance;
       polytope->nearest = index;

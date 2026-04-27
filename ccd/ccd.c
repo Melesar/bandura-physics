@@ -21,7 +21,6 @@
 #include "polytope.h"
 #include "simplex.h"
 #include "vec3.h"
-#include "trace.h"
 #include <float.h>
 #include <stdio.h>
 

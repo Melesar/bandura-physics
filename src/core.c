@@ -1,5 +1,4 @@
 #include "bnd-core.h"
-#include <__stdarg_va_list.h>
 #include <stdio.h>
 #include <stdarg.h>
 
@@ -21,6 +20,4 @@ void raise_error(bnd_error type, void *data, const char *template, ...) {
   error_callback(type, error_message_buffer, data);
 }
 
-void bnd_register_error_callback(bnd_error_callback callback) {
-  error_callback = callback;
-}
+void bnd_register_error_callback(bnd_error_callback callback) { error_callback = callback; }

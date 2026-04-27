@@ -1,20 +1,6 @@
 #include "bnd-core.h"
 #include <stdlib.h>
 
-static inline contact *joint_new_contact(physics_world *world) {
-  contacts *contacts = &world->contacts;
-
-  if (contacts->count >= contacts->capacity) {
-    while (contacts->count >= contacts->capacity) {
-      contacts->capacity *= 2;
-    }
-
-    contacts->values = realloc(contacts->values, contacts->capacity * sizeof(contact));
-  }
-
-  return &contacts->values[contacts->count++];
-}
-
 static inline void resize_if_needed(joints *joints) {
   if (joints->count < joints->capacity) {
     return;
@@ -129,9 +115,7 @@ static count_t generate_contacts(physics_world *world, count_t start, count_t en
       continue;
     }
 
-    contact *contact = joint_new_contact(world);
-    contact->index_a = indices[0];
-    contact->index_b = indices[1];
+    contact *contact = contacts_new_default(world, indices[0], indices[1]);
     contact->point = scale(add(world_points[0], world_points[1]), 0.5);
     contact->normal = scale(offset, 1.0 / distance);
     contact->depth = distance - j.max_error;

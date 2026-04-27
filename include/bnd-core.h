@@ -152,6 +152,8 @@ const common_data *as_common_const(const physics_world *world, body_type type);
 void contacts_init(physics_world *world);
 void contacts_teardown(physics_world *world);
 void contacts_reset(physics_world *world);
+void contacts_ensure_capacity(physics_world *world, count_t additional_count);
+contact *contacts_new_default(physics_world *world, count_t body_a, count_t body_b);
 void contacts_generate(physics_world *world);
 void contacts_resolve(physics_world *world, float dt);
 
@@ -183,6 +185,5 @@ support_point support(const collision_detection_context *ctx, v3 direction);
 
 float distance_to_triangle(v3 from, v3 a, v3 b, v3 c, v3 *closest);
 float distance_to_line_segment(v3 from, v3 a, v3 b, v3 *closest);
-
 
 #endif

@@ -24,11 +24,15 @@ typedef struct {
 #define PROFILE_FUNCTION
 
 static profiler_config profiler_default_config() { return (profiler_config){0}; }
+
 static void profiler_init_default() {}
+
 static void profiler_init(profiler_config config) {}
+
 static void profiler_teardown() {}
 
 static void profiler_start_frame() {}
+
 static void profiler_end_frame(profiler_frame_metadata meta) {}
 
 #else
@@ -77,8 +81,7 @@ typedef struct {
 } labels;
 
 #define LABELS_STORAGE_FULL 0xFFFFFFFF
-#define INVALID_LABEL                                                                                                  \
-  (label) { NULL, 0 }
+#define INVALID_LABEL (label){NULL, 0}
 
 #define CONCAT(a, b) a##b
 #define MARKER_NAME(a, b) CONCAT(a, b)

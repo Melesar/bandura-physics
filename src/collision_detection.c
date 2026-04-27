@@ -1,4 +1,3 @@
-#include "bandura.h"
 #define CCD_SINGLE
 
 #include "vec3.h"
@@ -8,15 +7,6 @@
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
-
-#define ARRAY_RESIZE_IF_NEEDED(array, count, capacity, type)                                                           \
-  while (count >= capacity) {                                                                                          \
-    capacity <<= 1;                                                                                                    \
-    if (count <= capacity) {                                                                                           \
-      array = realloc(array, capacity * sizeof(type));                                                                 \
-      break;                                                                                                           \
-    }                                                                                                                  \
-  }
 
 #define CCD_DIR(dir) normalize(ccd_vec3_to_ray(*dir))
 
@@ -124,13 +114,7 @@ static v3 collision_detection_body_center(const collision_detection_context *ctx
 }
 
 static contact *new_contact(physics_world *world, const collision_detection_context *ctx) {
-  contact *c = &world->contacts.values[world->contacts.count++];
-  c->index_a = ctx->body_a;
-  c->index_b = ctx->body_b;
-  c->friction = world->config.friction;
-  c->restitution = world->config.restitution;
-
-  return c;
+  return contacts_new_default(world, ctx->body_a, ctx->body_b);
 }
 
 static count_t sphere_sphere_collision(physics_world *world, const collision_detection_context *ctx) {
@@ -146,8 +130,6 @@ static count_t sphere_sphere_collision(physics_world *world, const collision_det
   if (penetration > 0) {
     return 0;
   }
-
-  ARRAY_RESIZE_IF_NEEDED(world->contacts.values, world->contacts.count + 1, world->contacts.capacity, contact);
 
   v3 normal = scale(offset, 1 / distance);
 
@@ -177,8 +159,7 @@ static count_t box_plane_collision(physics_world *world, const collision_detecti
 
   const count_t max_contacts = 4;
 
-  contacts *contacts = &world->contacts;
-  ARRAY_RESIZE_IF_NEEDED(contacts->values, contacts->count + max_contacts, contacts->capacity, contact)
+  contacts_ensure_capacity(world, max_contacts);
 
   count_t contact_count = 0;
   for (count_t i = 0; i < 8 && contact_count < max_contacts; ++i) {
@@ -208,9 +189,6 @@ static count_t sphere_plane_collision(physics_world *world, const collision_dete
   float plane_sphere_distance = dot(sub(sphere_center, plane_point), plane_normal);
   if (plane_sphere_distance > sphere_radius)
     return 0;
-
-  contacts *contacts = &world->contacts;
-  ARRAY_RESIZE_IF_NEEDED(contacts->values, contacts->count + 1, contacts->capacity, contact);
 
   contact *contact = new_contact(world, ctx);
   contact->normal = plane_normal;
@@ -244,9 +222,6 @@ static count_t cylinder_plane_collision(physics_world *world, const collision_de
   if (min_distance > 0.0f)
     return 0;
 
-  contacts *contacts = &world->contacts;
-  ARRAY_RESIZE_IF_NEEDED(contacts->values, contacts->count + 1, contacts->capacity, contact);
-
   float cap_sign = axis_projection > 0.0f ? -1.0f : 1.0f;
   v3 cap_offset = scale(cylinder_axis, cap_sign * cylinder_half_height);
 
@@ -271,9 +246,6 @@ static count_t detect_collisions(physics_world *world, const collision_detection
   if (!gjk_check_intersection(world, ctx, &s)) {
     return 0;
   }
-
-  contacts *contacts = &world->contacts;
-  ARRAY_RESIZE_IF_NEEDED(contacts->values, contacts->count + 1, contacts->capacity, contact);
 
   contact *c = new_contact(world, ctx);
   epa_get_contact(ctx, &s, world->config.epa_tolerance, c);
@@ -309,8 +281,6 @@ static count_t detect_collision_ccd(physics_world *world, const collision_detect
   if (result < 0) {
     return 0;
   }
-
-  ARRAY_RESIZE_IF_NEEDED(world->contacts.values, world->contacts.count, world->contacts.capacity, contact)
 
   contact *c = new_contact(world, ctx);
   c->point = ccd_vec3_to_ray(point);

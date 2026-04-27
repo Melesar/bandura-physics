@@ -17,7 +17,8 @@
 #define lensq(x) Vector3LengthSqr(x)
 #define distance(x, y) Vector3Distance(x, y)
 #define distancesqr(x, y) Vector3DistanceSqr(x, y)
-#define vec3(x, y, z) (v3) { x, y, z }
+#define vec3(x, y, z)                                                                                                  \
+  (v3) { x, y, z }
 #define zero() Vector3Zero()
 #define one() Vector3One()
 #define up() ((Vector3){0, 1, 0})
@@ -73,9 +74,7 @@ m3 matrix_displacement_inertia(m3 i0, v3 offset, float mass);
 
 typedef uint32_t count_t;
 
-typedef enum {
-  BND_ERROR_INVALID_POLYTOPE
-} bnd_error;
+typedef enum { BND_ERROR_INVALID_POLYTOPE } bnd_error;
 
 typedef void (*bnd_error_callback)(bnd_error error_type, char *error_message, void *error_data);
 
@@ -101,12 +100,15 @@ typedef struct {
     struct {
       v3 size;
     } box;
+
     struct {
       v3 normal;
     } plane;
+
     struct {
       float radius;
     } sphere;
+
     struct {
       float radius;
       float height;
@@ -119,7 +121,7 @@ typedef struct {
 
 typedef struct {
   count_t type : 1;
-  count_t generation: 8;
+  count_t generation : 8;
   count_t index : 23;
 } body_handle;
 
