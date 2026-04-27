@@ -1,4 +1,3 @@
-#include "bandura.h"
 #include "bnd-core.h"
 #include "raymath.h"
 #include <string.h>
@@ -369,18 +368,12 @@ static void polytope_remove_edge(polytope *polytope, uint16_t edge) {
 static void polytope_update_nearest_for_type(polytope *polytope, uint16_t node_type) {
   uint16_t index = polytope->last_nodes[node_type];
 
-  polytope_node current_nearest = polytope->nodes[polytope->nearest];
   while (index != NIL) {
     polytope_node node = polytope->nodes[index];
 
-    float distance = node.distance;
-    bool closer_than_same_type = node.type == current_nearest.type && distance < polytope->nearest_distance;
-    bool much_closer_than_other_type =
-        node.type != current_nearest.type && distance - polytope->nearest_distance < -0.01;
-    if (closer_than_same_type || much_closer_than_other_type) {
-      polytope->nearest_distance = distance;
+    if (node.distance < polytope->nearest_distance) {
+      polytope->nearest_distance = node.distance;
       polytope->nearest = index;
-      current_nearest = node;
     }
 
     index = node.prev;
@@ -390,8 +383,6 @@ static void polytope_update_nearest_for_type(polytope *polytope, uint16_t node_t
 static void polytope_update_nearest(polytope *polytope) {
   polytope->nearest_distance = FLT_MAX;
 
-  polytope_update_nearest_for_type(polytope, NODE_VERTEX);
-  polytope_update_nearest_for_type(polytope, NODE_EDGE);
   polytope_update_nearest_for_type(polytope, NODE_FACE);
 }
 
