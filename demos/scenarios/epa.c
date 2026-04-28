@@ -521,7 +521,11 @@ static void epa_update_visible_faces(polytope *polytope) {
         }
       }
 
-      polytope->flags[edge_index] |= visible_count == 2 ? FLAG_FOR_REMOVAL : FLAG_BORDER_EDGE;
+      if (visible_count == 2) {
+        polytope->flags[edge_index] |= FLAG_FOR_REMOVAL;
+      } else if (visible_count == 1) {
+        polytope->flags[edge_index] |= FLAG_BORDER_EDGE;
+      }
     }
   }
 }
