@@ -318,6 +318,7 @@ static uint16_t polytope_add_vertex(polytope *polytope, support_point p) {
 
   polytope_node *node = &polytope->nodes[index];
   node->type = NODE_VERTEX;
+  node->flags = 0;
   node->vertex.v = p;
   node->vertex.first_attached_edge = NIL;
 
@@ -338,6 +339,7 @@ static uint16_t polytope_add_edge(polytope *polytope, uint16_t v1, uint16_t v2) 
 
   polytope_node *node = &polytope->nodes[index];
   node->type = NODE_EDGE;
+  node->flags = 0;
   node->edge.verticies[0] = v1;
   node->edge.verticies[1] = v2;
 
@@ -364,6 +366,7 @@ static uint16_t polytope_add_face(polytope *polytope, uint16_t e1, uint16_t e2, 
 
   polytope_node *node = &polytope->nodes[index];
   node->type = NODE_FACE;
+  node->flags = 0;
   node->face.edges[0] = e1;
   node->face.edges[1] = e2;
   node->face.edges[2] = e3;
