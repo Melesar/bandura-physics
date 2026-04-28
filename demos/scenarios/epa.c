@@ -442,9 +442,7 @@ static void polytope_clear_flags(polytope *polytope) { memset(polytope->flags, 0
 static void polytope_update_nearest(polytope *polytope) {
   polytope->nearest_distance = FLT_MAX;
 
-  uint16_t index = polytope->last_nodes[NODE_FACE];
-
-  while (index != NIL) {
+  polytope_for_each_node(polytope, index, NODE_FACE) {
     polytope_node node = polytope->nodes[index];
 
     float distance = node.face.distance;
@@ -452,8 +450,6 @@ static void polytope_update_nearest(polytope *polytope) {
       polytope->nearest_distance = distance;
       polytope->nearest = index;
     }
-
-    index = node.prev;
   }
 }
 
