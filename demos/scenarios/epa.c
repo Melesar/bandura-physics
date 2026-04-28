@@ -50,7 +50,6 @@ typedef struct {
 
 typedef struct {
   node_type type;
-  uint8_t flags;
 
   uint16_t prev;
 
@@ -77,6 +76,7 @@ typedef struct {
 
 typedef struct {
   polytope_node *nodes;
+  uint8_t *flags;
   uint16_t *free_list;
 
   uint16_t last_nodes[NODE_TYPE_COUNT];
@@ -146,8 +146,12 @@ body_handle body_2;
 
 static float visibility_epsilon = 0.25;
 
+static uint32_t polytope_flags_size(uint16_t max_nodes) {
+  return max_nodes + 1 + (max_nodes % 2 == 0);
+}
+
 static uint32_t polytope_memory_size(uint16_t max_nodes) {
-  return sizeof(polytope) + (max_nodes + 1) * sizeof(polytope_node) + max_nodes * sizeof(uint16_t);
+  return sizeof(polytope) + (max_nodes + 1) * sizeof(polytope_node) + polytope_flags_size(max_nodes) + max_nodes * sizeof(uint16_t);
 }
 
 static polytope *polytope_init(uint8_t *memory, uint16_t max_nodes) {
@@ -158,6 +162,12 @@ static polytope *polytope_init(uint8_t *memory, uint16_t max_nodes) {
   result->nodes = (polytope_node *)memory;
 
   memory += (max_nodes + 1) * sizeof(polytope_node);
+  result->flags = memory;
+
+  uint32_t flags_size = polytope_flags_size(max_nodes);
+  memset(memory, 0, flags_size);
+
+  memory += flags_size;
   result->free_list = (uint16_t *)memory;
 
   result->max_nodes = max_nodes;
@@ -171,6 +181,7 @@ static void polytope_clear(polytope *polytope) {
   polytope->free_count = 0;
 
   memset(polytope->last_nodes, 0, NODE_TYPE_COUNT * sizeof(uint16_t));
+  memset(polytope->flags, 0, polytope_flags_size(polytope->max_nodes));
 
   polytope->nearest = NIL;
   polytope->nearest_distance = FLT_MAX;
@@ -264,7 +275,7 @@ static void polytope_detach_edge(polytope *polytope, uint16_t edge, uint16_t ver
   if (next_edge == edge) {
     vertex_node->vertex.first_attached_edge = next_edge_node->edge.next_attached_edges[i];
     if (vertex_node->vertex.first_attached_edge == NIL) {
-      vertex_node->flags |= FLAG_FOR_REMOVAL;
+      polytope->flags[vertex] |= FLAG_FOR_REMOVAL;
     }
     return;
   }
@@ -318,7 +329,6 @@ static uint16_t polytope_add_vertex(polytope *polytope, support_point p) {
 
   polytope_node *node = &polytope->nodes[index];
   node->type = NODE_VERTEX;
-  node->flags = 0;
   node->vertex.v = p;
   node->vertex.first_attached_edge = NIL;
 
@@ -339,7 +349,6 @@ static uint16_t polytope_add_edge(polytope *polytope, uint16_t v1, uint16_t v2) 
 
   polytope_node *node = &polytope->nodes[index];
   node->type = NODE_EDGE;
-  node->flags = 0;
   node->edge.verticies[0] = v1;
   node->edge.verticies[1] = v2;
 
@@ -366,7 +375,6 @@ static uint16_t polytope_add_face(polytope *polytope, uint16_t e1, uint16_t e2, 
 
   polytope_node *node = &polytope->nodes[index];
   node->type = NODE_FACE;
-  node->flags = 0;
   node->face.edges[0] = e1;
   node->face.edges[1] = e2;
   node->face.edges[2] = e3;
@@ -423,6 +431,10 @@ static void polytope_remove_edge(polytope *polytope, uint16_t edge) {
 }
 
 static void polytope_remove_vertex(polytope *polytope, uint16_t vertex) {}
+
+static void polytope_clear_flags(polytope* polytope) {
+  memset(polytope->flags, 0, polytope->node_count);
+}
 
 static void polytope_update_nearest(polytope *polytope) {
   polytope->nearest_distance = FLT_MAX;
@@ -482,7 +494,7 @@ static void epa_update_visible_faces(polytope *polytope) {
   uint16_t stack[MAX_VISIBLE_FACES] = {polytope->nearest};
 
   polytope_node *face_node = &polytope->nodes[polytope->nearest];
-  face_node->flags |= FLAG_FOR_REMOVAL;
+  polytope->flags[polytope->nearest] |= FLAG_FOR_REMOVAL;
 
   while (stack_ptr > 0) {
     uint16_t face_index = stack[--stack_ptr];
@@ -497,23 +509,19 @@ static void epa_update_visible_faces(polytope *polytope) {
         uint16_t adjasent_face_index = edge_node->edge.attached_faces[j];
         face_node = &polytope->nodes[adjasent_face_index];
 
-        if (face_node->flags & FLAG_FOR_REMOVAL) {
+        if (polytope->flags[adjasent_face_index] & FLAG_FOR_REMOVAL) {
           visible_count += 1;
           continue;
         }
 
         if (polytope_is_face_visible(face_node, simulation_state.new_support.v)) {
           visible_count += 1;
-          face_node->flags |= FLAG_FOR_REMOVAL;
+          polytope->flags[adjasent_face_index] |= FLAG_FOR_REMOVAL;
           stack[stack_ptr++] = adjasent_face_index;
         }
       }
 
-      if (visible_count == 2) {
-        edge_node->flags |= FLAG_FOR_REMOVAL;
-      } else {
-        edge_node->flags |= FLAG_BORDER_EDGE;
-      }
+      polytope->flags[edge_index] |= visible_count == 2 ? FLAG_FOR_REMOVAL : FLAG_BORDER_EDGE;
     }
   }
 }
@@ -522,19 +530,19 @@ static void epa_expand_polytope(polytope *polytope, support_point p) {
   epa_update_visible_faces(polytope);
 
   polytope_for_each_node(polytope, index, NODE_FACE) {
-    if (polytope->nodes[index].flags & FLAG_FOR_REMOVAL) {
+    if (polytope->flags[index] & FLAG_FOR_REMOVAL) {
       polytope_remove_face(polytope, index);
     }
   }
 
   polytope_for_each_node(polytope, index, NODE_EDGE) {
-    if (polytope->nodes[index].flags & FLAG_FOR_REMOVAL) {
+    if (polytope->flags[index] & FLAG_FOR_REMOVAL) {
       polytope_remove_edge(polytope, index);
     }
   }
 
   polytope_for_each_node(polytope, index, NODE_VERTEX) {
-    if (polytope->nodes[index].flags & FLAG_FOR_REMOVAL) {
+    if (polytope->flags[index] & FLAG_FOR_REMOVAL) {
       polytope_remove_vertex(polytope, index);
     }
   }
@@ -543,7 +551,7 @@ static void epa_expand_polytope(polytope *polytope, support_point p) {
 
   polytope_for_each_node(polytope, index, NODE_EDGE) {
     polytope_node *edge_node = &polytope->nodes[index];
-    if ((edge_node->flags & FLAG_BORDER_EDGE) == 0) {
+    if ((polytope->flags[index] & FLAG_BORDER_EDGE) == 0) {
       continue;
     }
 
@@ -554,8 +562,6 @@ static void epa_expand_polytope(polytope *polytope, support_point p) {
 
     uint16_t connected_vertex_index = edge_node->edge.verticies[1];
     while (connected_vertex_index != first_connected_vertex_index) {
-      polytope->nodes[edge_index].flags = 0;
-
       uint16_t new_edge = polytope_add_edge(polytope, new_vertex, connected_vertex_index);
       polytope_add_face(polytope, prev_edge, new_edge, edge_index);
 
@@ -570,7 +576,7 @@ static void epa_expand_polytope(polytope *polytope, support_point p) {
           continue;
         }
 
-        if (attached_edge_node.flags & FLAG_BORDER_EDGE) {
+        if (polytope->flags[attached_edge_index] & FLAG_BORDER_EDGE) {
           edge_index = attached_edge_index;
           connected_vertex_index = attached_edge_node.edge.verticies[1 - i];
           break;
@@ -588,6 +594,7 @@ static void epa_expand_polytope(polytope *polytope, support_point p) {
   }
 
   polytope_update_nearest(polytope);
+  polytope_clear_flags(polytope);
 }
 
 static void reset_simulation(physics_world *world) {
@@ -896,7 +903,7 @@ static void render_polytope(const polytope *p) {
     if (highlight && p->nearest == face_index) {
       color = GREEN;
     } else if (simulation_state.state == STATE_EXPANSION) {
-      if (simulation_state.polytope->nodes[face_index].flags & FLAG_FOR_REMOVAL) {
+      if (simulation_state.polytope->flags[face_index] & FLAG_FOR_REMOVAL) {
         color = GOLD;
       }
     }
@@ -907,9 +914,20 @@ static void render_polytope(const polytope *p) {
     polytope_get_face_verticies(p, face_index, &v1, &v2, &vv3);
     render_triangle(v1, v2, vv3, face->face.normal, color);
 
-    DrawLine3D(v1, v2, BLACK);
-    DrawLine3D(v2, vv3, BLACK);
-    DrawLine3D(vv3, v1, BLACK);
+    for (count_t i = 0; i < 3; ++i) {
+      uint16_t edge_index = face->face.edges[i];
+      polytope_get_edge_vertices(p, edge_index, &v1, &v2);
+
+      if (p->flags[edge_index] & FLAG_BORDER_EDGE) {
+        color = BLUE;
+      } else if (p->flags[edge_index] & FLAG_FOR_REMOVAL) {
+        color = RED;
+      } else {
+        color = BLACK;
+      }
+
+      DrawCylinderEx(v1, v2, 0.005,  0.005, 16, color);
+    }
 
     face_index = face->prev;
     face = &p->nodes[face->prev];
