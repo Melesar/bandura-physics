@@ -429,7 +429,13 @@ static void polytope_remove_edge(polytope *polytope, uint16_t edge) {
   polytope_remove_node(polytope, edge);
 }
 
-static void polytope_remove_vertex(polytope *polytope, uint16_t vertex) {}
+static void polytope_remove_vertex(polytope *polytope, uint16_t vertex) {
+  if (vertex == NIL) {
+    return;
+  }
+
+  polytope_remove_node(polytope, vertex);
+}
 
 static void polytope_clear_flags(polytope *polytope) { memset(polytope->flags, 0, polytope->node_count); }
 
@@ -484,7 +490,30 @@ static bool polytope_from_simplex(polytope *polytope, const simplex *s) {
   return true;
 }
 
-static void epa_calculate_contact(physics_world *world, polytope *polytope) {}
+static void epa_calculate_contact(physics_world *world, polytope *polytope) {
+  polytope_node node = polytope->nodes[polytope->nearest];
+  uint16_t e1 = node.face.edges[0];
+  uint16_t e2 = node.face.edges[1];
+  uint16_t *edge_verts_1 = polytope->nodes[e1].edge.verticies;
+  uint16_t *edge_verts_2 = polytope->nodes[e2].edge.verticies;
+
+  support_point v1 = polytope->nodes[edge_verts_1[0]].vertex.v;
+  support_point v2 = polytope->nodes[edge_verts_1[1]].vertex.v;
+
+  support_point vv3 = edge_verts_2[1] != edge_verts_1[1] && edge_verts_2[1] != edge_verts_1[0]
+                          ? polytope->nodes[edge_verts_2[1]].vertex.v
+                          : polytope->nodes[edge_verts_2[0]].vertex.v;
+
+  v3 barycenter = Vector3Barycenter(zero(), v1.v, v2.v, vv3.v);
+  v3 p1 = add(scale(v1.v1, barycenter.x), add(scale(v2.v1, barycenter.y), scale(vv3.v1, barycenter.z)));
+  v3 p2 = add(scale(v1.v2, barycenter.x), add(scale(v2.v2, barycenter.y), scale(vv3.v2, barycenter.z)));
+
+  simulation_state.contact.point = scale(add(p1, p2), 0.5);
+  simulation_state.contact.depth = sqrt(node.face.distance);
+  simulation_state.contact.normal = negate(normalize(node.face.normal));
+
+  epa_for_bodies(world, body_1, body_2, &simulation_state.ccd_contact);
+}
 
 static void epa_update_visible_faces(polytope *polytope) {
   uint16_t stack_ptr = 1;
