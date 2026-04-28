@@ -146,12 +146,11 @@ body_handle body_2;
 
 static float visibility_epsilon = 0.25;
 
-static uint32_t polytope_flags_size(uint16_t max_nodes) {
-  return max_nodes + 1 + (max_nodes % 2 == 0);
-}
+static uint32_t polytope_flags_size(uint16_t max_nodes) { return max_nodes + 1 + (max_nodes % 2 == 0); }
 
 static uint32_t polytope_memory_size(uint16_t max_nodes) {
-  return sizeof(polytope) + (max_nodes + 1) * sizeof(polytope_node) + polytope_flags_size(max_nodes) + max_nodes * sizeof(uint16_t);
+  return sizeof(polytope) + (max_nodes + 1) * sizeof(polytope_node) + polytope_flags_size(max_nodes) +
+         max_nodes * sizeof(uint16_t);
 }
 
 static polytope *polytope_init(uint8_t *memory, uint16_t max_nodes) {
@@ -432,9 +431,7 @@ static void polytope_remove_edge(polytope *polytope, uint16_t edge) {
 
 static void polytope_remove_vertex(polytope *polytope, uint16_t vertex) {}
 
-static void polytope_clear_flags(polytope* polytope) {
-  memset(polytope->flags, 0, polytope->node_count);
-}
+static void polytope_clear_flags(polytope *polytope) { memset(polytope->flags, 0, polytope->node_count); }
 
 static void polytope_update_nearest(polytope *polytope) {
   polytope->nearest_distance = FLT_MAX;
@@ -507,14 +504,11 @@ static void epa_update_visible_faces(polytope *polytope) {
       count_t visible_count = 0;
       for (count_t j = 0; j < 2; ++j) {
         uint16_t adjasent_face_index = edge_node->edge.attached_faces[j];
-        face_node = &polytope->nodes[adjasent_face_index];
+        const polytope_node *adjasent_face_node = &polytope->nodes[adjasent_face_index];
 
         if (polytope->flags[adjasent_face_index] & FLAG_FOR_REMOVAL) {
           visible_count += 1;
-          continue;
-        }
-
-        if (polytope_is_face_visible(face_node, simulation_state.new_support.v)) {
+        } else if (polytope_is_face_visible(adjasent_face_node, simulation_state.new_support.v)) {
           visible_count += 1;
           polytope->flags[adjasent_face_index] |= FLAG_FOR_REMOVAL;
           stack[stack_ptr++] = adjasent_face_index;
@@ -593,7 +587,6 @@ static void epa_expand_polytope(polytope *polytope, support_point p) {
     }
 
     polytope_add_face(polytope, first_new_edge, prev_edge, edge_index);
-
     break;
   }
 
@@ -727,9 +720,9 @@ void scenario_initialize(program_config *config, physics_config *physics_config)
   config->camera_target = (v3){0, 5, 10};
 
   ui_state.simplex_alpha = 0.4;
-  ui_state.polytope_alpha = 0.5;
+  ui_state.polytope_alpha = 1;
 
-  ui_state.draw_minkowski = true;
+  ui_state.draw_minkowski = false;
 }
 
 void scenario_setup_scene(physics_world *world) {
@@ -930,7 +923,7 @@ static void render_polytope(const polytope *p) {
         color = BLACK;
       }
 
-      DrawCylinderEx(v1, v2, 0.005,  0.005, 16, color);
+      DrawCylinderEx(v1, v2, 0.005, 0.005, 16, color);
     }
 
     face_index = face->prev;
