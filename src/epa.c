@@ -1,3 +1,4 @@
+#include "bandura.h"
 #include "bnd-core.h"
 #include "raymath.h"
 #include <string.h>
@@ -5,6 +6,7 @@
 #include <stdlib.h>
 
 #define NIL 0
+#define EPA_MAX_ATTEMPTS 128
 #define VISIBLE_FACES_STACK_SIZE 16
 
 #define polytope_for_each_node(p, index, type)                                                                         \
@@ -293,6 +295,11 @@ static uint16_t polytope_add_face(polytope *polytope, uint16_t e1, uint16_t e2, 
   v3 v1, v2, v3;
   polytope_get_face_verticies(polytope, index, &v1, &v2, &v3);
 
+  if (distancesqr(v1, v2) < EPSILON || distancesqr(v2, v3) < EPSILON || distancesqr(v3, v1) < EPSILON) {
+    polytope->free_list[polytope->free_count++] = index;
+    return NIL;
+  }
+
   node->face.distance = distance_to_triangle(zero(), v1, v2, v3, &node->face.normal);
 
   polytope_attach_face(polytope, index, e1);
@@ -399,6 +406,12 @@ static bool polytope_from_simplex(polytope *polytope, const simplex *s) {
   return true;
 }
 
+static void epa_invalid_contact(support_point p, contact *contact) {
+  contact->point = scale(add(p.v1, p.v2), 0.5);
+  contact->normal = up();
+  contact->depth = 0.1;
+}
+
 static void epa_calculate_contact(const polytope *polytope, contact *contact) {
   polytope_node node = polytope->nodes[polytope->nearest];
   uint16_t e1 = node.face.edges[0];
@@ -419,7 +432,13 @@ static void epa_calculate_contact(const polytope *polytope, contact *contact) {
 
   contact->point = scale(add(p1, p2), 0.5);
   contact->depth = sqrt(node.face.distance);
-  contact->normal = negate(normalize(node.face.normal));
+
+  float length = len(node.face.normal);
+  if (length > EPSILON) {
+    contact->normal = scale(node.face.normal, -1.0 / length);
+  } else {
+    contact->normal = up();
+  }
 }
 
 static void epa_update_visible_faces(polytope *polytope, support_point p) {
@@ -460,7 +479,7 @@ static void epa_update_visible_faces(polytope *polytope, support_point p) {
   }
 }
 
-static void epa_expand_polytope(polytope *polytope, support_point p) {
+static bool epa_expand_polytope(polytope *polytope, support_point p) {
   epa_update_visible_faces(polytope, p);
 
   polytope_for_each_node(polytope, index, NODE_FACE) {
@@ -496,8 +515,15 @@ static void epa_expand_polytope(polytope *polytope, support_point p) {
 
     uint16_t connected_vertex_index = edge_node->edge.verticies[1];
     while (connected_vertex_index != first_connected_vertex_index) {
+      /**
+       * Sometimes, in rare cases, this routine might add a duplicate edge - the one which is identical to some other one.
+       * I saw this happen when spawning objects at the same position, so that they overlap.
+       * Need to investigate this further, but for now in this case we just bail out and return some bogus contact data.
+       */
       uint16_t new_edge = polytope_add_edge(polytope, new_vertex, connected_vertex_index);
-      polytope_add_face(polytope, prev_edge, new_edge, edge_index);
+      if (polytope_add_face(polytope, prev_edge, new_edge, edge_index) == NIL) {
+        return false;
+      }
 
       polytope_node *connected_vertex_node = &polytope->nodes[connected_vertex_index];
       uint16_t attached_edge_index = connected_vertex_node->vertex.first_attached_edge;
@@ -522,12 +548,17 @@ static void epa_expand_polytope(polytope *polytope, support_point p) {
       prev_edge = new_edge;
     }
 
-    polytope_add_face(polytope, first_new_edge, prev_edge, edge_index);
+    if (polytope_add_face(polytope, first_new_edge, prev_edge, edge_index) == NIL) {
+      return false;
+    }
+
     break;
   }
 
   polytope_update_nearest(polytope);
   polytope_clear_flags(polytope);
+
+  return true;
 }
 
 void epa_init(const physics_config *config) {
@@ -540,11 +571,13 @@ void epa_get_contact(const collision_detection_context *ctx, const simplex *simp
                      contact *contact) {
   polytope_from_simplex(pt, simplex);
 
-  while (1) {
+  count_t attempts = 0;
+  support_point support_point;
+  while (attempts++ < EPA_MAX_ATTEMPTS) {
     polytope_node closest_face = pt->nodes[pt->nearest];
     v3 direction = closest_face.face.normal;
 
-    support_point support_point = support(ctx, normalize(direction));
+    support_point = support(ctx, normalize(direction));
     float distance = dot(direction, support_point.v);
     if (distance - closest_face.face.distance < tolerance) {
       epa_calculate_contact(pt, contact);
@@ -560,6 +593,10 @@ void epa_get_contact(const collision_detection_context *ctx, const simplex *simp
       return;
     }
 
-    epa_expand_polytope(pt, support_point);
+    if (!epa_expand_polytope(pt, support_point)) {
+      break;
+    }
   }
+
+  epa_invalid_contact(support_point, contact);
 }
