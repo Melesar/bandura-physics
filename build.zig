@@ -104,11 +104,7 @@ fn build_bandura(b: *std.Build, options: Options, target: std.Build.ResolvedTarg
         .link_libc = true,
     });
 
-    const ccd = try build_ccd(b, options, target, optimize);
-
-    banduraModule.addIncludePath(b.path("ccd"));
     banduraModule.addIncludePath(b.path("include"));
-    banduraModule.linkLibrary(ccd);
 
     const libFlags = try libraryFlags(b, options, target.result, optimize);
     defer b.allocator.free(libFlags);
@@ -153,30 +149,6 @@ fn build_profiler(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std
         .linkage = .static,
         .name = "bnd_profiler",
         .root_module = module,
-    });
-
-    return lib;
-}
-
-fn build_ccd(b: *std.Build, options: Options, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !*std.Build.Step.Compile {
-    const module = b.createModule(.{ .link_libc = true, .optimize = optimize, .target = target });
-    var flags = try std.ArrayList([]const u8).initCapacity(b.allocator, 16);
-    flags.appendSliceAssumeCapacity(&.{ "-O3", "-fvisibility=hidden", "-DCCD_SINGLE" });
-    if (options.collisionsDebug) {
-        flags.appendAssumeCapacity("-DCOLLISIONS_DEBUG");
-    }
-
-    module.addIncludePath(b.path("include"));
-    module.addIncludePath(b.path("ccd"));
-    module.addCSourceFiles(.{
-        .files = try collectSources(b, "ccd"),
-        .flags = try flags.toOwnedSlice(b.allocator),
-    });
-
-    const lib = b.addLibrary(.{
-        .linkage = .static,
-        .root_module = module,
-        .name = "ccd",
     });
 
     return lib;

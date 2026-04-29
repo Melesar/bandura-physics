@@ -1,22 +1,8 @@
-#define CCD_SINGLE
-
-#include "vec3.h"
-#include "ccd.h"
 #include "bnd-core.h"
 
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
-
-#define CCD_DIR(dir) normalize(ccd_vec3_to_ray(*dir))
-
-typedef void (*support_func)(const void *, const ccd_vec3_t *, ccd_vec3_t *);
-
-typedef struct {
-  const common_data *data;
-  count_t body;
-  body_shape shape;
-} ccd_context;
 
 typedef struct {
   v3 center;
@@ -31,83 +17,6 @@ static v3 body_center(v3 shape_offset, quat global_rotation, v3 body_position) {
 
   return center;
 }
-
-static v3 ccd_vec3_to_ray(ccd_vec3_t v) { return (v3){v.v[0], v.v[1], v.v[2]}; }
-
-static ccd_vec3_t ccd_vec3_from_ray(v3 v) { return (ccd_vec3_t){{v.x, v.y, v.z}}; }
-
-static v3 ccd_body_center(const ccd_context *ctx) {
-  return body_center(ctx->shape.offset, ctx->data->rotations[ctx->body], ctx->data->positions[ctx->body]);
-}
-
-static quat ccd_body_rotation(const ccd_context *ctx) {
-  return qmul(ctx->data->rotations[ctx->body], ctx->shape.rotation);
-}
-
-static void sphere_support(const void *data, const ccd_vec3_t *dir, ccd_vec3_t *vec) {
-  ccd_context *ctx = (ccd_context *)data;
-
-  v3 direction = CCD_DIR(dir);
-  v3 center = add(ctx->data->positions[ctx->body], ctx->shape.offset);
-  float radius = ctx->shape.sphere.radius;
-
-  v3 support = add(center, scale(direction, radius));
-  *vec = ccd_vec3_from_ray(support);
-}
-
-static void box_support(const void *data, const ccd_vec3_t *dir, ccd_vec3_t *vec) {
-  ccd_context *ctx = (ccd_context *)data;
-
-  v3 direction = CCD_DIR(dir);
-  v3 center = ccd_body_center(ctx);
-  quat rotation = ccd_body_rotation(ctx);
-  quat inv_rotation = qinvert(rotation);
-
-  v3 local_direction = normalize(rotate(direction, inv_rotation));
-  v3 v = vec3((local_direction.x > 0 ? 1 : -1) * ctx->shape.box.size.x * 0.5,
-              (local_direction.y > 0 ? 1 : -1) * ctx->shape.box.size.y * 0.5,
-              (local_direction.z > 0 ? 1 : -1) * ctx->shape.box.size.z * 0.5);
-
-  v = rotate(v, rotation);
-  v = add(center, v);
-
-  *vec = ccd_vec3_from_ray(v);
-}
-
-static void cylinder_support(const void *data, const ccd_vec3_t *dir, ccd_vec3_t *vec) {
-  ccd_context *ctx = (ccd_context *)data;
-
-  v3 direction = CCD_DIR(dir);
-  v3 center = ccd_body_center(ctx);
-  quat rotation = ccd_body_rotation(ctx);
-  quat inv_rotation = qinvert(rotation);
-
-  v3 local_direction = normalize(rotate(direction, inv_rotation));
-
-  float radius = ctx->shape.cylinder.radius;
-  float height = ctx->shape.cylinder.height;
-
-  v3 v;
-  float y = (local_direction.y > 0 ? 1 : -1) * height * 0.5;
-  if (fabsf(local_direction.y) - 1.0 < 0) {
-    float t = 1.0 / sqrtf(local_direction.x * local_direction.x + local_direction.z * local_direction.z);
-
-    v = vec3(radius * local_direction.x * t, y, radius * local_direction.z * t);
-  } else {
-    v = vec3(radius, y, 0);
-  }
-
-  v = rotate(v, rotation);
-  v = add(center, v);
-
-  *vec = ccd_vec3_from_ray(v);
-}
-
-static support_func support_functions[] = {
-    box_support,
-    sphere_support,
-    cylinder_support,
-};
 
 static v3 collision_detection_body_center(const collision_detection_context *ctx) {
   return body_center(ctx->shape_a.offset, ctx->data_a->rotations[ctx->body_a], ctx->data_a->positions[ctx->body_a]);
@@ -251,61 +160,6 @@ static count_t detect_collisions(physics_world *world, const collision_detection
   epa_get_contact(ctx, &s, world->config.epa_tolerance, c);
 
   return 1;
-}
-
-static count_t detect_collision_ccd(physics_world *world, const collision_detection_context *ctx) {
-  ccd_t ccd;
-  CCD_INIT(&ccd);
-
-  ccd.support1 = support_functions[ctx->shape_a.type];
-  ccd.support2 = support_functions[ctx->shape_b.type];
-  ccd.max_iterations = world->config.max_gjk_iterations;
-  ccd.epa_tolerance = world->config.epa_tolerance;
-
-  ccd_context ctx_a = {
-      .data = ctx->data_a,
-      .shape = ctx->shape_a,
-      .body = ctx->body_a,
-  };
-
-  ccd_context ctx_b = {
-      .data = ctx->data_b,
-      .shape = ctx->shape_b,
-      .body = ctx->body_b,
-  };
-
-  float depth;
-  ccd_vec3_t normal, point;
-  int result = ccdGJKPenetration(&ctx_a, &ctx_b, &ccd, &depth, &normal, &point);
-
-  if (result < 0) {
-    return 0;
-  }
-
-  contact *c = new_contact(world, ctx);
-  c->point = ccd_vec3_to_ray(point);
-  c->normal = negate(ccd_vec3_to_ray(normal));
-  c->depth = depth;
-
-  return 1;
-}
-
-bool epa_for_bodies(physics_world *world, body_handle body_1, body_handle body_2, contact_t *out_contact) {
-  collision_detection_context ctx = {.body_a = handle_to_inner_index(world, body_1),
-                                     .body_b = handle_to_inner_index(world, body_2),
-                                     .data_a = as_common_const(world, body_1.type),
-                                     .data_b = as_common_const(world, body_2.type),
-                                     .shape_a = shapes_get(world, ctx.data_a->shapes[ctx.body_a])[0],
-                                     .shape_b = shapes_get(world, ctx.data_b->shapes[ctx.body_b])[0]};
-
-  count_t num_contacts = detect_collision_ccd(world, &ctx);
-  if (num_contacts > 0) {
-    contact c = world->contacts.values[world->contacts.count - 1];
-    *out_contact = (contact_t){c.point, c.normal, c.depth, body_1, body_2};
-    return true;
-  }
-
-  return false;
 }
 
 count_t collisions_detect_dynamic(physics_world *world) {

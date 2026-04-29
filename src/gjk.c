@@ -102,19 +102,6 @@ support_point support(const collision_detection_context *ctx, v3 direction) {
   return result;
 }
 
-support_point support_bodies(physics_world *world, v3 direction, body_handle body_1, body_handle body_2) {
-  collision_detection_context ctx = {
-      .body_a = handle_to_inner_index(world, body_1),
-      .body_b = handle_to_inner_index(world, body_2),
-      .data_a = as_common_const(world, body_1.type),
-      .data_b = as_common_const(world, body_2.type),
-      .shape_a = *shapes_get(world, ctx.data_a->shapes[ctx.body_a]),
-      .shape_b = *shapes_get(world, ctx.data_b->shapes[ctx.body_b]),
-  };
-
-  return support(&ctx, normalize(direction));
-}
-
 static void simplex_add_point(simplex *s, support_point p) {
   s->points[3] = s->points[2];
   s->points[2] = s->points[1];
