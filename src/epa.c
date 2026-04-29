@@ -5,6 +5,10 @@
 #include <stdlib.h>
 
 #define NIL 0
+#define VISIBLE_FACES_STACK_SIZE 16
+
+#define polytope_for_each_node(p, index, type)                                                                         \
+  for (count_t index = p->last_nodes[type]; index != NIL; index = p->nodes[index].prev)
 
 typedef enum {
   NODE_VERTEX,
@@ -14,13 +18,14 @@ typedef enum {
   NODE_TYPE_COUNT,
 } node_type;
 
+typedef enum {
+  FLAG_FOR_REMOVAL = 1,
+  FLAG_BORDER_EDGE = 2,
+} node_flags;
+
 typedef struct {
   node_type type;
 
-  v3 nearest_point;
-  float distance;
-
-  uint16_t next;
   uint16_t prev;
 
   union {
@@ -37,12 +42,16 @@ typedef struct {
 
     struct {
       uint16_t edges[3];
+      v3 normal;
+      float distance;
     } face;
   };
+
 } polytope_node;
 
 typedef struct {
   polytope_node *nodes;
+  uint8_t *flags;
   uint16_t *free_list;
 
   uint16_t last_nodes[NODE_TYPE_COUNT];
@@ -55,26 +64,14 @@ typedef struct {
   float nearest_distance;
 } polytope;
 
-polytope *pt;
+const float visibility_epsilon = 0.25;
+static polytope *pt;
 
-static int compare_vertex_distance(const void *a, const void *b) {
-  uint16_t i1 = *(uint16_t *)a;
-  uint16_t i2 = *(uint16_t *)b;
+static uint32_t polytope_flags_size(uint16_t max_nodes) { return max_nodes + 1 + (max_nodes % 2 == 0); }
 
-  polytope_node v1 = pt->nodes[i1];
-  polytope_node v2 = pt->nodes[i2];
-
-  if (fabsf(v1.distance - v2.distance) < EPSILON) {
-    return 0;
-  } else if (v1.distance > v2.distance) {
-    return 1;
-  } else {
-    return -1;
-  }
-}
-
-static uint32_t polytope_memory_size(count_t max_nodes) {
-  return sizeof(polytope) + (max_nodes + 1) * sizeof(polytope_node) + max_nodes * sizeof(uint16_t);
+static uint32_t polytope_memory_size(uint16_t max_nodes) {
+  return sizeof(polytope) + (max_nodes + 1) * sizeof(polytope_node) + polytope_flags_size(max_nodes) +
+         max_nodes * sizeof(uint16_t);
 }
 
 static polytope *polytope_init(uint8_t *memory, uint16_t max_nodes) {
@@ -85,6 +82,12 @@ static polytope *polytope_init(uint8_t *memory, uint16_t max_nodes) {
   result->nodes = (polytope_node *)memory;
 
   memory += (max_nodes + 1) * sizeof(polytope_node);
+  result->flags = memory;
+
+  uint32_t flags_size = polytope_flags_size(max_nodes);
+  memset(memory, 0, flags_size);
+
+  memory += flags_size;
   result->free_list = (uint16_t *)memory;
 
   result->max_nodes = max_nodes;
@@ -98,6 +101,7 @@ static void polytope_clear(polytope *polytope) {
   polytope->free_count = 0;
 
   memset(polytope->last_nodes, 0, NODE_TYPE_COUNT * sizeof(uint16_t));
+  memset(polytope->flags, 0, polytope_flags_size(polytope->max_nodes));
 
   polytope->nearest = NIL;
   polytope->nearest_distance = FLT_MAX;
@@ -117,13 +121,10 @@ static uint16_t polytope_free_index(polytope *polytope) {
 
 static void polytope_add_node(polytope *polytope, polytope_node *node, uint16_t index) {
   uint16_t last_node_index = polytope->last_nodes[node->type];
-  polytope_node *last_node = &polytope->nodes[last_node_index];
 
   node->prev = last_node_index;
-  node->next = NIL;
 
   polytope->last_nodes[node->type] = index;
-  last_node->next = index;
 }
 
 static void polytope_remove_node(polytope *polytope, uint16_t index) {
@@ -134,9 +135,6 @@ static void polytope_remove_node(polytope *polytope, uint16_t index) {
 
   if (node_index == index) {
     polytope->last_nodes[node.type] = current_node->prev;
-    if (current_node->prev != NIL) {
-      polytope->nodes[current_node->prev].next = NIL;
-    }
   } else {
     while (current_node->prev != index) {
       node_index = current_node->prev;
@@ -144,9 +142,6 @@ static void polytope_remove_node(polytope *polytope, uint16_t index) {
     }
 
     current_node->prev = node.prev;
-    if (current_node->prev != NIL) {
-      polytope->nodes[current_node->prev].next = node_index;
-    }
   }
 
   polytope->free_list[polytope->free_count++] = index;
@@ -169,6 +164,7 @@ static void polytope_attach_edge(polytope *polytope, uint16_t edge, uint16_t ver
     edge_node->edge.next_attached_edges[i] = edge;
   }
 }
+
 
 static void polytope_attach_face(polytope *polytope, uint16_t face, uint16_t edge) {
   polytope_node *edge_node = &polytope->nodes[edge];
@@ -199,6 +195,9 @@ static void polytope_detach_edge(polytope *polytope, uint16_t edge, uint16_t ver
   int i = next_edge_node->edge.verticies[0] == vertex ? 0 : 1;
   if (next_edge == edge) {
     vertex_node->vertex.first_attached_edge = next_edge_node->edge.next_attached_edges[i];
+    if (vertex_node->vertex.first_attached_edge == NIL) {
+      polytope->flags[vertex] |= FLAG_FOR_REMOVAL;
+    }
     return;
   }
 
@@ -253,8 +252,6 @@ static uint16_t polytope_add_vertex(polytope *polytope, support_point p) {
   node->type = NODE_VERTEX;
   node->vertex.v = p;
   node->vertex.first_attached_edge = NIL;
-  node->nearest_point = p.v;
-  node->distance = lensq(p.v);
 
   polytope_add_node(polytope, node, index);
 
@@ -271,22 +268,10 @@ static uint16_t polytope_add_edge(polytope *polytope, uint16_t v1, uint16_t v2) 
     return NIL;
   }
 
-  v3 vert1 = polytope->nodes[v1].vertex.v.v;
-  v3 vert2 = polytope->nodes[v2].vertex.v.v;
-  if (distancesqr(vert1, vert2) < EPSILON) {
-    raise_error(BND_ERROR_INVALID_POLYTOPE, polytope,
-                "Degenerate polytope expansion. New egde from (%.4f, %.4f, %.4f) to (%.4f, %.4f, %.4f)", vert1.x,
-                vert1.y, vert1.z, vert2.x, vert2.y, vert2.z);
-
-    return NIL;
-  }
-
   polytope_node *node = &polytope->nodes[index];
   node->type = NODE_EDGE;
   node->edge.verticies[0] = v1;
   node->edge.verticies[1] = v2;
-  node->distance = distance_to_line_segment(zero(), polytope->nodes[v1].vertex.v.v, polytope->nodes[v2].vertex.v.v,
-                                            &node->nearest_point);
 
   memset(node->edge.attached_faces, 0, 2 * sizeof(uint16_t));
   memset(node->edge.next_attached_edges, 0, 2 * sizeof(uint16_t));
@@ -318,7 +303,7 @@ static uint16_t polytope_add_face(polytope *polytope, uint16_t e1, uint16_t e2, 
   v3 v1, v2, v3;
   polytope_get_face_verticies(polytope, index, &v1, &v2, &v3);
 
-  node->distance = distance_to_triangle(zero(), v1, v2, v3, &node->nearest_point);
+  node->face.distance = distance_to_triangle(zero(), v1, v2, v3, &node->face.normal);
 
   polytope_attach_face(polytope, index, e1);
   polytope_attach_face(polytope, index, e2);
@@ -353,6 +338,7 @@ static void polytope_remove_edge(polytope *polytope, uint16_t edge) {
 
   polytope_node *edge_node = &polytope->nodes[edge];
   if (edge_node->edge.attached_faces[0] != NIL || edge_node->edge.attached_faces[1] != NIL) {
+    // TraceLog(LOG_FATAL, "Removing face with attached face");
     return;
   }
 
@@ -365,25 +351,32 @@ static void polytope_remove_edge(polytope *polytope, uint16_t edge) {
   polytope_remove_node(polytope, edge);
 }
 
-static void polytope_update_nearest_for_type(polytope *polytope, uint16_t node_type) {
-  uint16_t index = polytope->last_nodes[node_type];
-
-  while (index != NIL) {
-    polytope_node node = polytope->nodes[index];
-
-    if (node.distance < polytope->nearest_distance) {
-      polytope->nearest_distance = node.distance;
-      polytope->nearest = index;
-    }
-
-    index = node.prev;
+static void polytope_remove_vertex(polytope *polytope, uint16_t vertex) {
+  if (vertex == NIL) {
+    return;
   }
+
+  polytope_remove_node(polytope, vertex);
 }
+
+static void polytope_clear_flags(polytope *polytope) { memset(polytope->flags, 0, polytope->node_count); }
 
 static void polytope_update_nearest(polytope *polytope) {
   polytope->nearest_distance = FLT_MAX;
 
-  polytope_update_nearest_for_type(polytope, NODE_FACE);
+  polytope_for_each_node(polytope, index, NODE_FACE) {
+    polytope_node node = polytope->nodes[index];
+
+    float distance = node.face.distance;
+    if (distance < polytope->nearest_distance) {
+      polytope->nearest_distance = distance;
+      polytope->nearest = index;
+    }
+  }
+}
+
+static bool polytope_is_face_visible(const polytope_node *face, v3 support_point) {
+  return dot(normalize(face->face.normal), normalize(support_point)) > visibility_epsilon;
 }
 
 static bool polytope_from_simplex(polytope *polytope, const simplex *s) {
@@ -411,171 +404,144 @@ static bool polytope_from_simplex(polytope *polytope, const simplex *s) {
   }
 
   polytope_update_nearest(polytope);
+  polytope_clear_flags(polytope);
 
   return true;
 }
 
-static void epa_calculate_contact(polytope *polytope, contact *out_contact) {
-  polytope_node nearest_node = polytope->nodes[polytope->nearest];
-  out_contact->depth = sqrt(nearest_node.distance);
-  out_contact->normal = negate(normalize(nearest_node.nearest_point));
+static void epa_calculate_contact(const polytope *polytope, contact *contact) {
+  polytope_node node = polytope->nodes[polytope->nearest];
+  uint16_t e1 = node.face.edges[0];
+  uint16_t e2 = node.face.edges[1];
+  uint16_t *edge_verts_1 = polytope->nodes[e1].edge.verticies;
+  uint16_t *edge_verts_2 = polytope->nodes[e2].edge.verticies;
 
-  // The following algorithm for computing the contact point is taken from the
-  // libccd by Daniel Fiser.
-  //
-  // https://github.com/danfis/libccd/blob/master/src/ccd.c#L133
+  support_point v1 = polytope->nodes[edge_verts_1[0]].vertex.v;
+  support_point v2 = polytope->nodes[edge_verts_1[1]].vertex.v;
 
-  // We re-use the free_list array for storing the indicies of verticies.
-  // Since EPA is finished already, the polytope won't expand and we don't need to
-  // keep track of free indicies anymore.
+  support_point vv3 = edge_verts_2[1] != edge_verts_1[1] && edge_verts_2[1] != edge_verts_1[0]
+                          ? polytope->nodes[edge_verts_2[1]].vertex.v
+                          : polytope->nodes[edge_verts_2[0]].vertex.v;
 
-  count_t vertex_count = 0;
+  v3 barycenter = Vector3Barycenter(zero(), v1.v, v2.v, vv3.v);
+  v3 p1 = add(scale(v1.v1, barycenter.x), add(scale(v2.v1, barycenter.y), scale(vv3.v1, barycenter.z)));
+  v3 p2 = add(scale(v1.v2, barycenter.x), add(scale(v2.v2, barycenter.y), scale(vv3.v2, barycenter.z)));
 
-  count_t node_index = polytope->last_nodes[NODE_VERTEX];
-  while (node_index != NIL) {
-    polytope_node *vertex = &polytope->nodes[node_index];
+  contact->point = scale(add(p1, p2), 0.5);
+  contact->depth = sqrt(node.face.distance);
+  contact->normal = negate(normalize(node.face.normal));
+}
 
-    polytope->free_list[vertex_count++] = node_index;
-    node_index = vertex->prev;
+static void epa_update_visible_faces(polytope *polytope, support_point p) {
+  uint16_t stack_ptr = 1;
+  uint16_t stack[VISIBLE_FACES_STACK_SIZE] = {polytope->nearest};
+
+  polytope_node *face_node = &polytope->nodes[polytope->nearest];
+  polytope->flags[polytope->nearest] |= FLAG_FOR_REMOVAL;
+
+  while (stack_ptr > 0) {
+    uint16_t face_index = stack[--stack_ptr];
+    face_node = &polytope->nodes[face_index];
+
+    for (count_t i = 0; i < 3; ++i) {
+      uint16_t edge_index = face_node->face.edges[i];
+      polytope_node *edge_node = &polytope->nodes[edge_index];
+
+      count_t visible_count = 0;
+      for (count_t j = 0; j < 2; ++j) {
+        uint16_t adjasent_face_index = edge_node->edge.attached_faces[j];
+        const polytope_node *adjasent_face_node = &polytope->nodes[adjasent_face_index];
+
+        if (polytope->flags[adjasent_face_index] & FLAG_FOR_REMOVAL) {
+          visible_count += 1;
+        } else if (polytope_is_face_visible(adjasent_face_node, p.v)) {
+          visible_count += 1;
+          polytope->flags[adjasent_face_index] |= FLAG_FOR_REMOVAL;
+          stack[stack_ptr++] = adjasent_face_index;
+        }
+      }
+
+      if (visible_count == 2) {
+        polytope->flags[edge_index] |= FLAG_FOR_REMOVAL;
+      } else if (visible_count == 1) {
+        polytope->flags[edge_index] |= FLAG_BORDER_EDGE;
+      }
+    }
   }
-
-  qsort(polytope->free_list, vertex_count, sizeof(uint16_t), compare_vertex_distance);
-
-  if (vertex_count % 2 == 1) {
-    vertex_count += 1;
-  }
-
-  v3 point = zero();
-  float div = 0;
-  for (count_t i = 0; i < vertex_count / 2; ++i) {
-    uint16_t index = polytope->free_list[i];
-    polytope_node node = polytope->nodes[index];
-
-    point = add(point, node.vertex.v.v1);
-    point = add(point, node.vertex.v.v2);
-    div += 2.0;
-  }
-
-  out_contact->point = scale(point, 1 / div);
 }
 
 static void epa_expand_polytope(polytope *polytope, support_point p) {
-  polytope_node closest_node = polytope->nodes[polytope->nearest];
-  if (closest_node.type == NODE_FACE) {
-    uint16_t edges[6];
-    uint16_t verts[5];
-    memcpy(edges, closest_node.face.edges, 3 * sizeof(uint16_t));
-    memcpy(verts, polytope->nodes[edges[0]].edge.verticies, 2 * sizeof(uint16_t));
-    memcpy(verts + 2, polytope->nodes[edges[1]].edge.verticies, 2 * sizeof(uint16_t));
+  epa_update_visible_faces(polytope, p);
 
-    if (verts[2] != verts[1] && verts[3] != verts[1]) {
-      edges[3] = edges[1];
-      edges[1] = edges[2];
-      edges[2] = edges[3];
+  polytope_for_each_node(polytope, index, NODE_FACE) {
+    if (polytope->flags[index] & FLAG_FOR_REMOVAL) {
+      polytope_remove_face(polytope, index);
     }
-
-    if (verts[3] != verts[0] && verts[3] != verts[1]) {
-      verts[2] = verts[3];
-    }
-
-    polytope_remove_face(polytope, polytope->nearest);
-
-    verts[3] = polytope_add_vertex(polytope, p);
-    edges[3] = polytope_add_edge(polytope, verts[3], verts[0]);
-    edges[4] = polytope_add_edge(polytope, verts[3], verts[1]);
-    edges[5] = polytope_add_edge(polytope, verts[3], verts[2]);
-
-    if (polytope_add_face(polytope, edges[3], edges[4], edges[0]) == NIL ||
-        polytope_add_face(polytope, edges[4], edges[5], edges[1]) == NIL ||
-        polytope_add_face(polytope, edges[5], edges[3], edges[2]) == NIL) {
-
-      // TODO report error properly
-      // TraceLog(LOG_FATAL, "Polytope capacity exceeded");
-      return;
-    }
-
-    polytope_update_nearest(polytope);
-
-  } else if (closest_node.type == NODE_EDGE) {
-    uint16_t faces[2];
-    uint16_t edges[8];
-    uint16_t vertices[5];
-
-    vertices[0] = closest_node.edge.verticies[0];
-    vertices[2] = closest_node.edge.verticies[1];
-
-    memcpy(faces, closest_node.edge.attached_faces, 2 * sizeof(uint16_t));
-    memcpy(edges, polytope->nodes[faces[0]].face.edges, 3 * sizeof(uint16_t));
-
-    if (edges[0] == polytope->nearest) {
-      edges[0] = edges[2];
-    } else if (edges[1] == polytope->nearest) {
-      edges[1] = edges[2];
-    }
-
-    polytope_node e = polytope->nodes[edges[0]];
-    vertices[1] = e.edge.verticies[0];
-    vertices[3] = e.edge.verticies[1];
-
-    if (vertices[1] != vertices[0] && vertices[3] != vertices[0]) {
-      edges[2] = edges[0];
-      edges[0] = edges[1];
-      edges[1] = edges[2];
-
-      if (vertices[1] == vertices[2]) {
-        vertices[1] = vertices[3];
-      }
-    } else if (vertices[1] == vertices[0]) {
-      vertices[1] = vertices[3];
-    }
-
-    memcpy(edges + 2, polytope->nodes[faces[1]].face.edges, 3 * sizeof(uint16_t));
-
-    if (edges[2] == polytope->nearest) {
-      edges[2] = edges[4];
-    } else if (edges[3] == polytope->nearest) {
-      edges[3] = edges[4];
-    }
-
-    memcpy(vertices + 3, polytope->nodes[edges[2]].edge.verticies, 2 * sizeof(uint16_t));
-
-    if (vertices[3] != vertices[2] && vertices[4] != vertices[2]) {
-      edges[4] = edges[2];
-      edges[2] = edges[3];
-      edges[3] = edges[4];
-      if (vertices[3] == vertices[0]) {
-        vertices[3] = vertices[4];
-      }
-    } else if (vertices[3] == vertices[2]) {
-      vertices[3] = vertices[4];
-    }
-
-    vertices[4] = polytope_add_vertex(polytope, p);
-
-    polytope_remove_face(polytope, faces[0]);
-    polytope_remove_face(polytope, faces[1]);
-    polytope_remove_edge(polytope, polytope->nearest);
-
-    edges[4] = polytope_add_edge(polytope, vertices[4], vertices[2]);
-    edges[5] = polytope_add_edge(polytope, vertices[4], vertices[0]);
-    edges[6] = polytope_add_edge(polytope, vertices[4], vertices[1]);
-    edges[7] = polytope_add_edge(polytope, vertices[4], vertices[3]);
-
-    if (polytope_add_face(polytope, edges[1], edges[4], edges[6]) == NIL ||
-        polytope_add_face(polytope, edges[0], edges[6], edges[5]) == NIL ||
-        polytope_add_face(polytope, edges[3], edges[5], edges[7]) == NIL ||
-        polytope_add_face(polytope, edges[4], edges[7], edges[2]) == NIL) {
-      // TODO report error properly
-      // TraceLog(LOG_FATAL, "Polytope capacity exceeded");
-      return;
-    }
-
-    polytope_update_nearest(polytope);
   }
+
+  polytope_for_each_node(polytope, index, NODE_EDGE) {
+    if (polytope->flags[index] & FLAG_FOR_REMOVAL) {
+      polytope_remove_edge(polytope, index);
+    }
+  }
+
+  polytope_for_each_node(polytope, index, NODE_VERTEX) {
+    if (polytope->flags[index] & FLAG_FOR_REMOVAL) {
+      polytope_remove_vertex(polytope, index);
+    }
+  }
+
+  uint16_t new_vertex = polytope_add_vertex(polytope, p);
+
+  polytope_for_each_node(polytope, index, NODE_EDGE) {
+    polytope_node *edge_node = &polytope->nodes[index];
+    if ((polytope->flags[index] & FLAG_BORDER_EDGE) == 0) {
+      continue;
+    }
+
+    uint16_t edge_index = index;
+    uint16_t first_connected_vertex_index = edge_node->edge.verticies[0];
+    uint16_t first_new_edge = polytope_add_edge(polytope, new_vertex, first_connected_vertex_index);
+    uint16_t prev_edge = first_new_edge;
+
+    uint16_t connected_vertex_index = edge_node->edge.verticies[1];
+    while (connected_vertex_index != first_connected_vertex_index) {
+      uint16_t new_edge = polytope_add_edge(polytope, new_vertex, connected_vertex_index);
+      polytope_add_face(polytope, prev_edge, new_edge, edge_index);
+
+      polytope_node *connected_vertex_node = &polytope->nodes[connected_vertex_index];
+      uint16_t attached_edge_index = connected_vertex_node->vertex.first_attached_edge;
+      while (attached_edge_index != NIL) {
+        polytope_node attached_edge_node = polytope->nodes[attached_edge_index];
+        count_t i = attached_edge_node.edge.verticies[0] == connected_vertex_index ? 0 : 1;
+
+        if (attached_edge_index == new_edge || attached_edge_index == edge_index) {
+          attached_edge_index = attached_edge_node.edge.next_attached_edges[i];
+          continue;
+        }
+
+        if (polytope->flags[attached_edge_index] & FLAG_BORDER_EDGE) {
+          edge_index = attached_edge_index;
+          connected_vertex_index = attached_edge_node.edge.verticies[1 - i];
+          break;
+        }
+
+        attached_edge_index = attached_edge_node.edge.next_attached_edges[i];
+      }
+
+      prev_edge = new_edge;
+    }
+
+    polytope_add_face(polytope, first_new_edge, prev_edge, edge_index);
+    break;
+  }
+
+  polytope_update_nearest(polytope);
+  polytope_clear_flags(polytope);
 }
 
 void epa_init(const physics_config *config) {
-  count_t memory_size = polytope_memory_size(config->epa_max_nodes);
+  uint32_t memory_size = polytope_memory_size(config->epa_max_nodes);
   uint8_t *memory = malloc(memory_size);
   pt = polytope_init(memory, config->epa_max_nodes);
 }
@@ -585,36 +551,25 @@ void epa_get_contact(const collision_detection_context *ctx, const simplex *simp
   polytope_from_simplex(pt, simplex);
 
   while (1) {
-    polytope_node closest_node = pt->nodes[pt->nearest];
-    if (closest_node.type == NODE_VERTEX) {
+    polytope_node closest_face = pt->nodes[pt->nearest];
+    v3 direction = closest_face.face.normal;
+
+    support_point support_point = support(ctx, normalize(direction));
+    float distance = dot(direction, support_point.v);
+    if (distance - closest_face.face.distance < tolerance) {
       epa_calculate_contact(pt, contact);
-      break;
-    }
-
-    v3 direction = closest_node.nearest_point;
-
-    support_point p = support(ctx, normalize(direction));
-
-    float distance = dot(direction, p.v);
-    if (distance - closest_node.distance < tolerance) {
-      epa_calculate_contact(pt, contact);
-      break;
+      return;
     }
 
     v3 a, b, c, closest;
-    if (closest_node.type == NODE_EDGE) {
-      polytope_get_edge_vertices(pt, pt->nearest, &a, &b);
-      distance = distance_to_line_segment(p.v, a, b, &closest);
-    } else {
-      polytope_get_face_verticies(pt, pt->nearest, &a, &b, &c);
-      distance = distance_to_triangle(p.v, a, b, c, &closest);
-    }
+    polytope_get_face_verticies(pt, pt->nearest, &a, &b, &c);
+    distance = distance_to_triangle(support_point.v, a, b, c, &closest);
 
     if (distance < tolerance) {
       epa_calculate_contact(pt, contact);
-      break;
+      return;
     }
 
-    epa_expand_polytope(pt, p);
+    epa_expand_polytope(pt, support_point);
   }
 }
