@@ -233,6 +233,8 @@ fn libraryFlags(b: *std.Build, options: Options, target: std.Target, optimize: s
     if (options.collisionsDebug)
         try flags.append(b.allocator, "-DCOLLISIONS_DEBUG");
 
+    try flags.append(b.allocator, "-fvisibility=hidden");
+
     return flags.toOwnedSlice(b.allocator);
 }
 

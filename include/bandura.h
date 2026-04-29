@@ -7,6 +7,12 @@
 #define RAYMATH_DISABLE_CPP_OPERATORS
 #include "raymath.h"
 
+#if defined(_WIN32)
+  #define BNDAPI __declspec(dllexport)
+#else
+  #define BNDAPI __attribute((visibility("default")))
+#endif
+
 #define cross(x, y) Vector3CrossProduct(x, y)
 #define dot(x, y) Vector3DotProduct(x, y)
 #define add(x, y) Vector3Add(x, y)
@@ -59,19 +65,19 @@ typedef struct {
   float m2[3]; // Row 2
 } m3;
 
-m3 matrix_identity();
-m3 matrix_transpose(m3 m);
-m3 matrix_inverse(m3 m);
-m3 matrix_add(m3 a, m3 b);
-m3 matrix_multiply(m3 a, m3 b);
-m3 matrix_negate(m3 m);
-v3 matrix_rotate(v3 v, m3 m);
-v3 matrix_rotate_inverse(v3 v, m3 m);
-m3 matrix_from_basis(v3 x, v3 y, v3 z);
-m3 matrix_skew_symmetric(v3 v);
-m3 matrix_initial_inertia(v3 inertia);
-m3 matrix_inertia(m3 initial_inertia, quat rotation);
-m3 matrix_displacement_inertia(m3 i0, v3 offset, float mass);
+BNDAPI m3 matrix_identity();
+BNDAPI m3 matrix_transpose(m3 m);
+BNDAPI m3 matrix_inverse(m3 m);
+BNDAPI m3 matrix_add(m3 a, m3 b);
+BNDAPI m3 matrix_multiply(m3 a, m3 b);
+BNDAPI m3 matrix_negate(m3 m);
+BNDAPI v3 matrix_rotate(v3 v, m3 m);
+BNDAPI v3 matrix_rotate_inverse(v3 v, m3 m);
+BNDAPI m3 matrix_from_basis(v3 x, v3 y, v3 z);
+BNDAPI m3 matrix_skew_symmetric(v3 v);
+BNDAPI m3 matrix_initial_inertia(v3 inertia);
+BNDAPI m3 matrix_inertia(m3 initial_inertia, quat rotation);
+BNDAPI m3 matrix_displacement_inertia(m3 i0, v3 offset, float mass);
 
 typedef uint32_t count_t;
 
@@ -204,60 +210,60 @@ typedef struct {
 
 typedef bnd_body_enumerator bnd_body_enumerator_typed;
 
-bnd_config bnd_default_config();
+BNDAPI bnd_config bnd_default_config();
 
-bnd_world *bnd_init(const bnd_config *config);
+BNDAPI bnd_world *bnd_init(const bnd_config *config);
 
-void bnd_register_error_callback(bnd_error_callback callback);
+BNDAPI void bnd_register_error_callback(bnd_error_callback callback);
 
-void bnd_add_plane(bnd_world *world, v3 point, v3 normal);
-bnd_body bnd_add_box_dynamic(bnd_world *world, float mass, v3 size);
-bnd_body bnd_add_box_static(bnd_world *world, v3 size);
-bnd_body bnd_add_sphere_dynamic(bnd_world *world, float mass, float radius);
-bnd_body bnd_add_cylinder_static(bnd_world *world, float radius, float height);
-bnd_body bnd_add_cylinder_dynamic(bnd_world *world, float mass, float radius, float height);
-bnd_body bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, count_t shapes_count);
-bnd_body bnd_add_compound_body_dynamic(bnd_world *world, bnd_body_shape *shapes, float *masses, count_t shapes_count);
+BNDAPI void bnd_add_plane(bnd_world *world, v3 point, v3 normal);
+BNDAPI bnd_body bnd_add_box_dynamic(bnd_world *world, float mass, v3 size);
+BNDAPI bnd_body bnd_add_box_static(bnd_world *world, v3 size);
+BNDAPI bnd_body bnd_add_sphere_dynamic(bnd_world *world, float mass, float radius);
+BNDAPI bnd_body bnd_add_cylinder_static(bnd_world *world, float radius, float height);
+BNDAPI bnd_body bnd_add_cylinder_dynamic(bnd_world *world, float mass, float radius, float height);
+BNDAPI bnd_body bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, count_t shapes_count);
+BNDAPI bnd_body bnd_add_compound_body_dynamic(bnd_world *world, bnd_body_shape *shapes, float *masses, count_t shapes_count);
 
-void bnd_remove_body(bnd_world *world, bnd_body_handle handle);
+BNDAPI void bnd_remove_body(bnd_world *world, bnd_body_handle handle);
 
-count_t bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, v3 contact_offset_a,
+BNDAPI count_t bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, v3 contact_offset_a,
                           v3 contact_offset_b, float max_distance);
-void bnd_remove_joint(bnd_world *world, count_t id);
-const bnd_joint *bnd_get_joints(const bnd_world *world, count_t *count);
+BNDAPI void bnd_remove_joint(bnd_world *world, count_t id);
+BNDAPI const bnd_joint *bnd_get_joints(const bnd_world *world, count_t *count);
 
-void bnd_apply_force(bnd_world *world, bnd_body_handle handle, v3 force);
-void bnd_apply_force_at(bnd_world *world, bnd_body_handle handle, v3 force, v3 position);
-void bnd_apply_impulse(bnd_world *world, bnd_body_handle handle, v3 impulse);
-void bnd_apply_impulse_at(bnd_world *world, bnd_body_handle handle, v3 impulse, v3 position);
+BNDAPI void bnd_apply_force(bnd_world *world, bnd_body_handle handle, v3 force);
+BNDAPI void bnd_apply_force_at(bnd_world *world, bnd_body_handle handle, v3 force, v3 position);
+BNDAPI void bnd_apply_impulse(bnd_world *world, bnd_body_handle handle, v3 impulse);
+BNDAPI void bnd_apply_impulse_at(bnd_world *world, bnd_body_handle handle, v3 impulse, v3 position);
 
-count_t bnd_body_count(const bnd_world *world, bnd_body_type type);
-count_t bnd_awake_count(const bnd_world *world);
-count_t bnd_collisions_count(const bnd_world *world);
+BNDAPI count_t bnd_body_count(const bnd_world *world, bnd_body_type type);
+BNDAPI count_t bnd_awake_count(const bnd_world *world);
+BNDAPI count_t bnd_collisions_count(const bnd_world *world);
 
-bnd_config *bnd_edit_config(bnd_world *world);
-bnd_world_stats bnd_stats(const bnd_world *world);
+BNDAPI bnd_config *bnd_edit_config(bnd_world *world);
+BNDAPI bnd_world_stats bnd_stats(const bnd_world *world);
 
-v3 bnd_get_position(const bnd_world *world, bnd_body_handle handle);
-quat bnd_get_rotation(const bnd_world *world, bnd_body_handle handle);
-bnd_body_shape *bnd_get_shapes(const bnd_world *world, bnd_body_handle handle, count_t *count);
-v3 bnd_get_velocity(const bnd_world *world, bnd_body_handle handle);
-v3 bnd_get_angular_velocity(const bnd_world *world, bnd_body_handle handle);
-v3 bnd_get_angular_momentum(const bnd_world *world, bnd_body_handle handle);
-m3 bnd_get_inertia(const bnd_world *world, bnd_body_handle handle);
-m3 bnd_get_base_inertia(const bnd_world *world, bnd_body_handle handle);
-float bnd_get_motion_avg(const bnd_world *world, bnd_body_handle handle);
-count_t bnd_get_contacts(const bnd_world *world, bnd_contact *contacts, count_t max_contacts);
+BNDAPI v3 bnd_get_position(const bnd_world *world, bnd_body_handle handle);
+BNDAPI quat bnd_get_rotation(const bnd_world *world, bnd_body_handle handle);
+BNDAPI bnd_body_shape *bnd_get_shapes(const bnd_world *world, bnd_body_handle handle, count_t *count);
+BNDAPI v3 bnd_get_velocity(const bnd_world *world, bnd_body_handle handle);
+BNDAPI v3 bnd_get_angular_velocity(const bnd_world *world, bnd_body_handle handle);
+BNDAPI v3 bnd_get_angular_momentum(const bnd_world *world, bnd_body_handle handle);
+BNDAPI m3 bnd_get_inertia(const bnd_world *world, bnd_body_handle handle);
+BNDAPI m3 bnd_get_base_inertia(const bnd_world *world, bnd_body_handle handle);
+BNDAPI float bnd_get_motion_avg(const bnd_world *world, bnd_body_handle handle);
+BNDAPI count_t bnd_get_contacts(const bnd_world *world, bnd_contact *contacts, count_t max_contacts);
 
-void bnd_enumerate_bodies_typed(const bnd_world *world, bnd_body_type type, bnd_body_enumerator_typed *enumerator);
-bool bnd_body_next_typed(const bnd_world *world, bnd_body_enumerator_typed *enumerator);
+BNDAPI void bnd_enumerate_bodies_typed(const bnd_world *world, bnd_body_type type, bnd_body_enumerator_typed *enumerator);
+BNDAPI bool bnd_body_next_typed(const bnd_world *world, bnd_body_enumerator_typed *enumerator);
 
-void bnd_simulate(bnd_world *world, float dt);
-void bnd_awaken_body(bnd_world *world, bnd_body_handle handle);
-void bnd_reset_world(bnd_world *world);
+BNDAPI void bnd_simulate(bnd_world *world, float dt);
+BNDAPI void bnd_awaken_body(bnd_world *world, bnd_body_handle handle);
+BNDAPI void bnd_reset_world(bnd_world *world);
 
-count_t bnd_raycast(const bnd_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits,
+BNDAPI count_t bnd_raycast(const bnd_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits,
                         bnd_raycast_hit *hits);
 
-void bnd_teardown(bnd_world *world);
+BNDAPI void bnd_teardown(bnd_world *world);
 #endif
