@@ -42,6 +42,10 @@ static void import_buffer(const bnd_mesh_buffer *buffer, void **target, count_t 
   *target_count += buffer->elemenets_count;
 }
 
+v3 mesh_support(const support_context *ctx, v3 direction) {}
+
+m3 mesh_inertia(const bnd_world *world, bnd_mesh_handle handle) {}
+
 void meshes_init(bnd_world *world) {
   count_t num_meshes = world->config.memory.meshes_capacity;
 

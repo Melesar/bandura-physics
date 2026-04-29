@@ -134,7 +134,6 @@ typedef struct {
 } dynamic_bodies;
 
 typedef common_data static_bodies;
-
 struct bnd_world_t {
   dynamic_bodies dynamics;
   static_bodies statics;
@@ -162,6 +161,14 @@ typedef struct {
   uint8_t size;
 } simplex;
 
+typedef struct {
+  const common_data *data;
+  bnd_body_shape shape;
+  count_t index;
+} support_context;
+
+typedef v3 (*support_func)(const support_context *, v3);
+
 void raise_error(bnd_error type, void *data, const char *template, ...);
 
 bnd_body_handle make_body_handle(const bnd_world *world, bnd_body_type type, count_t index);
@@ -188,6 +195,8 @@ count_t joints_generate_dynamic(bnd_world *world);
 void joints_generate_static(bnd_world *world);
 
 void meshes_init(bnd_world *world);
+v3 mesh_support(const support_context *ctx, v3 direction);
+m3 mesh_inertia(const bnd_world *world, bnd_mesh_handle handle);
 
 void shapes_init(bnd_world *world);
 void shapes_teardown(bnd_world *world);
