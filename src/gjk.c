@@ -5,7 +5,7 @@
 
 typedef struct {
   const common_data *data;
-  body_shape shape;
+  bnd_body_shape shape;
   count_t index;
 } support_context;
 
@@ -244,20 +244,20 @@ static bool simplex_update(simplex *s, v3 *direction) {
   return false;
 }
 
-bool gjk_check_intersection_bodies(physics_world *world, body_handle body_1, body_handle body_2, simplex *simplex) {
+bool gjk_check_intersection_bodies(bnd_world *world, bnd_body_handle body_1, bnd_body_handle body_2, simplex *simplex) {
   count_t n;
   collision_detection_context ctx = {
       .data_a = body_1.type == BODY_DYNAMIC ? (common_data *)&world->dynamics : &world->statics,
       .data_b = body_2.type == BODY_DYNAMIC ? (common_data *)&world->dynamics : &world->statics,
       .body_a = handle_to_inner_index(world, body_1),
       .body_b = handle_to_inner_index(world, body_2),
-      .shape_a = physics_get_shapes(world, body_1, &n)[0],
-      .shape_b = physics_get_shapes(world, body_2, &n)[0]};
+      .shape_a = bnd_get_shapes(world, body_1, &n)[0],
+      .shape_b = bnd_get_shapes(world, body_2, &n)[0]};
 
   return gjk_check_intersection(world, &ctx, simplex);
 }
 
-bool gjk_check_intersection(physics_world *world, const collision_detection_context *ctx, simplex *simplex) {
+bool gjk_check_intersection(bnd_world *world, const collision_detection_context *ctx, simplex *simplex) {
   v3 direction = initial_direction;
 
   simplex->size = 0;

@@ -2,7 +2,7 @@
 #include <float.h>
 #include <math.h>
 
-static bool raycast_sphere(v3 origin, v3 direction, float max_distance, v3 center, float radius, raycast_hit *hit) {
+static bool raycast_sphere(v3 origin, v3 direction, float max_distance, v3 center, float radius, bnd_raycast_hit *hit) {
   v3 offset = sub(center, origin);
   float o = lensq(offset);
   float r = radius * radius;
@@ -29,7 +29,7 @@ static bool raycast_sphere(v3 origin, v3 direction, float max_distance, v3 cente
 }
 
 static bool raycast_box(v3 origin, v3 direction, float max_distance, v3 position, v3 size, quat rotation,
-                        raycast_hit *hit) {
+                        bnd_raycast_hit *hit) {
   v3 half = scale(size, 0.5f);
   quat inv_rotation = qinvert(rotation);
   v3 local_origin = rotate(sub(origin, position), inv_rotation);
@@ -107,7 +107,7 @@ static bool raycast_box(v3 origin, v3 direction, float max_distance, v3 position
 }
 
 static bool raycast_cylinder(v3 origin, v3 direction, float max_distance, v3 position, float radius, float height,
-                             quat rotation, raycast_hit *hit) {
+                             quat rotation, bnd_raycast_hit *hit) {
   quat inv_rotation = qinvert(rotation);
   v3 lo = rotate(sub(origin, position), inv_rotation);
   v3 ld = rotate(direction, inv_rotation);
@@ -197,7 +197,7 @@ static bool raycast_cylinder(v3 origin, v3 direction, float max_distance, v3 pos
   return true;
 }
 
-static bool raycast_plane(v3 origin, v3 direction, float max_distance, v3 point, v3 normal, raycast_hit *hit) {
+static bool raycast_plane(v3 origin, v3 direction, float max_distance, v3 point, v3 normal, bnd_raycast_hit *hit) {
   float dod = dot(sub(point, origin), normal);
   float dd = dot(direction, normal);
 
@@ -216,8 +216,8 @@ static bool raycast_plane(v3 origin, v3 direction, float max_distance, v3 point,
   return true;
 }
 
-static count_t raycast_bodies(const physics_world *world, body_type type, v3 origin, v3 direction, float max_distance,
-                              count_t hit_count, count_t max_hits, raycast_hit *hits) {
+static count_t raycast_bodies(const bnd_world *world, bnd_body_type type, v3 origin, v3 direction, float max_distance,
+                              count_t hit_count, count_t max_hits, bnd_raycast_hit *hits) {
   if (hit_count >= max_hits) {
     return 0;
   }
@@ -225,11 +225,11 @@ static count_t raycast_bodies(const physics_world *world, body_type type, v3 ori
   count_t num_hits = 0;
   const common_data *data = as_common_const(world, type);
   for (count_t i = 0; i < data->count; ++i) {
-    body_shape *shapes = shapes_get(world, data->shapes[i]);
+    bnd_body_shape *shapes = shapes_get(world, data->shapes[i]);
 
     for (count_t j = 0; j < data->shapes[i].count; ++j) {
-      raycast_hit *hit = hits + hit_count + num_hits;
-      body_shape shape = shapes[j];
+      bnd_raycast_hit *hit = hits + hit_count + num_hits;
+      bnd_body_shape shape = shapes[j];
 
       bool is_hit;
       switch (shape.type) {
@@ -274,8 +274,8 @@ static count_t raycast_bodies(const physics_world *world, body_type type, v3 ori
   return num_hits;
 }
 
-count_t physics_raycast(const physics_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits,
-                        raycast_hit *hits) {
+count_t bnd_raycast(const bnd_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits,
+                        bnd_raycast_hit *hits) {
   count_t hit_count = 0;
 
   hit_count += raycast_bodies(world, BODY_DYNAMIC, origin, direction, max_distance, hit_count, max_hits, hits);

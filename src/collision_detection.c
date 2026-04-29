@@ -22,11 +22,11 @@ static v3 collision_detection_body_center(const collision_detection_context *ctx
   return body_center(ctx->shape_a.offset, ctx->data_a->rotations[ctx->body_a], ctx->data_a->positions[ctx->body_a]);
 }
 
-static contact *new_contact(physics_world *world, const collision_detection_context *ctx) {
+static contact *new_contact(bnd_world *world, const collision_detection_context *ctx) {
   return contacts_new_default(world, ctx->body_a, ctx->body_b);
 }
 
-static count_t sphere_sphere_collision(physics_world *world, const collision_detection_context *ctx) {
+static count_t sphere_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
   v3 center_a = ctx->data_a->positions[ctx->body_a];
   v3 center_b = ctx->data_b->positions[ctx->body_b];
 
@@ -50,7 +50,7 @@ static count_t sphere_sphere_collision(physics_world *world, const collision_det
   return 1;
 }
 
-static count_t box_plane_collision(physics_world *world, const collision_detection_context *ctx) {
+static count_t box_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
   quat box_rotation = ctx->data_a->rotations[ctx->body_a];
   quat shape_rotation = ctx->shape_a.rotation;
 
@@ -88,7 +88,7 @@ static count_t box_plane_collision(physics_world *world, const collision_detecti
   return contact_count;
 }
 
-static count_t sphere_plane_collision(physics_world *world, const collision_detection_context *ctx) {
+static count_t sphere_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
   v3 sphere_center = collision_detection_body_center(ctx);
   float sphere_radius = ctx->shape_a.sphere.radius;
 
@@ -107,7 +107,7 @@ static count_t sphere_plane_collision(physics_world *world, const collision_dete
   return 1;
 }
 
-static count_t cylinder_plane_collision(physics_world *world, const collision_detection_context *ctx) {
+static count_t cylinder_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
   v3 plane_point = ctx->data_b->positions[ctx->body_b];
   v3 plane_normal = ctx->shape_b.plane.normal;
 
@@ -150,7 +150,7 @@ static count_t cylinder_plane_collision(physics_world *world, const collision_de
   return 1;
 }
 
-static count_t detect_collisions(physics_world *world, const collision_detection_context *ctx) {
+static count_t detect_collisions(bnd_world *world, const collision_detection_context *ctx) {
   simplex s;
   if (!gjk_check_intersection(world, ctx, &s)) {
     return 0;
@@ -162,7 +162,7 @@ static count_t detect_collisions(physics_world *world, const collision_detection
   return 1;
 }
 
-count_t collisions_detect_dynamic(physics_world *world) {
+count_t collisions_detect_dynamic(bnd_world *world) {
   const common_data *dynamics = (common_data *)&world->dynamics;
 
   collision_detection_context ctx = {
@@ -181,11 +181,11 @@ count_t collisions_detect_dynamic(physics_world *world) {
       body_shapes shapes_b = dynamics->shapes[j];
 
       for (count_t sa = 0; sa < shapes_a.count; ++sa) {
-        body_shape shape_a = shapes_get(world, shapes_a)[sa];
+        bnd_body_shape shape_a = shapes_get(world, shapes_a)[sa];
         ctx.shape_a = shape_a;
 
         for (count_t sb = 0; sb < shapes_b.count; ++sb) {
-          body_shape shape_b = shapes_get(world, shapes_b)[sb];
+          bnd_body_shape shape_b = shapes_get(world, shapes_b)[sb];
           ctx.shape_b = shape_b;
 
           if (shape_a.type == SHAPE_SPHERE && shape_b.type == SHAPE_SPHERE) {
@@ -201,7 +201,7 @@ count_t collisions_detect_dynamic(physics_world *world) {
   return dyn_count;
 }
 
-void collisions_detect_static(physics_world *world) {
+void collisions_detect_static(bnd_world *world) {
   const common_data *dynamics = (common_data *)&world->dynamics;
   const common_data *statics = (common_data *)&world->statics;
 
@@ -219,11 +219,11 @@ void collisions_detect_static(physics_world *world) {
       body_shapes shapes_b = statics->shapes[j];
 
       for (count_t sa = 0; sa < shapes_a.count; ++sa) {
-        body_shape shape_a = shapes_get(world, shapes_a)[sa];
+        bnd_body_shape shape_a = shapes_get(world, shapes_a)[sa];
         ctx.shape_a = shape_a;
 
         for (count_t sb = 0; sb < shapes_b.count; ++sb) {
-          body_shape shape_b = shapes_get(world, shapes_b)[sb];
+          bnd_body_shape shape_b = shapes_get(world, shapes_b)[sb];
           ctx.shape_b = shape_b;
 
           if (shape_a.type == SHAPE_SPHERE && shape_b.type == SHAPE_SPHERE) {

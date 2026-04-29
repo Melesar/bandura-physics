@@ -9,53 +9,53 @@ ragdoll normal_doll;
 bool widget_collapsed;
 
 void scenario_initialize(program_config *config,
-                         physics_config *physics_config) {
+                         bnd_config *physics_config) {
   config->window_title = "Ragdolls";
   config->camera_position = vec3(0, 5, -10);
   config->camera_target = vec3(0, 2, 10);
 }
 
-void scenario_setup_scene(physics_world *world) {
+void scenario_setup_scene(bnd_world *world) {
   normal_doll = ragdoll_create(world, scale(up(), 3));
 
-  body_shape ramp_shapes[] = {
-      (body_shape){.type = SHAPE_BOX,
+  bnd_body_shape ramp_shapes[] = {
+      (bnd_body_shape){.type = SHAPE_BOX,
                    .box = {.size = vec3(1, 10, 1)},
                    .offset = vec3(0, 5, 0),
                    .rotation = qidentity()},
-      (body_shape){.type = SHAPE_BOX,
+      (bnd_body_shape){.type = SHAPE_BOX,
                    .box = {.size = vec3(3, 1, 1)},
                    .offset = vec3(1, 10, 0),
                    .rotation = qidentity()},
   };
 
-  body ramp = physics_add_compound_body_static(world, ramp_shapes, 2);
+  bnd_body ramp = bnd_add_compound_body_static(world, ramp_shapes, 2);
   *ramp.position = vec3(5, 0, 5);
 
   hanging_doll = ragdoll_create(world, vec3(8, 5, 5));
-  physics_add_joint(world, ramp.handle, hanging_doll[RIGHT_LOWER_ARM],
+  bnd_add_joint(world, ramp.handle, hanging_doll[RIGHT_LOWER_ARM],
                     vec3(3, 10, 0), vec3(0, -0.6, 0), 0.05);
 }
 
-void scenario_handle_input(physics_world *world, Camera *camera) {
+void scenario_handle_input(bnd_world *world, Camera *camera) {
   if (IsKeyPressed(KEY_J)) {
-    physics_apply_impulse(world, normal_doll[PELVIS], scale(up(), 12));
+    bnd_apply_impulse(world, normal_doll[PELVIS], scale(up(), 12));
   }
 }
 
-void scenario_simulate(physics_world *world, float dt) {
-  physics_step(world, dt);
+void scenario_simulate(bnd_world *world, float dt) {
+  bnd_simulate(world, dt);
 }
 
-void scenario_draw_scene(physics_world *world) {}
+void scenario_draw_scene(bnd_world *world) {}
 
-void scenario_build_ui(physics_world *world) {
+void scenario_build_ui(bnd_world *world) {
   if (ui_begin_area("Ragdolls", &widget_collapsed)) {
     for (bone b = HEAD; b < BONE_COUNT; ++b) {
-      body_handle body = hanging_doll[b];
-      float velocity = len(physics_get_velocity(world, body));
-      float angular_velocity = len(physics_get_angular_velocity(world, body));
-      float angular_momentum = len(physics_get_angular_momentum(world, body));
+      bnd_body_handle body = hanging_doll[b];
+      float velocity = len(bnd_get_velocity(world, body));
+      float angular_velocity = len(bnd_get_angular_velocity(world, body));
+      float angular_momentum = len(bnd_get_angular_momentum(world, body));
 
       char *bone_name;
       switch (b) {

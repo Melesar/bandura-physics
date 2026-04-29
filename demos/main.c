@@ -40,12 +40,12 @@ static void draw_physics_bodies();
 static void process_inputs(Camera *camera);
 static void reset();
 
-extern void scenario_initialize(program_config *config, physics_config *physics_config);
-extern void scenario_setup_scene(physics_world *world);
-extern void scenario_handle_input(physics_world *world, Camera *camera);
-extern void scenario_simulate(physics_world *world, float dt);
-extern void scenario_draw_scene(physics_world *world);
-extern void scenario_build_ui(physics_world *world);
+extern void scenario_initialize(program_config *config, bnd_config *bandura_config);
+extern void scenario_setup_scene(bnd_world *world);
+extern void scenario_handle_input(bnd_world *world, Camera *camera);
+extern void scenario_simulate(bnd_world *world, float dt);
+extern void scenario_draw_scene(bnd_world *world);
+extern void scenario_build_ui(bnd_world *world);
 extern void scenario_teardown();
 
 camera_settings cam_settings = {
@@ -73,14 +73,14 @@ struct {
 } master_widget_state;
 
 static Model groundModel;
-static physics_world *world;
-static physics_config config;
+static bnd_world *world;
+static bnd_config config;
 
 int main(int argc, char **argv) {
   program_config program_config = {0};
   program_config.draw_ground = true;
 
-  config = physics_default_config();
+  config = bnd_default_config();
 
   scenario_initialize(&program_config, &config);
 
@@ -136,7 +136,7 @@ int main(int argc, char **argv) {
 
   ui_teardown();
   scenario_teardown();
-  physics_teardown(world);
+  bnd_teardown(world);
 
   UnloadShader(shader);
   CloseWindow();
@@ -169,16 +169,16 @@ static void process_inputs(Camera *camera) {
     scenario_handle_input(world, camera);
 }
 
-static void draw_physics_bodies_typed(body_type type) {
-  body_enumerator_typed enumerator;
-  physics_enumerate_bodies_typed(world, type, &enumerator);
+static void draw_physics_bodies_typed(bnd_body_type type) {
+  bnd_body_enumerator_typed enumerator;
+  bnd_enumerate_bodies_typed(world, type, &enumerator);
 
-  while (physics_body_next_typed(world, &enumerator)) {
-    v3 position = physics_get_position(world, enumerator.handle);
-    quat rotation = physics_get_rotation(world, enumerator.handle);
+  while (bnd_body_next_typed(world, &enumerator)) {
+    v3 position = bnd_get_position(world, enumerator.handle);
+    quat rotation = bnd_get_rotation(world, enumerator.handle);
 
     count_t shapes_count;
-    body_shape *shapes = physics_get_shapes(world, enumerator.handle, &shapes_count);
+    bnd_body_shape *shapes = bnd_get_shapes(world, enumerator.handle, &shapes_count);
 
     m4 scale;
     m4 transform =
@@ -187,7 +187,7 @@ static void draw_physics_bodies_typed(body_type type) {
     Material material = materials[enumerator.handle.index % 20];
 
     for (count_t k = 0; k < shapes_count; ++k) {
-      body_shape shape = shapes[k];
+      bnd_body_shape shape = shapes[k];
       m4 shape_transform =
           mul(as_matrix(shape.rotation), MatrixTranslate(shape.offset.x, shape.offset.y, shape.offset.z));
       m4 full_transform = mul(shape_transform, transform);
@@ -340,14 +340,14 @@ static void setup_scene(Shader shader) {
 }
 
 static void reset() {
-  physics_reset(world);
-  physics_add_plane(world, zero(), up());
+  bnd_reset_world(world);
+  bnd_add_plane(world, zero(), up());
   scenario_setup_scene(world);
 }
 
 static void init_physics() {
-  world = physics_init(&config);
-  physics_add_plane(world, zero(), up());
+  world = bnd_init(&config);
+  bnd_add_plane(world, zero(), up());
 }
 
 static void build_ui() {
@@ -371,7 +371,7 @@ static void build_ui() {
     }
 
     if (master_widget_state.show_physics_config_widget) {
-      physics_config *physics_config = physics_edit_config(world);
+      bnd_config *physics_config = bnd_edit_config(world);
       if (ui_begin_area("Physics config", &master_widget_state.physics_config_collapsed)) {
         ui_value_float("Linear damping", &physics_config->linear_damping, 0, 1);
         ui_value_float("Angular damping", &physics_config->angular_damping, 0, 1);
@@ -399,7 +399,7 @@ static void build_ui() {
                                 .childGap = 10,
                                 .padding = CLAY_PADDING_ALL(3),
                             }}) {
-      physics_world_stats stats = physics_get_stats(world);
+      bnd_world_stats stats = bnd_stats(world);
 
       ui_label_stat("Body count", stats.body_count);
       ui_label_stat("Contacts count", stats.contacts_count);

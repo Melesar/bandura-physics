@@ -82,7 +82,7 @@ typedef void (*bnd_error_callback)(bnd_error error_type, char *error_message, vo
 typedef enum {
   BODY_DYNAMIC,
   BODY_STATIC,
-} body_type;
+} bnd_body_type;
 
 typedef enum {
   SHAPE_BOX,
@@ -92,10 +92,10 @@ typedef enum {
   // Keep the plane at the end
   SHAPE_PLANE,
   SHAPES_COUNT
-} shape_type;
+} bnd_shape_type;
 
 typedef struct {
-  shape_type type;
+  bnd_shape_type type;
 
   union {
     struct {
@@ -118,13 +118,13 @@ typedef struct {
 
   v3 offset;
   quat rotation;
-} body_shape;
+} bnd_body_shape;
 
 typedef struct {
   count_t type : 1;
   count_t generation : 8;
   count_t index : 23;
-} body_handle;
+} bnd_body_handle;
 
 typedef struct {
   v3 *position;
@@ -132,15 +132,15 @@ typedef struct {
   v3 *velocity;
   v3 *angular_momentum;
 
-  body_handle handle;
-} body;
+  bnd_body_handle handle;
+} bnd_body;
 
 typedef struct {
   v3 point;
   v3 normal;
   float distance;
-  body_handle body;
-} raycast_hit;
+  bnd_body_handle body;
+} bnd_raycast_hit;
 
 typedef struct {
   v3 gravity;
@@ -169,91 +169,91 @@ typedef struct {
   float sleep_threshold;
 
   float restitution_damping_limit;
-} physics_config;
+} bnd_config;
 
 typedef struct {
   count_t body_count;
   count_t contacts_count;
   count_t incomplete_resolutions;
   count_t incomplete_collision_detections;
-} physics_world_stats;
+} bnd_world_stats;
 
 typedef struct {
   v3 point;
   v3 normal;
   float depth;
-  body_handle body_a, body_b;
-} contact_t;
+  bnd_body_handle body_a, body_b;
+} bnd_contact;
 
 typedef struct {
-  body_handle bodies[2];
+  bnd_body_handle bodies[2];
   v3 relative_contact_positions[2];
   float max_error;
-} joint;
+} bnd_joint;
 
-typedef struct physics_world_t physics_world;
+typedef struct bnd_world_t bnd_world;
 
 typedef struct {
-  body_handle handle;
+  bnd_body_handle handle;
   count_t generation;
-} body_enumerator;
+} bnd_body_enumerator;
 
-typedef body_enumerator body_enumerator_typed;
+typedef bnd_body_enumerator bnd_body_enumerator_typed;
 
-physics_config physics_default_config();
+bnd_config bnd_default_config();
 
-physics_world *physics_init(const physics_config *config);
+bnd_world *bnd_init(const bnd_config *config);
 
 void bnd_register_error_callback(bnd_error_callback callback);
 
-void physics_add_plane(physics_world *world, v3 point, v3 normal);
-body physics_add_box_dynamic(physics_world *world, float mass, v3 size);
-body physics_add_box_static(physics_world *world, v3 size);
-body physics_add_sphere_dynamic(physics_world *world, float mass, float radius);
-body physics_add_cylinder_static(physics_world *world, float radius, float height);
-body physics_add_cylinder_dynamic(physics_world *world, float mass, float radius, float height);
-body physics_add_compound_body_static(physics_world *world, body_shape *shapes, count_t shapes_count);
-body physics_add_compound_body_dynamic(physics_world *world, body_shape *shapes, float *masses, count_t shapes_count);
+void bnd_add_plane(bnd_world *world, v3 point, v3 normal);
+bnd_body bnd_add_box_dynamic(bnd_world *world, float mass, v3 size);
+bnd_body bnd_add_box_static(bnd_world *world, v3 size);
+bnd_body bnd_add_sphere_dynamic(bnd_world *world, float mass, float radius);
+bnd_body bnd_add_cylinder_static(bnd_world *world, float radius, float height);
+bnd_body bnd_add_cylinder_dynamic(bnd_world *world, float mass, float radius, float height);
+bnd_body bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, count_t shapes_count);
+bnd_body bnd_add_compound_body_dynamic(bnd_world *world, bnd_body_shape *shapes, float *masses, count_t shapes_count);
 
-void physics_remove_body(physics_world *world, body_handle handle);
+void bnd_remove_body(bnd_world *world, bnd_body_handle handle);
 
-count_t physics_add_joint(physics_world *world, body_handle body_a, body_handle body_b, v3 contact_offset_a,
+count_t bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, v3 contact_offset_a,
                           v3 contact_offset_b, float max_distance);
-void physics_remove_joint(physics_world *world, count_t id);
-const joint *physics_get_joints(const physics_world *world, count_t *count);
+void bnd_remove_joint(bnd_world *world, count_t id);
+const bnd_joint *bnd_get_joints(const bnd_world *world, count_t *count);
 
-void physics_apply_force(physics_world *world, body_handle handle, v3 force);
-void physics_apply_force_at(physics_world *world, body_handle handle, v3 force, v3 position);
-void physics_apply_impulse(physics_world *world, body_handle handle, v3 impulse);
-void physics_apply_impulse_at(physics_world *world, body_handle handle, v3 impulse, v3 position);
+void bnd_apply_force(bnd_world *world, bnd_body_handle handle, v3 force);
+void bnd_apply_force_at(bnd_world *world, bnd_body_handle handle, v3 force, v3 position);
+void bnd_apply_impulse(bnd_world *world, bnd_body_handle handle, v3 impulse);
+void bnd_apply_impulse_at(bnd_world *world, bnd_body_handle handle, v3 impulse, v3 position);
 
-count_t physics_body_count(const physics_world *world, body_type type);
-count_t physics_awake_count(const physics_world *world);
-count_t physics_collisions_count(const physics_world *world);
+count_t bnd_body_count(const bnd_world *world, bnd_body_type type);
+count_t bnd_awake_count(const bnd_world *world);
+count_t bnd_collisions_count(const bnd_world *world);
 
-physics_config *physics_edit_config(physics_world *world);
-physics_world_stats physics_get_stats(const physics_world *world);
+bnd_config *bnd_edit_config(bnd_world *world);
+bnd_world_stats bnd_stats(const bnd_world *world);
 
-v3 physics_get_position(const physics_world *world, body_handle handle);
-quat physics_get_rotation(const physics_world *world, body_handle handle);
-body_shape *physics_get_shapes(const physics_world *world, body_handle handle, count_t *count);
-v3 physics_get_velocity(const physics_world *world, body_handle handle);
-v3 physics_get_angular_velocity(const physics_world *world, body_handle handle);
-v3 physics_get_angular_momentum(const physics_world *world, body_handle handle);
-m3 physics_get_inertia(const physics_world *world, body_handle handle);
-m3 physics_get_base_inertia(const physics_world *world, body_handle handle);
-float physics_get_motion_avg(const physics_world *world, body_handle handle);
-count_t physics_get_contacts(const physics_world *world, contact_t *contacts, count_t max_contacts);
+v3 bnd_get_position(const bnd_world *world, bnd_body_handle handle);
+quat bnd_get_rotation(const bnd_world *world, bnd_body_handle handle);
+bnd_body_shape *bnd_get_shapes(const bnd_world *world, bnd_body_handle handle, count_t *count);
+v3 bnd_get_velocity(const bnd_world *world, bnd_body_handle handle);
+v3 bnd_get_angular_velocity(const bnd_world *world, bnd_body_handle handle);
+v3 bnd_get_angular_momentum(const bnd_world *world, bnd_body_handle handle);
+m3 bnd_get_inertia(const bnd_world *world, bnd_body_handle handle);
+m3 bnd_get_base_inertia(const bnd_world *world, bnd_body_handle handle);
+float bnd_get_motion_avg(const bnd_world *world, bnd_body_handle handle);
+count_t bnd_get_contacts(const bnd_world *world, bnd_contact *contacts, count_t max_contacts);
 
-void physics_enumerate_bodies_typed(const physics_world *world, body_type type, body_enumerator_typed *enumerator);
-bool physics_body_next_typed(const physics_world *world, body_enumerator_typed *enumerator);
+void bnd_enumerate_bodies_typed(const bnd_world *world, bnd_body_type type, bnd_body_enumerator_typed *enumerator);
+bool bnd_body_next_typed(const bnd_world *world, bnd_body_enumerator_typed *enumerator);
 
-void physics_step(physics_world *world, float dt);
-void physics_awaken_body(physics_world *world, body_handle handle);
-void physics_reset(physics_world *world);
+void bnd_simulate(bnd_world *world, float dt);
+void bnd_awaken_body(bnd_world *world, bnd_body_handle handle);
+void bnd_reset_world(bnd_world *world);
 
-count_t physics_raycast(const physics_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits,
-                        raycast_hit *hits);
+count_t bnd_raycast(const bnd_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits,
+                        bnd_raycast_hit *hits);
 
-void physics_teardown(physics_world *world);
+void bnd_teardown(bnd_world *world);
 #endif

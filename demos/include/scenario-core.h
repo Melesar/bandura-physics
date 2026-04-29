@@ -49,7 +49,7 @@ typedef enum {
   BONE_COUNT
 } bone;
 
-typedef body_handle *ragdoll;
+typedef bnd_body_handle *ragdoll;
 
 int register_gizmo(Vector3 *pos, Quaternion *rot);
 void unregister_gizmo(int id);
@@ -58,9 +58,9 @@ void draw_arrow(Vector3 start, Vector3 direction, Color color);
 
 void draw_model_with_wireframe(Model model, Vector3 position, float scale, Color color);
 
-void physics_draw_collisions(const physics_world *world);
+void physics_draw_collisions(const bnd_world *world);
 
-ragdoll ragdoll_create(physics_world *world, v3 position);
+ragdoll ragdoll_create(bnd_world *world, v3 position);
 
 void ui_initialize();
 void ui_teardown();

@@ -1,5 +1,5 @@
-#ifndef PHYSICS_H
-#define PHYSICS_H
+#ifndef BND_CORE_H
+#define BND_CORE_H
 
 #include "bandura.h"
 #include <stddef.h>
@@ -18,7 +18,7 @@ typedef struct {
 } contact;
 
 typedef struct {
-  joint *values;
+  bnd_joint *values;
   count_t *ids;
 
   count_t capacity;
@@ -74,7 +74,7 @@ typedef struct {
 
 typedef struct {
   uint64_t *slots;
-  body_shape *shapes;
+  bnd_body_shape *shapes;
   count_t capacity;
 } shapes_bracket;
 
@@ -86,7 +86,7 @@ typedef struct {
   const common_data *data_a;
   const common_data *data_b;
   count_t body_a, body_b;
-  body_shape shape_a, shape_b;
+  bnd_body_shape shape_a, shape_b;
 } collision_detection_context;
 
 typedef struct {
@@ -115,7 +115,7 @@ typedef struct {
 
 typedef common_data static_bodies;
 
-struct physics_world_t {
+struct bnd_world_t {
   dynamic_bodies dynamics;
   static_bodies statics;
 
@@ -124,8 +124,8 @@ struct physics_world_t {
 
   shapes_bracket shape_brackets[BRACKET_COUNT];
 
-  physics_config config;
-  physics_world_stats stats;
+  bnd_config config;
+  bnd_world_stats stats;
 
   count_t generation;
 };
@@ -143,43 +143,43 @@ typedef struct {
 
 void raise_error(bnd_error type, void *data, const char *template, ...);
 
-body_handle make_body_handle(const physics_world *world, body_type type, count_t index);
-count_t handle_to_inner_index(const physics_world *world, body_handle handle);
+bnd_body_handle make_body_handle(const bnd_world *world, bnd_body_type type, count_t index);
+count_t handle_to_inner_index(const bnd_world *world, bnd_body_handle handle);
 
-common_data *as_common(physics_world *world, body_type type);
-const common_data *as_common_const(const physics_world *world, body_type type);
+common_data *as_common(bnd_world *world, bnd_body_type type);
+const common_data *as_common_const(const bnd_world *world, bnd_body_type type);
 
-void contacts_init(physics_world *world);
-void contacts_teardown(physics_world *world);
-void contacts_reset(physics_world *world);
-void contacts_ensure_capacity(physics_world *world, count_t additional_count);
-contact *contacts_new_default(physics_world *world, count_t body_a, count_t body_b);
-void contacts_generate(physics_world *world);
-void contacts_resolve(physics_world *world, float dt);
+void contacts_init(bnd_world *world);
+void contacts_teardown(bnd_world *world);
+void contacts_reset(bnd_world *world);
+void contacts_ensure_capacity(bnd_world *world, count_t additional_count);
+contact *contacts_new_default(bnd_world *world, count_t body_a, count_t body_b);
+void contacts_generate(bnd_world *world);
+void contacts_resolve(bnd_world *world, float dt);
 
-count_t collisions_detect_dynamic(physics_world *world);
-void collisions_detect_static(physics_world *world);
+count_t collisions_detect_dynamic(bnd_world *world);
+void collisions_detect_static(bnd_world *world);
 
-void joints_init(physics_world *world);
-void joints_teardown(physics_world *world);
-void joints_reset(physics_world *world);
-count_t joints_generate_dynamic(physics_world *world);
-void joints_generate_static(physics_world *world);
+void joints_init(bnd_world *world);
+void joints_teardown(bnd_world *world);
+void joints_reset(bnd_world *world);
+count_t joints_generate_dynamic(bnd_world *world);
+void joints_generate_static(bnd_world *world);
 
-void shapes_init(physics_world *world);
-void shapes_teardown(physics_world *world);
-void shapes_reset(physics_world *world);
-bool shapes_any_slot_available(const physics_world *world, shape_dimension_bracket bracket);
-void shapes_expand_bracket(physics_world *world, shape_dimension_bracket bracket);
-bool shapes_put_into_empty_slot(physics_world *world, shape_dimension_bracket bracket, body_shape *shapes,
+void shapes_init(bnd_world *world);
+void shapes_teardown(bnd_world *world);
+void shapes_reset(bnd_world *world);
+bool shapes_any_slot_available(const bnd_world *world, shape_dimension_bracket bracket);
+void shapes_expand_bracket(bnd_world *world, shape_dimension_bracket bracket);
+bool shapes_put_into_empty_slot(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes,
                                 count_t shapes_count, count_t *slot_number);
-void shapes_clear_slot(physics_world *world, shape_dimension_bracket bracket, count_t slot);
-body_shapes shapes_write(physics_world *world, shape_dimension_bracket bracket, body_shape *shapes, count_t count);
-body_shape *shapes_get(const physics_world *world, body_shapes shapes);
+void shapes_clear_slot(bnd_world *world, shape_dimension_bracket bracket, count_t slot);
+body_shapes shapes_write(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes, count_t count);
+bnd_body_shape *shapes_get(const bnd_world *world, body_shapes shapes);
 
 quat integrate_rotation_midpoint(quat rotation, v3 angular_momentum, m3 base_inv_inertia, float dt);
-bool gjk_check_intersection(physics_world *world, const collision_detection_context *ctx, simplex *simplex);
-void epa_init(const physics_config *config);
+bool gjk_check_intersection(bnd_world *world, const collision_detection_context *ctx, simplex *simplex);
+void epa_init(const bnd_config *config);
 void epa_get_contact(const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact);
 support_point support(const collision_detection_context *ctx, v3 direction);
 
