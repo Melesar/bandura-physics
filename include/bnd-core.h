@@ -43,6 +43,26 @@ typedef struct {
   count_t next;
 } outer_lookup_node;
 
+typedef struct {
+  count_t vertex_offset;
+  count_t vertex_count;
+  count_t index_offset;
+  count_t index_count;
+} submesh;
+
+typedef struct {
+  v3 *verticies;
+  uint32_t *indicies;
+  submesh *submeshes;
+
+  count_t vertex_count;
+  count_t vertex_capacity;
+  count_t index_count;
+  count_t index_capacity;
+  count_t submesh_count;
+  count_t submesh_capacity;
+} mesh_storage;
+
 #define COMMON_FIELDS                                                                                                  \
   count_t capacity;                                                                                                    \
   count_t count;                                                                                                       \
@@ -121,6 +141,7 @@ struct bnd_world_t {
 
   contacts contacts;
   joints joints;
+  mesh_storage meshes;
 
   shapes_bracket shape_brackets[BRACKET_COUNT];
 
@@ -165,6 +186,8 @@ void joints_teardown(bnd_world *world);
 void joints_reset(bnd_world *world);
 count_t joints_generate_dynamic(bnd_world *world);
 void joints_generate_static(bnd_world *world);
+
+void meshes_init(bnd_world *world);
 
 void shapes_init(bnd_world *world);
 void shapes_teardown(bnd_world *world);

@@ -81,24 +81,45 @@ BNDAPI m3 matrix_displacement_inertia(m3 i0, v3 offset, float mass);
 
 typedef uint32_t count_t;
 
-typedef enum { BND_ERROR_INVALID_POLYTOPE } bnd_error;
+typedef enum {
+  BND_ERROR_INVALID_POLYTOPE,
+  BND_ERROR_MESH_IS_CONCAVE,
+} bnd_error;
 
 typedef void (*bnd_error_callback)(bnd_error error_type, char *error_message, void *error_data);
 
 typedef enum {
-  BODY_DYNAMIC,
-  BODY_STATIC,
+  BND_DYNAMIC,
+  BND_STATIC,
 } bnd_body_type;
 
 typedef enum {
-  SHAPE_BOX,
-  SHAPE_SPHERE,
-  SHAPE_CYLINDER,
+  BND_BOX,
+  BND_SPHERE,
+  BND_CYLINDER,
+  BND_MESH,
 
   // Keep the plane at the end
-  SHAPE_PLANE,
-  SHAPES_COUNT
+  BND_PLANE,
+  BND_SHAPES_COUNT
 } bnd_shape_type;
+
+typedef struct {
+  void *buffer;
+  count_t elemenets_count;
+  count_t element_size;
+  count_t stride;
+} bnd_mesh_buffer;
+
+typedef struct {
+  bnd_mesh_buffer vertex_buffer;
+  bnd_mesh_buffer index_buffer;
+} bnd_mesh_data;
+
+typedef struct {
+  count_t submesh_offset;
+  count_t submesh_count;
+} bnd_mesh_handle;
 
 typedef struct {
   bnd_shape_type type;
@@ -120,6 +141,8 @@ typedef struct {
       float radius;
       float height;
     } cylinder;
+
+    bnd_mesh_handle mesh;
   };
 
   v3 offset;
@@ -155,6 +178,7 @@ typedef struct {
     count_t contacts_capacity;
     count_t joints_capacity;
     count_t epa_max_nodes;
+    count_t meshes_capacity;
     count_t shapes_brackets_capacity[5];
   } memory;
 
@@ -224,6 +248,8 @@ BNDAPI bnd_body bnd_add_cylinder_static(bnd_world *world, float radius, float he
 BNDAPI bnd_body bnd_add_cylinder_dynamic(bnd_world *world, float mass, float radius, float height);
 BNDAPI bnd_body bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, count_t shapes_count);
 BNDAPI bnd_body bnd_add_compound_body_dynamic(bnd_world *world, bnd_body_shape *shapes, float *masses, count_t shapes_count);
+BNDAPI bnd_body bnd_add_mesh_dynamic(bnd_world *world, bnd_mesh_handle mesh);
+BNDAPI bnd_body bnd_add_mesh_static(bnd_world *world, bnd_mesh_handle mesh);
 
 BNDAPI void bnd_remove_body(bnd_world *world, bnd_body_handle handle);
 
@@ -254,6 +280,8 @@ BNDAPI m3 bnd_get_inertia(const bnd_world *world, bnd_body_handle handle);
 BNDAPI m3 bnd_get_base_inertia(const bnd_world *world, bnd_body_handle handle);
 BNDAPI float bnd_get_motion_avg(const bnd_world *world, bnd_body_handle handle);
 BNDAPI count_t bnd_get_contacts(const bnd_world *world, bnd_contact *contacts, count_t max_contacts);
+
+BNDAPI bnd_mesh_handle bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data);
 
 BNDAPI void bnd_enumerate_bodies_typed(const bnd_world *world, bnd_body_type type, bnd_body_enumerator_typed *enumerator);
 BNDAPI bool bnd_body_next_typed(const bnd_world *world, bnd_body_enumerator_typed *enumerator);

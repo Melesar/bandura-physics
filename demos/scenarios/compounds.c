@@ -13,14 +13,14 @@ void scenario_initialize(program_config *config, bnd_config *physics_config) {
 
 void scenario_setup_scene(bnd_world *world) {
   bnd_body_shape shapes[] = {
-      (bnd_body_shape){.type = SHAPE_BOX,
-                   .box = {.size = (v3){.x = 0.3, .y = 3, .z = 0.3}},
-                   .offset = zero(),
-                   .rotation = qidentity()},
-      (bnd_body_shape){.type = SHAPE_CYLINDER,
-                   .cylinder = {.height = 2, .radius = 0.5},
-                   .offset = (v3){.x = 0, .y = 1.75, .z = 0},
-                   .rotation = QuaternionFromEuler(PI * 0.5, 0, 0)},
+      (bnd_body_shape){.type = BND_BOX,
+                       .box = {.size = (v3){.x = 0.3, .y = 3, .z = 0.3}},
+                       .offset = zero(),
+                       .rotation = qidentity()},
+      (bnd_body_shape){.type = BND_CYLINDER,
+                       .cylinder = {.height = 2, .radius = 0.5},
+                       .offset = (v3){.x = 0, .y = 1.75, .z = 0},
+                       .rotation = QuaternionFromEuler(PI * 0.5, 0, 0)},
       (bnd_body_shape){0},
   };
   float masses[] = {5.0, 3.0, 1.0};
@@ -31,18 +31,16 @@ void scenario_setup_scene(bnd_world *world) {
 
   bnd_awaken_body(world, b.handle);
 
-  shapes[0] = (bnd_body_shape){.type = SHAPE_CYLINDER,
-                           .cylinder = {.radius = 0.3, .height = 3},
-                           .offset = zero(),
-                           .rotation = QuaternionFromEuler(PI * 0.5, 0, 0)};
-  shapes[1] = (bnd_body_shape){.type = SHAPE_SPHERE,
-                           .sphere = {.radius = 0.7},
-                           .offset = (v3){.x = 0, .y = 0, .z = 1.5},
-                           .rotation = qidentity()};
-  shapes[2] = (bnd_body_shape){.type = SHAPE_SPHERE,
-                           .sphere = {.radius = 0.7},
-                           .offset = (v3){.x = 0, .y = 0, .z = -1.5},
-                           .rotation = qidentity()};
+  shapes[0] = (bnd_body_shape){.type = BND_CYLINDER,
+                               .cylinder = {.radius = 0.3, .height = 3},
+                               .offset = zero(),
+                               .rotation = QuaternionFromEuler(PI * 0.5, 0, 0)};
+  shapes[1] = (bnd_body_shape){
+      .type = BND_SPHERE, .sphere = {.radius = 0.7}, .offset = (v3){.x = 0, .y = 0, .z = 1.5}, .rotation = qidentity()};
+  shapes[2] = (bnd_body_shape){.type = BND_SPHERE,
+                               .sphere = {.radius = 0.7},
+                               .offset = (v3){.x = 0, .y = 0, .z = -1.5},
+                               .rotation = qidentity()};
 
   masses[0] = 3;
   masses[1] = 5;

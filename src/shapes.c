@@ -156,7 +156,7 @@ void test_shapes_write_primitive_bracket_uses_second_block(void) {
 
   for (count_t i = 0; i < 65; ++i) {
     body_shape shape = {0};
-    shape.type = SHAPE_SPHERE;
+    shape.type = BND_SPHERE;
     shape.sphere.radius = (float)i + 0.5f;
 
     body_shapes written = shapes_write(&world, BRACKET_PRIMITIVE, &shape, 1);
@@ -187,7 +187,7 @@ void test_shapes_write_four_bracket_keeps_alignment_across_blocks(void) {
     count_t count = (i & 1) == 0 ? 3 : 4;
 
     for (count_t k = 0; k < count; ++k) {
-      shapes[k].type = SHAPE_CYLINDER;
+      shapes[k].type = BND_CYLINDER;
       shapes[k].cylinder.radius = (float)(i * 10 + k + 1);
       shapes[k].cylinder.height = (float)(100 + i * 10 + k);
     }
@@ -216,9 +216,9 @@ void test_shapes_expand_bracket_preserves_existing_data_after_two_blocks(void) {
 
   for (count_t i = 0; i < 128; ++i) {
     body_shape shapes[2] = {0};
-    shapes[0].type = SHAPE_BOX;
+    shapes[0].type = BND_BOX;
     shapes[0].box.size.x = (float)(i + 1);
-    shapes[1].type = SHAPE_SPHERE;
+    shapes[1].type = BND_SPHERE;
     shapes[1].sphere.radius = (float)(i + 200);
 
     body_shapes written = shapes_write(&world, BRACKET_TWO, shapes, 2);
@@ -231,10 +231,10 @@ void test_shapes_expand_bracket_preserves_existing_data_after_two_blocks(void) {
   assert(!shapes_any_slot_available(&world, BRACKET_TWO));
 
   body_shape extra_shapes[2] = {0};
-  extra_shapes[0].type = SHAPE_CYLINDER;
+  extra_shapes[0].type = BND_CYLINDER;
   extra_shapes[0].cylinder.radius = 7.0f;
   extra_shapes[0].cylinder.height = 9.0f;
-  extra_shapes[1].type = SHAPE_SPHERE;
+  extra_shapes[1].type = BND_SPHERE;
   extra_shapes[1].sphere.radius = 11.0f;
 
   body_shapes extra = shapes_write(&world, BRACKET_TWO, extra_shapes, 2);
@@ -248,14 +248,14 @@ void test_shapes_expand_bracket_preserves_existing_data_after_two_blocks(void) {
   assert(world.shape_brackets[BRACKET_TWO].slots[1] == (uint64_t)~0);
   assert(world.shape_brackets[BRACKET_TWO].slots[2] == 1);
 
-  assert(first[0].type == SHAPE_BOX);
+  assert(first[0].type == BND_BOX);
   assert(first[0].box.size.x == 1.0f);
-  assert(first[1].type == SHAPE_SPHERE);
+  assert(first[1].type == BND_SPHERE);
   assert(first[1].sphere.radius == 200.0f);
 
-  assert(middle[0].type == SHAPE_BOX);
+  assert(middle[0].type == BND_BOX);
   assert(middle[0].box.size.x == 65.0f);
-  assert(middle[1].type == SHAPE_SPHERE);
+  assert(middle[1].type == BND_SPHERE);
   assert(middle[1].sphere.radius == 264.0f);
 
   assert(memcmp(stored_extra, extra_shapes, sizeof(extra_shapes)) == 0);
@@ -274,7 +274,7 @@ void test_shapes_clear_slot_reuses_second_block_slot_with_bracket_alignment(void
     body_shape shapes[8] = {0};
 
     for (count_t k = 0; k < 6; ++k) {
-      shapes[k].type = SHAPE_SPHERE;
+      shapes[k].type = BND_SPHERE;
       shapes[k].sphere.radius = (float)(i * 10 + k + 1);
     }
 
@@ -292,7 +292,7 @@ void test_shapes_clear_slot_reuses_second_block_slot_with_bracket_alignment(void
 
   body_shape replacement_shapes[8] = {0};
   for (count_t i = 0; i < 5; ++i) {
-    replacement_shapes[i].type = SHAPE_BOX;
+    replacement_shapes[i].type = BND_BOX;
     replacement_shapes[i].box.size.x = (float)(300 + i);
   }
 
@@ -303,7 +303,7 @@ void test_shapes_clear_slot_reuses_second_block_slot_with_bracket_alignment(void
   assert(replacement.offset == entries[65].offset);
   assert(replacement.count == 5);
   assert(memcmp(stored_replacement, replacement_shapes, 5 * sizeof(body_shape)) == 0);
-  assert(preserved_neighbor[0].type == SHAPE_SPHERE);
+  assert(preserved_neighbor[0].type == BND_SPHERE);
   assert(preserved_neighbor[0].sphere.radius == 641.0f);
 
   shapes_teardown(&world);

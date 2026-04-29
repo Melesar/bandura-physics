@@ -233,20 +233,20 @@ static count_t raycast_bodies(const bnd_world *world, bnd_body_type type, v3 ori
 
       bool is_hit;
       switch (shape.type) {
-        case SHAPE_BOX:
+        case BND_BOX:
           is_hit =
               raycast_box(origin, direction, max_distance, data->positions[i], shape.box.size, data->rotations[i], hit);
           break;
 
-        case SHAPE_SPHERE:
+        case BND_SPHERE:
           is_hit = raycast_sphere(origin, direction, max_distance, data->positions[i], shape.sphere.radius, hit);
           break;
 
-        case SHAPE_PLANE:
+        case BND_PLANE:
           is_hit = raycast_plane(origin, direction, max_distance, data->positions[i], shape.plane.normal, hit);
           break;
 
-        case SHAPE_CYLINDER:
+        case BND_CYLINDER:
           is_hit = raycast_cylinder(origin, direction, max_distance, data->positions[i], shape.cylinder.radius,
                                     shape.cylinder.height, data->rotations[i], hit);
           break;
@@ -275,11 +275,11 @@ static count_t raycast_bodies(const bnd_world *world, bnd_body_type type, v3 ori
 }
 
 count_t bnd_raycast(const bnd_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits,
-                        bnd_raycast_hit *hits) {
+                    bnd_raycast_hit *hits) {
   count_t hit_count = 0;
 
-  hit_count += raycast_bodies(world, BODY_DYNAMIC, origin, direction, max_distance, hit_count, max_hits, hits);
-  hit_count += raycast_bodies(world, BODY_STATIC, origin, direction, max_distance, hit_count, max_hits, hits);
+  hit_count += raycast_bodies(world, BND_DYNAMIC, origin, direction, max_distance, hit_count, max_hits, hits);
+  hit_count += raycast_bodies(world, BND_STATIC, origin, direction, max_distance, hit_count, max_hits, hits);
 
   return hit_count;
 }

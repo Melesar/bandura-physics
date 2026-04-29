@@ -15,14 +15,14 @@ static inline void resize_if_needed(joints *joints) {
 }
 
 count_t bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, v3 contact_offset_a,
-                          v3 contact_offset_b, float max_distance) {
+                      v3 contact_offset_b, float max_distance) {
   // Two static bodies shouldn't be bound together.
-  if (body_a.type == BODY_STATIC && body_b.type == BODY_STATIC) {
+  if (body_a.type == BND_STATIC && body_b.type == BND_STATIC) {
     return ~0;
   }
 
   // Let body_a always be dynamic - same as with contacts.
-  if (body_a.type == BODY_STATIC && body_b.type == BODY_DYNAMIC) {
+  if (body_a.type == BND_STATIC && body_b.type == BND_DYNAMIC) {
     bnd_body_handle tmp_body = body_b;
     body_b = body_a;
     body_a = tmp_body;
@@ -37,7 +37,7 @@ count_t bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle 
   resize_if_needed(joints);
 
   count_t last_index = joints->count++;
-  bool is_dynamic = body_b.type == BODY_DYNAMIC;
+  bool is_dynamic = body_b.type == BND_DYNAMIC;
   count_t id = joints->next_id++;
 
   count_t index;

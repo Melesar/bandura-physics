@@ -1,3 +1,4 @@
+#include "raylib.h"
 #include "scenario-core.h"
 #include "raygui.h"
 #include "raymath.h"
@@ -181,9 +182,7 @@ static void draw_physics_bodies_typed(bnd_body_type type) {
     bnd_body_shape *shapes = bnd_get_shapes(world, enumerator.handle, &shapes_count);
 
     m4 scale;
-    m4 transform =
-        MatrixMultiply(QuaternionToMatrix(rotation),
-                       MatrixTranslate(position.x, position.y, position.z));
+    m4 transform = MatrixMultiply(QuaternionToMatrix(rotation), MatrixTranslate(position.x, position.y, position.z));
     Material material = materials[enumerator.handle.index % 20];
 
     for (count_t k = 0; k < shapes_count; ++k) {
@@ -193,19 +192,19 @@ static void draw_physics_bodies_typed(bnd_body_type type) {
       m4 full_transform = mul(shape_transform, transform);
 
       switch (shape.type) {
-        case SHAPE_BOX:
+        case BND_BOX:
           scale = MatrixScale(shape.box.size.x, shape.box.size.y, shape.box.size.z);
-          DrawMesh(meshes[SHAPE_BOX], material, mul(scale, full_transform));
+          DrawMesh(meshes[BND_BOX], material, mul(scale, full_transform));
           break;
 
-        case SHAPE_SPHERE:
+        case BND_SPHERE:
           scale = MatrixScale(shape.sphere.radius, shape.sphere.radius, shape.sphere.radius);
-          DrawMesh(meshes[SHAPE_SPHERE], material, mul(scale, full_transform));
+          DrawMesh(meshes[BND_SPHERE], material, mul(scale, full_transform));
           break;
 
-        case SHAPE_CYLINDER:
+        case BND_CYLINDER:
           scale = MatrixScale(shape.cylinder.radius, shape.cylinder.height, shape.cylinder.radius);
-          DrawMesh(meshes[SHAPE_CYLINDER], material, mul(scale, full_transform));
+          DrawMesh(meshes[BND_CYLINDER], material, mul(scale, full_transform));
           break;
 
         default:
@@ -216,8 +215,8 @@ static void draw_physics_bodies_typed(bnd_body_type type) {
 }
 
 static void draw_physics_bodies() {
-  draw_physics_bodies_typed(BODY_DYNAMIC);
-  draw_physics_bodies_typed(BODY_STATIC);
+  draw_physics_bodies_typed(BND_DYNAMIC);
+  draw_physics_bodies_typed(BND_STATIC);
 }
 
 static void draw_scene(program_config program_config, Camera camera, Shader shader, float dt) {
@@ -312,9 +311,9 @@ static void draw_custom_grid(int slices, float spacing) {
 }
 
 static void setup_scene(Shader shader) {
-  meshes[SHAPE_BOX] = GenMeshCube(1, 1, 1);
-  meshes[SHAPE_SPHERE] = GenMeshSphere(1, 16, 16);
-  meshes[SHAPE_PLANE] = GenMeshPlane(200.0f, 200.0f, 1, 1);
+  meshes[BND_BOX] = GenMeshCube(1, 1, 1);
+  meshes[BND_SPHERE] = GenMeshSphere(1, 16, 16);
+  meshes[BND_PLANE] = GenMeshPlane(200.0f, 200.0f, 1, 1);
 
   Mesh cylinder = GenMeshCylinder(1, 1, 32);
   for (int i = 0; i < cylinder.vertexCount; ++i) {
@@ -323,7 +322,7 @@ static void setup_scene(Shader shader) {
   UpdateMeshBuffer(cylinder, RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION, cylinder.vertices,
                    3 * cylinder.vertexCount * sizeof(float), 0);
 
-  meshes[SHAPE_CYLINDER] = cylinder;
+  meshes[BND_CYLINDER] = cylinder;
 
   for (size_t i = 0; i < 20; ++i) {
     Material m = LoadMaterialDefault();
@@ -333,7 +332,7 @@ static void setup_scene(Shader shader) {
     materials[i] = m;
   }
 
-  groundModel = LoadModelFromMesh(meshes[SHAPE_PLANE]);
+  groundModel = LoadModelFromMesh(meshes[BND_PLANE]);
 
   groundModel.materials[0].shader = shader;
   groundModel.materials[0].maps[MATERIAL_MAP_DIFFUSE].color = COLOR_GROUND;
@@ -379,12 +378,14 @@ static void build_ui() {
         ui_value_float("Friction", &physics_config->simulation.friction, 0, 1);
         ui_value_int("Max GJK iterations", (int *)&physics_config->collision_detection.max_gjk_iterations, 1, 1000);
         ui_value_float("EPA tolerance", &physics_config->collision_detection.epa_tolerance, 0, 1);
-        ui_value_int("Iterations factor", (int *)&physics_config->collision_resolution.resolution_attempts_factor, 1, 20);
+        ui_value_int("Iterations factor", (int *)&physics_config->collision_resolution.resolution_attempts_factor, 1,
+                     20);
         ui_value_float("Penetration epsilon", &physics_config->collision_resolution.penetration_epsilon, 0.001, 0.5);
         ui_value_float("Velocity epsilon", &physics_config->collision_resolution.velocity_epsilon, 0.001, 0.5);
         ui_value_float("Sleep base bias", &physics_config->simulation.sleep_base_bias, 0, 1);
         ui_value_float("Sleep threshold", &physics_config->simulation.sleep_threshold, 0, 10);
-        ui_value_float("Restitution damping epsilon", &physics_config->collision_resolution.restitution_damping_limit, 0, 1);
+        ui_value_float("Restitution damping epsilon", &physics_config->collision_resolution.restitution_damping_limit,
+                       0, 1);
       }
 
       ui_end_area();

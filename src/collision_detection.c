@@ -188,7 +188,7 @@ count_t collisions_detect_dynamic(bnd_world *world) {
           bnd_body_shape shape_b = shapes_get(world, shapes_b)[sb];
           ctx.shape_b = shape_b;
 
-          if (shape_a.type == SHAPE_SPHERE && shape_b.type == SHAPE_SPHERE) {
+          if (shape_a.type == BND_SPHERE && shape_b.type == BND_SPHERE) {
             dyn_count += sphere_sphere_collision(world, &ctx);
           } else {
             dyn_count += detect_collisions(world, &ctx);
@@ -226,23 +226,23 @@ void collisions_detect_static(bnd_world *world) {
           bnd_body_shape shape_b = shapes_get(world, shapes_b)[sb];
           ctx.shape_b = shape_b;
 
-          if (shape_a.type == SHAPE_SPHERE && shape_b.type == SHAPE_SPHERE) {
+          if (shape_a.type == BND_SPHERE && shape_b.type == BND_SPHERE) {
             sphere_sphere_collision(world, &ctx);
             continue;
           }
 
           switch (shape_b.type) {
-            case SHAPE_PLANE:
+            case BND_PLANE:
               switch (shape_a.type) {
-                case SHAPE_BOX:
+                case BND_BOX:
                   box_plane_collision(world, &ctx);
                   break;
 
-                case SHAPE_SPHERE:
+                case BND_SPHERE:
                   sphere_plane_collision(world, &ctx);
                   break;
 
-                case SHAPE_CYLINDER:
+                case BND_CYLINDER:
                   cylinder_plane_collision(world, &ctx);
                   break;
 
