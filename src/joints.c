@@ -137,9 +137,9 @@ void joints_generate_static(bnd_world *world) {
 }
 
 void joints_init(bnd_world *world) {
-  world->joints.values = malloc(world->config.joints_capacity * sizeof(bnd_joint));
-  world->joints.ids = malloc(world->config.joints_capacity * sizeof(count_t));
-  world->joints.capacity = world->config.joints_capacity;
+  world->joints.values = malloc(world->config.memory.joints_capacity * sizeof(bnd_joint));
+  world->joints.ids = malloc(world->config.memory.joints_capacity * sizeof(count_t));
+  world->joints.capacity = world->config.memory.joints_capacity;
 
   joints_reset(world);
 }

@@ -373,18 +373,18 @@ static void build_ui() {
     if (master_widget_state.show_physics_config_widget) {
       bnd_config *physics_config = bnd_edit_config(world);
       if (ui_begin_area("Physics config", &master_widget_state.physics_config_collapsed)) {
-        ui_value_float("Linear damping", &physics_config->linear_damping, 0, 1);
-        ui_value_float("Angular damping", &physics_config->angular_damping, 0, 1);
-        ui_value_float("Restitution", &physics_config->restitution, 0, 2);
-        ui_value_float("Friction", &physics_config->friction, 0, 1);
-        ui_value_int("Max GJK iterations", (int *)&physics_config->max_gjk_iterations, 1, 1000);
-        ui_value_float("EPA tolerance", &physics_config->epa_tolerance, 0, 1);
-        ui_value_int("Iterations factor", (int *)&physics_config->resolution_attempts_factor, 1, 20);
-        ui_value_float("Penetration epsilon", &physics_config->penetration_epsilon, 0.001, 0.5);
-        ui_value_float("Velocity epsilon", &physics_config->velocity_epsilon, 0.001, 0.5);
-        ui_value_float("Sleep base bias", &physics_config->sleep_base_bias, 0, 1);
-        ui_value_float("Sleep threshold", &physics_config->sleep_threshold, 0, 10);
-        ui_value_float("Restitution damping epsilon", &physics_config->restitution_damping_limit, 0, 1);
+        ui_value_float("Linear damping", &physics_config->simulation.linear_damping, 0, 1);
+        ui_value_float("Angular damping", &physics_config->simulation.angular_damping, 0, 1);
+        ui_value_float("Restitution", &physics_config->simulation.restitution, 0, 2);
+        ui_value_float("Friction", &physics_config->simulation.friction, 0, 1);
+        ui_value_int("Max GJK iterations", (int *)&physics_config->collision_detection.max_gjk_iterations, 1, 1000);
+        ui_value_float("EPA tolerance", &physics_config->collision_detection.epa_tolerance, 0, 1);
+        ui_value_int("Iterations factor", (int *)&physics_config->collision_resolution.resolution_attempts_factor, 1, 20);
+        ui_value_float("Penetration epsilon", &physics_config->collision_resolution.penetration_epsilon, 0.001, 0.5);
+        ui_value_float("Velocity epsilon", &physics_config->collision_resolution.velocity_epsilon, 0.001, 0.5);
+        ui_value_float("Sleep base bias", &physics_config->simulation.sleep_base_bias, 0, 1);
+        ui_value_float("Sleep threshold", &physics_config->simulation.sleep_threshold, 0, 10);
+        ui_value_float("Restitution damping epsilon", &physics_config->collision_resolution.restitution_damping_limit, 0, 1);
       }
 
       ui_end_area();

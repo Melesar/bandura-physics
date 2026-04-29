@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-const count_t max_body_index = (count_t)~0 >> 9;
+extern count_t max_body_index;
 
 static void swap_bodies(bnd_world *world, bnd_body_type type, count_t index_a, count_t index_b);
 static void move_body(bnd_world *world, count_t src_index, count_t dst_index);
@@ -62,14 +62,14 @@ static void update_awake_statuses(bnd_world *world, float dt) {
   if (dynamics->count == 0)
     return;
 
-  const float sleep_threshold = world->config.sleep_threshold;
+  const float sleep_threshold = world->config.simulation.sleep_threshold;
   count_t awake_count = dynamics->awake_count;
   for (count_t i = 0; i < awake_count; ++i) {
     v3 angular_velocity = matrix_rotate(dynamics->angular_momenta[i], dynamics->inv_intertias[i]);
 
     float current_motion = dynamics->motion_avgs[i];
     float new_motion = lensq(dynamics->velocities[i]) + lensq(angular_velocity);
-    float bias = powf(world->config.sleep_base_bias, dt);
+    float bias = powf(world->config.simulation.sleep_base_bias, dt);
 
     float motion = current_motion * bias + new_motion * (1 - bias);
     motion = fminf(motion, 10 * sleep_threshold);
@@ -169,30 +169,6 @@ const common_data *as_common_const(const bnd_world *world, bnd_body_type type) {
   return as_common((bnd_world *)world, type);
 }
 
-bnd_config bnd_default_config() {
-  return (bnd_config){
-      .gravity = (v3){0, -9.81f, 0},
-      .dynamics_capacity = 32,
-      .statics_capacity = 8,
-      .contacts_capacity = 64,
-      .joints_capacity = 64,
-      .shapes_brackets_capacity = {64, 1, 1, 1, 1},
-      .linear_damping = 0.95,
-      .angular_damping = 0.8,
-      .restitution = 0.2,
-      .friction = 0.9,
-      .max_gjk_iterations = 100,
-      .epa_tolerance = 0.01,
-      .epa_max_nodes = 512,
-      .resolution_attempts_factor = 15,
-      .sleep_base_bias = 0.5,
-      .sleep_threshold = 0.3,
-      .penetration_epsilon = 0.01,
-      .velocity_epsilon = 0.01,
-      .restitution_damping_limit = 0.25,
-  };
-}
-
 bnd_body_handle make_body_handle(const bnd_world *world, bnd_body_type type, count_t index) {
   const common_data *data = as_common_const(world, type);
   return (bnd_body_handle){
@@ -241,20 +217,6 @@ void new_outer_lookup(common_data *data, outer_lookup_node *target_node, count_t
   target_node->next = next;
 }
 
-static void init_commons(common_data *data, count_t capacity) {
-  data->capacity = capacity;
-  data->count = 0;
-  data->free_count = 0;
-  data->first_outer_node = max_body_index;
-  data->positions = malloc(sizeof(v3) * capacity);
-  data->rotations = malloc(sizeof(quat) * capacity);
-  data->shapes = malloc(sizeof(body_shapes) * capacity);
-  data->free_list = malloc(sizeof(count_t) * capacity);
-  data->generations = malloc(sizeof(uint8_t) * capacity);
-  data->outer_lookup = malloc(sizeof(outer_lookup_node) * capacity);
-  data->inner_lookup = malloc(sizeof(count_t) * capacity);
-}
-
 static void realloc_commons(common_data *data) {
   data->capacity = data->capacity << 1;
   data->positions = realloc(data->positions, sizeof(v3) * data->capacity);
@@ -279,16 +241,6 @@ static void realloc_dynamics(dynamic_bodies *data) {
   data->inv_inertia_tensors = realloc(data->inv_inertia_tensors, sizeof(m3) * data->capacity);
   data->inv_intertias = realloc(data->inv_intertias, sizeof(m3) * data->capacity);
   data->motion_avgs = realloc(data->motion_avgs, sizeof(float) * data->capacity);
-}
-
-static void teardown_commons(common_data *data) {
-  free(data->positions);
-  free(data->rotations);
-  free(data->shapes);
-  free(data->free_list);
-  free(data->generations);
-  free(data->outer_lookup);
-  free(data->inner_lookup);
 }
 
 static shape_dimension_bracket get_shapes_bracket(count_t shapes_count) {
@@ -319,7 +271,7 @@ static void init_body_dynamic(bnd_world *world, float mass, m3 inertia_tensor, c
   data->angular_momenta[index] = zero();
   data->inv_inertia_tensors[index] = matrix_inverse(inertia_tensor);
   data->inv_intertias[index] = data->inv_inertia_tensors[index];
-  data->motion_avgs[index] = 2 * world->config.sleep_threshold;
+  data->motion_avgs[index] = 2 * world->config.simulation.sleep_threshold;
   data->forces[index] = zero();
   data->torques[index] = zero();
   data->impulses[index] = zero();
@@ -352,42 +304,6 @@ static count_t insert_new_dynamic_body(bnd_world *world) {
   }
 
   return index;
-}
-
-bnd_world *bnd_init(const bnd_config *config) {
-  bnd_world *world = malloc(sizeof(bnd_world));
-
-  init_commons((common_data *)&world->dynamics, config->dynamics_capacity);
-  init_commons((common_data *)&world->statics, config->statics_capacity);
-
-  const count_t vectors = sizeof(v3) * config->dynamics_capacity;
-  const count_t floats = sizeof(float) * config->dynamics_capacity;
-  const count_t matrices = sizeof(m3) * config->dynamics_capacity;
-
-  world->dynamics.forces = malloc(vectors);
-  world->dynamics.torques = malloc(vectors);
-  world->dynamics.impulses = malloc(vectors);
-  world->dynamics.angular_impulses = malloc(vectors);
-  world->dynamics.accelerations = malloc(vectors);
-
-  world->dynamics.inv_masses = malloc(floats);
-  world->dynamics.velocities = malloc(vectors);
-  world->dynamics.angular_momenta = malloc(vectors);
-  world->dynamics.inv_inertia_tensors = malloc(matrices);
-  world->dynamics.inv_intertias = malloc(matrices);
-  world->dynamics.motion_avgs = malloc(floats);
-  world->dynamics.awake_count = 0;
-  world->generation = 0;
-
-  world->config = *config;
-
-  contacts_init(world);
-  joints_init(world);
-  shapes_init(world);
-  epa_init(config);
-  profiler_init_default();
-
-  return world;
 }
 
 static bnd_body add_primitive_body_static(bnd_world *world, bnd_body_shape shape) {
@@ -829,9 +745,9 @@ bool bnd_body_next_typed(const bnd_world *world, bnd_body_enumerator_typed *enum
 void integrate_bodies(bnd_world *world, float dt) {
   PROFILE_FUNCTION
 
-  v3 gravity_acc = world->config.gravity;
-  float linear_damping = powf(world->config.linear_damping, dt);
-  float angular_damping = powf(world->config.angular_damping, dt);
+  v3 gravity_acc = world->config.simulation.gravity;
+  float linear_damping = powf(world->config.simulation.linear_damping, dt);
+  float angular_damping = powf(world->config.simulation.angular_damping, dt);
 
   dynamic_bodies *dynamics = &world->dynamics;
   for (count_t i = 0; i < dynamics->awake_count; ++i) {
@@ -908,7 +824,7 @@ void bnd_awaken_body(bnd_world *world, bnd_body_handle handle) {
   if (index != target_index)
     swap_bodies(world, BODY_DYNAMIC, index, target_index);
 
-  dynamics->motion_avgs[target_index] = 2.0 * world->config.sleep_threshold;
+  dynamics->motion_avgs[target_index] = 2.0 * world->config.simulation.sleep_threshold;
   dynamics->awake_count += 1;
 }
 
@@ -930,31 +846,7 @@ void bnd_reset_world(bnd_world *world) {
   joints_reset(world);
 }
 
-void bnd_teardown(bnd_world *world) {
-  teardown_commons((common_data *)&world->dynamics);
-  teardown_commons((common_data *)&world->statics);
 
-  free(world->dynamics.forces);
-  free(world->dynamics.torques);
-  free(world->dynamics.impulses);
-  free(world->dynamics.angular_impulses);
-  free(world->dynamics.accelerations);
-
-  free(world->dynamics.inv_masses);
-  free(world->dynamics.velocities);
-  free(world->dynamics.angular_momenta);
-  free(world->dynamics.inv_inertia_tensors);
-  free(world->dynamics.inv_intertias);
-  free(world->dynamics.motion_avgs);
-
-  shapes_teardown(world);
-  joints_teardown(world);
-  contacts_teardown(world);
-
-  free(world);
-
-  profiler_teardown();
-}
 
 static void swap_bodies(bnd_world *world, bnd_body_type type, count_t index_a, count_t index_b) {
   common_data *data = as_common(world, type);

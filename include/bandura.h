@@ -143,32 +143,36 @@ typedef struct {
 } bnd_raycast_hit;
 
 typedef struct {
-  v3 gravity;
+  struct {
+    count_t dynamics_capacity;
+    count_t statics_capacity;
+    count_t contacts_capacity;
+    count_t joints_capacity;
+    count_t epa_max_nodes;
+    count_t shapes_brackets_capacity[5];
+  } memory;
 
-  count_t dynamics_capacity;
-  count_t statics_capacity;
-  count_t contacts_capacity;
-  count_t joints_capacity;
-  count_t shapes_brackets_capacity[5];
+  struct {
+    v3 gravity;
+    float linear_damping;
+    float angular_damping;
+    float restitution;
+    float friction;
+    float sleep_base_bias;
+    float sleep_threshold;
+  } simulation;
 
-  float linear_damping;
-  float angular_damping;
-  float restitution;
-  float friction;
+  struct {
+    count_t max_gjk_iterations;
+    float epa_tolerance;
+  } collision_detection;
 
-  count_t max_gjk_iterations;
-  float epa_tolerance;
-  count_t epa_max_nodes;
-
-  count_t resolution_attempts_factor;
-
-  float penetration_epsilon;
-  float velocity_epsilon;
-
-  float sleep_base_bias;
-  float sleep_threshold;
-
-  float restitution_damping_limit;
+  struct {
+    count_t resolution_attempts_factor;
+    float penetration_epsilon;
+    float velocity_epsilon;
+    float restitution_damping_limit;
+  } collision_resolution;
 } bnd_config;
 
 typedef struct {

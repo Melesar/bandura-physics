@@ -562,9 +562,9 @@ static bool epa_expand_polytope(polytope *polytope, support_point p) {
 }
 
 void epa_init(const bnd_config *config) {
-  uint32_t memory_size = polytope_memory_size(config->epa_max_nodes);
+  uint32_t memory_size = polytope_memory_size(config->memory.epa_max_nodes);
   uint8_t *memory = malloc(memory_size);
-  pt = polytope_init(memory, config->epa_max_nodes);
+  pt = polytope_init(memory, config->memory.epa_max_nodes);
 }
 
 void epa_get_contact(const collision_detection_context *ctx, const simplex *simplex, float tolerance,

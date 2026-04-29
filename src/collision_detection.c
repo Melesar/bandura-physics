@@ -157,7 +157,7 @@ static count_t detect_collisions(bnd_world *world, const collision_detection_con
   }
 
   contact *c = new_contact(world, ctx);
-  epa_get_contact(ctx, &s, world->config.epa_tolerance, c);
+  epa_get_contact(ctx, &s, world->config.collision_detection.epa_tolerance, c);
 
   return 1;
 }

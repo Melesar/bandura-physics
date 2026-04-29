@@ -138,7 +138,7 @@ void scenario_initialize(program_config *config,
   config->camera_position = (v3){22.542, 11.645, 20.752};
   config->camera_target = (v3){0, 0, 0};
 
-  physics_config->friction = 0.3;
+  physics_config->simulation.friction = 0.3;
 }
 
 void scenario_setup_scene(bnd_world *world) {

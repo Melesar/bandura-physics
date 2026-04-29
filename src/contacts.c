@@ -24,8 +24,8 @@ void contacts_reset(bnd_world *world) {
 
 void contacts_init(bnd_world *world) {
   contacts *contacts = &world->contacts;
-  contacts->values = malloc(world->config.contacts_capacity * sizeof(contact));
-  contacts->capacity = world->config.contacts_capacity;
+  contacts->values = malloc(world->config.memory.contacts_capacity * sizeof(contact));
+  contacts->capacity = world->config.memory.contacts_capacity;
   contacts->count = 0;
   contacts->dynamic_count = 0;
 }
@@ -52,8 +52,8 @@ contact *contacts_new_default(bnd_world *world, count_t body_a, count_t body_b) 
   contact *c = &world->contacts.values[world->contacts.count++];
   c->index_a = body_a;
   c->index_b = body_b;
-  c->friction = world->config.friction;
-  c->restitution = world->config.restitution;
+  c->friction = world->config.simulation.friction;
+  c->restitution = world->config.simulation.restitution;
 
   return c;
 }

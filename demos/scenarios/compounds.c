@@ -6,9 +6,9 @@ void scenario_initialize(program_config *config, bnd_config *physics_config) {
   config->camera_position = (v3){0, 5, -10};
   config->camera_target = (v3){0, 5, 10};
 
-  physics_config->gravity = zero();
-  physics_config->angular_damping = 1;
-  physics_config->sleep_base_bias = 1;
+  physics_config->simulation.gravity = zero();
+  physics_config->simulation.angular_damping = 1;
+  physics_config->simulation.sleep_base_bias = 1;
 }
 
 void scenario_setup_scene(bnd_world *world) {
