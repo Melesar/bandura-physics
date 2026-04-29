@@ -165,7 +165,6 @@ static void polytope_attach_edge(polytope *polytope, uint16_t edge, uint16_t ver
   }
 }
 
-
 static void polytope_attach_face(polytope *polytope, uint16_t face, uint16_t edge) {
   polytope_node *edge_node = &polytope->nodes[edge];
   for (count_t i = 0; i < 2; ++i) {
@@ -231,15 +230,6 @@ static void polytope_get_face_verticies(const polytope *polytope, uint16_t face,
   *v3 = edge_verts_2[1] != edge_verts_1[1] && edge_verts_2[1] != edge_verts_1[0]
             ? polytope->nodes[edge_verts_2[1]].vertex.v.v
             : polytope->nodes[edge_verts_2[0]].vertex.v.v;
-}
-
-static void polytope_get_edge_vertices(const polytope *polytope, uint16_t edge, v3 *v1, v3 *v2) {
-  polytope_node node = polytope->nodes[edge];
-  uint16_t vertex_1 = node.edge.verticies[0];
-  uint16_t vertex_2 = node.edge.verticies[1];
-
-  *v1 = polytope->nodes[vertex_1].vertex.v.v;
-  *v2 = polytope->nodes[vertex_2].vertex.v.v;
 }
 
 static uint16_t polytope_add_vertex(polytope *polytope, support_point p) {
@@ -423,7 +413,7 @@ static void epa_calculate_contact(const polytope *polytope, contact *contact) {
                           ? polytope->nodes[edge_verts_2[1]].vertex.v
                           : polytope->nodes[edge_verts_2[0]].vertex.v;
 
-  v3 barycenter = Vector3Barycenter(zero(), v1.v, v2.v, vv3.v);
+  v3 barycenter = barycentric(zero(), v1.v, v2.v, vv3.v);
   v3 p1 = add(scale(v1.v1, barycenter.x), add(scale(v2.v1, barycenter.y), scale(vv3.v1, barycenter.z)));
   v3 p2 = add(scale(v1.v2, barycenter.x), add(scale(v2.v2, barycenter.y), scale(vv3.v2, barycenter.z)));
 

@@ -28,6 +28,7 @@
 #define negate(x) Vector3Negate(x)
 #define transform(x, y) Vector3Transform(x, y)
 #define invert(x) Vector3Invert(x)
+#define barycentric(p, a, b, c) Vector3Barycenter(p, a, b, c)
 
 #define qadd(x, y) QuaternionAdd(x, y)
 #define qscale(x, y) QuaternionScale(x, y)
