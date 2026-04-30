@@ -248,7 +248,7 @@ BNDAPI bnd_body bnd_add_cylinder_static(bnd_world *world, float radius, float he
 BNDAPI bnd_body bnd_add_cylinder_dynamic(bnd_world *world, float mass, float radius, float height);
 BNDAPI bnd_body bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, count_t shapes_count);
 BNDAPI bnd_body bnd_add_compound_body_dynamic(bnd_world *world, bnd_body_shape *shapes, float *masses, count_t shapes_count);
-BNDAPI bnd_body bnd_add_mesh_dynamic(bnd_world *world, bnd_mesh_handle mesh);
+BNDAPI bnd_body bnd_add_mesh_dynamic(bnd_world *world, float mass, bnd_mesh_handle mesh);
 BNDAPI bnd_body bnd_add_mesh_static(bnd_world *world, bnd_mesh_handle mesh);
 
 BNDAPI void bnd_remove_body(bnd_world *world, bnd_body_handle handle);

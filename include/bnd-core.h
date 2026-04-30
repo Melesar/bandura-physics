@@ -103,6 +103,7 @@ typedef struct {
 } common_data;
 
 typedef struct {
+  const bnd_world *world;
   const common_data *data_a;
   const common_data *data_b;
   count_t body_a, body_b;
@@ -162,6 +163,7 @@ typedef struct {
 } simplex;
 
 typedef struct {
+  const bnd_world *world;
   const common_data *data;
   bnd_body_shape shape;
   count_t index;
@@ -195,8 +197,6 @@ count_t joints_generate_dynamic(bnd_world *world);
 void joints_generate_static(bnd_world *world);
 
 void meshes_init(bnd_world *world);
-v3 mesh_support(const support_context *ctx, v3 direction);
-m3 mesh_inertia(const bnd_world *world, bnd_mesh_handle handle);
 
 void shapes_init(bnd_world *world);
 void shapes_teardown(bnd_world *world);

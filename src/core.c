@@ -38,40 +38,36 @@ static void teardown_commons(common_data *data) {
 }
 
 bnd_config bnd_default_config() {
-  return (bnd_config){.simulation =
-                          {
-                              .gravity = (v3){0, -9.81f, 0},
-                              .linear_damping = 0.95,
-                              .angular_damping = 0.8,
-                              .restitution = 0.2,
-                              .friction = 0.9,
-                              .sleep_base_bias = 0.5,
-                              .sleep_threshold = 0.3,
-                          },
-
-                      .memory =
-                          {
-                              .dynamics_capacity = 32,
-                              .statics_capacity = 8,
-                              .contacts_capacity = 64,
-                              .joints_capacity = 64,
-                              .epa_max_nodes = 512,
-                              .meshes_capacity = 32,
-                              .shapes_brackets_capacity = {64, 1, 1, 1, 1},
-                          },
-
-                      .collision_detection =
-                          {
-                              .max_gjk_iterations = 100,
-                              .epa_tolerance = 0.01,
-                          },
-
-                      .collision_resolution = {
-                          .resolution_attempts_factor = 15,
-                          .penetration_epsilon = 0.01,
-                          .velocity_epsilon = 0.01,
-                          .restitution_damping_limit = 0.25,
-                      }};
+  return (bnd_config){
+    .simulation = {
+      .gravity = (v3){0, -9.81f, 0},
+      .linear_damping = 0.95,
+      .angular_damping = 0.8,
+      .restitution = 0.2,
+      .friction = 0.9,
+      .sleep_base_bias = 0.5,
+      .sleep_threshold = 0.3,
+    },
+    .memory = {
+      .dynamics_capacity = 32,
+      .statics_capacity = 8,
+      .contacts_capacity = 64,
+      .joints_capacity = 64,
+      .epa_max_nodes = 512,
+      .meshes_capacity = 32,
+      .shapes_brackets_capacity = {64, 1, 1, 1, 1},
+    },
+    .collision_detection = {
+      .max_gjk_iterations = 100,
+      .epa_tolerance = 0.01,
+    },
+    .collision_resolution = {
+      .resolution_attempts_factor = 15,
+      .penetration_epsilon = 0.01,
+      .velocity_epsilon = 0.01,
+      .restitution_damping_limit = 0.25,
+    },
+  };
 }
 
 bnd_world *bnd_init(const bnd_config *config) {

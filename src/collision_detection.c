@@ -1,5 +1,6 @@
 #include "bnd-core.h"
 
+#include <float.h>
 #include <math.h>
 
 typedef struct {
@@ -69,11 +70,47 @@ static v3 cylinder_support(const support_context *ctx, v3 direction) {
   return v;
 }
 
+static v3 mesh_support(const support_context *ctx, v3 direction) {
+  const mesh_storage *meshes = &ctx->world->meshes;
+  const bnd_mesh_handle mesh_handle = ctx->shape.mesh;
+
+  quat rotation = body_rotation(ctx);
+  v3 position = body_center(ctx->shape.offset, ctx->data->rotations[ctx->index], ctx->data->positions[ctx->index]);
+  v3 local_direction = rotate(direction, qinvert(rotation));
+
+  count_t submesh_start = mesh_handle.submesh_offset;
+  count_t submesh_end = submesh_start + mesh_handle.submesh_count;
+
+  float max_dot = -FLT_MAX;
+  count_t max_vertex = ~0;
+  for (count_t mesh_index = submesh_start; mesh_index < submesh_end; ++mesh_index) {
+    submesh submesh = meshes->submeshes[mesh_index];
+    count_t vertex_start = submesh.vertex_offset;
+    count_t vertex_end = vertex_start + submesh.vertex_count;
+
+    for (count_t vertex_index = vertex_start; vertex_index < vertex_end; ++vertex_index) {
+      v3 vertex = meshes->verticies[vertex_index];
+      float d = dot(vertex, local_direction);
+
+      if (d > max_dot) {
+        max_dot = d;
+        max_vertex = vertex_index;
+      }
+    }
+  }
+
+  v3 support = meshes->verticies[max_vertex];
+  support = rotate(support, rotation);
+  support = add(support, position);
+
+  return support;
+}
+
 support_func support_functions[] = {box_support, sphere_support, cylinder_support, mesh_support};
 
 support_point support(const collision_detection_context *ctx, v3 direction) {
-  support_context sa = {ctx->data_a, ctx->shape_a, ctx->body_a};
-  support_context sb = {ctx->data_b, ctx->shape_b, ctx->body_b};
+  support_context sa = {ctx->world, ctx->data_a, ctx->shape_a, ctx->body_a};
+  support_context sb = {ctx->world, ctx->data_b, ctx->shape_b, ctx->body_b};
 
   support_point result;
   result.v1 = support_functions[ctx->shape_a.type](&sa, direction);
@@ -215,6 +252,58 @@ static count_t cylinder_plane_collision(bnd_world *world, const collision_detect
   return 1;
 }
 
+static count_t mesh_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
+  v3 plane_point = ctx->data_b->positions[ctx->body_b];
+  v3 plane_normal = ctx->shape_b.plane.normal;
+
+  v3 mesh_center = body_center(ctx->shape_a.offset, ctx->data_a->rotations[ctx->body_a], ctx->data_a->positions[ctx->body_a]);
+  quat mesh_rotation = qmul(ctx->data_a->rotations[ctx->body_a], ctx->shape_a.rotation);
+  quat inv_mesh_rotation = qinvert(mesh_rotation);
+
+  v3 local_normal = rotate(plane_normal, inv_mesh_rotation);
+  v3 local_point = rotate(sub(plane_point, mesh_center), inv_mesh_rotation);
+
+  const mesh_storage *meshes = &world->meshes;
+  const bnd_mesh_handle mesh_handle = ctx->shape_a.mesh;
+
+  count_t submesh_start = mesh_handle.submesh_offset;
+  count_t submesh_end = submesh_start + mesh_handle.submesh_count;
+
+  float min_dot = FLT_MAX;
+  count_t collision_vertex = 0;
+  for (count_t mesh_index = submesh_start; mesh_index < submesh_end; ++mesh_index) {
+    count_t vertex_start = meshes->submeshes[mesh_index].vertex_offset;
+    count_t vertex_end = vertex_start + meshes->submeshes[mesh_index].vertex_count;
+
+    for (count_t vertex_index = vertex_start; vertex_index < vertex_end; ++vertex_index) {
+      v3 vertex = meshes->verticies[vertex_index];
+      v3 offset = sub(vertex, local_point);
+      float d = dot(offset, local_normal);
+
+      if (d < min_dot) {
+        min_dot = d;
+        collision_vertex = vertex_index;
+      }
+    }
+  }
+
+  if (min_dot > 0) {
+    return 0;
+  }
+
+  v3 point = meshes->verticies[collision_vertex];
+  point = rotate(point, mesh_rotation);
+  point = add(point, mesh_center);
+  point = add(point, scale(plane_normal, -min_dot)); // Project the deepest vertex back on the plane.
+
+  contact *c = new_contact(world, ctx);
+  c->point = point;
+  c->normal = plane_normal;
+  c->depth = -min_dot;
+
+  return 1;
+}
+
 static count_t detect_collisions(bnd_world *world, const collision_detection_context *ctx) {
   simplex s;
   if (!gjk_check_intersection(world, ctx, &s)) {
@@ -231,8 +320,9 @@ count_t collisions_detect_dynamic(bnd_world *world) {
   const common_data *dynamics = (common_data *)&world->dynamics;
 
   collision_detection_context ctx = {
-      .data_a = dynamics,
-      .data_b = dynamics,
+    .world = world,
+    .data_a = dynamics,
+    .data_b = dynamics,
   };
 
   count_t dyn_count = 0;
@@ -271,8 +361,9 @@ void collisions_detect_static(bnd_world *world) {
   const common_data *statics = (common_data *)&world->statics;
 
   collision_detection_context ctx = {
-      .data_a = dynamics,
-      .data_b = statics,
+    .world = world,
+    .data_a = dynamics,
+    .data_b = statics,
   };
 
   for (count_t i = 0; i < dynamics->count; ++i) {
@@ -309,6 +400,10 @@ void collisions_detect_static(bnd_world *world) {
 
                 case BND_CYLINDER:
                   cylinder_plane_collision(world, &ctx);
+                  break;
+
+                case BND_MESH:
+                  mesh_plane_collision(world, &ctx);
                   break;
 
                 default:
