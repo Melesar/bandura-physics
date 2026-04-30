@@ -4,6 +4,7 @@
 #include "raymath.h"
 #include "rlgl.h"
 #include <stdlib.h>
+#include <string.h>
 
 Mesh arrow_base;
 Mesh arrow_head;
@@ -162,4 +163,36 @@ ragdoll ragdoll_create(bnd_world *world, v3 position) {
   doll[RIGHT_LOWER_LEG] = right_lower_leg.handle;
 
   return doll;
+}
+
+bnd_mesh_data raylib_mesh_to_bnd(Mesh m) {
+  bnd_mesh_data data = {
+    .vertex_buffer = {
+      .buffer = m.vertices,
+      .element_size = 3 * sizeof(float),
+      .elements_count = m.vertexCount,
+      .stride = 0
+    },
+  };
+
+  if (m.indices != NULL) {
+    data.index_buffer.buffer = m.indices;
+    data.index_buffer.element_size = sizeof(unsigned short);
+    data.index_buffer.elements_count = 3 * m.triangleCount;
+    data.index_buffer.stride = 0;
+  } else {
+    uint32_t *buffer = malloc(3 * m.triangleCount * sizeof(uint32_t));
+    data.index_buffer.buffer = buffer;
+    data.index_buffer.element_size = sizeof(uint32_t);
+    data.index_buffer.elements_count = 3 * m.triangleCount;
+    data.index_buffer.stride = 0;
+
+    for (int i = 0; i < m.triangleCount; ++i) {
+      buffer[3 * i + 0] = 3 * i;
+      buffer[3 * i + 1] = 3 * i + 1;
+      buffer[3 * i + 2] = 3 * i + 2;
+    }
+  }
+
+  return data;
 }

@@ -54,6 +54,9 @@ typedef bnd_body_handle *ragdoll;
 int register_gizmo(Vector3 *pos, Quaternion *rot);
 void unregister_gizmo(int id);
 
+void register_mesh_for_rendering(bnd_body_handle body, Mesh mesh);
+bnd_mesh_data raylib_mesh_to_bnd(Mesh m);
+
 void draw_arrow(Vector3 start, Vector3 direction, Color color);
 
 void draw_model_with_wireframe(Model model, Vector3 position, float scale, Color color);

@@ -106,7 +106,7 @@ typedef enum {
 
 typedef struct {
   void *buffer;
-  count_t elemenets_count;
+  count_t elements_count;
   count_t element_size;
   count_t stride;
 } bnd_mesh_buffer;

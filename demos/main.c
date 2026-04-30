@@ -24,6 +24,11 @@ typedef struct {
   float rotation_sensitivity;
 } camera_settings;
 
+typedef struct {
+  bnd_body_handle body;
+  Mesh mesh;
+} render_mesh;
+
 void init_debugging();
 void init_gizmos();
 void manipulate_gizmos(Camera *camera);
@@ -58,7 +63,9 @@ Color colors[] = {BROWN, YELLOW, GREEN, MAROON, MAGENTA, RAYWHITE, DARKPURPLE, L
                   BROWN, YELLOW, GREEN, MAROON, MAGENTA, RAYWHITE, DARKPURPLE, LIME, PINK, ORANGE};
 Material materials[20];
 Mesh meshes[20];
+render_mesh render_meshes[20];
 
+count_t render_mesh_index = 0;
 bool edit_mode = false;
 bool simulation_running = true;
 bool step_forward = false;
@@ -207,11 +214,32 @@ static void draw_physics_bodies_typed(bnd_body_type type) {
           DrawMesh(meshes[BND_CYLINDER], material, mul(scale, full_transform));
           break;
 
+        case BND_MESH:
+          for (count_t i = 0; i < render_mesh_index; ++i) {
+            render_mesh rm = render_meshes[i];
+            if (rm.body.index == enumerator.handle.index && rm.body.type == enumerator.handle.type) {
+              DrawMesh(rm.mesh, material, full_transform);
+              break;
+            }
+          }
+          break;
+
         default:
           break;
       }
     }
   }
+}
+
+void register_mesh_for_rendering(bnd_body_handle body, Mesh mesh) {
+  if (render_mesh_index >= 20) {
+    return;
+  }
+
+  render_meshes[render_mesh_index++] = (render_mesh){
+    .body = body,
+    .mesh = mesh,
+  };
 }
 
 static void draw_physics_bodies() {

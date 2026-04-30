@@ -20,22 +20,22 @@ static void resize_buffer(void **buffer, count_t count, count_t *capacity, count
 }
 
 static void import_buffer(const bnd_mesh_buffer *buffer, void **target, count_t *target_count, count_t *target_capacity, count_t target_size) {
-  count_t new_count = *target_count + buffer->elemenets_count;
+  count_t new_count = *target_count + buffer->elements_count;
   resize_buffer(target, new_count, target_capacity, buffer->element_size);
 
   count_t target_stride = 0;
-  if (buffer->element_size > target_size) {
-    target_stride = buffer->element_size - target_size;
+  if (buffer->element_size < target_size) {
+    target_stride = target_size - buffer->element_size;
   }
 
   uint8_t *to = (uint8_t *)*target;
   to += *target_count * buffer->element_size;
 
   if (buffer->stride == 0 && target_stride == 0) {
-    memcpy(to, buffer->buffer, buffer->elemenets_count * buffer->element_size);
+    memcpy(to, buffer->buffer, buffer->elements_count * buffer->element_size);
   } else {
     uint8_t *from = (uint8_t *)buffer->buffer;
-    for (count_t i = 0; i < buffer->elemenets_count; ++i) {
+    for (count_t i = 0; i < buffer->elements_count; ++i) {
       memcpy(to, from, buffer->element_size);
 
       from += buffer->element_size + buffer->stride;
@@ -43,7 +43,7 @@ static void import_buffer(const bnd_mesh_buffer *buffer, void **target, count_t 
     }
   }
 
-  *target_count += buffer->elemenets_count;
+  *target_count += buffer->elements_count;
 }
 
 void meshes_init(bnd_world *world) {
@@ -73,8 +73,8 @@ bnd_mesh_handle bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data) {
   submesh sm;
   sm.vertex_offset = meshes->vertex_count;
   sm.index_offset = meshes->index_count;
-  sm.vertex_count = data->vertex_buffer.elemenets_count;
-  sm.index_count = data->index_buffer.elemenets_count;
+  sm.vertex_count = data->vertex_buffer.elements_count;
+  sm.index_count = data->index_buffer.elements_count;
 
   import_buffer(&data->vertex_buffer, (void **)&meshes->verticies, &meshes->vertex_count, &meshes->vertex_capacity, sizeof(v3));
   import_buffer(&data->index_buffer, (void **)&meshes->indicies, &meshes->index_count, &meshes->index_capacity, sizeof(uint32_t));
