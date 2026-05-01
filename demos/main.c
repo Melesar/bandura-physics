@@ -25,7 +25,7 @@ typedef struct {
 } camera_settings;
 
 typedef struct {
-  bnd_body_handle body;
+  bnd_mesh_handle handle;
   Mesh mesh;
 } render_mesh;
 
@@ -55,12 +55,12 @@ extern void scenario_build_ui(bnd_world *world);
 extern void scenario_teardown();
 
 camera_settings cam_settings = {
-    .movement_speed = 10.0f,
-    .rotation_sensitivity = 0.1f,
+  .movement_speed = 10.0f,
+  .rotation_sensitivity = 0.1f,
 };
 
-Color colors[] = {BROWN, YELLOW, GREEN, MAROON, MAGENTA, RAYWHITE, DARKPURPLE, LIME, PINK, ORANGE,
-                  BROWN, YELLOW, GREEN, MAROON, MAGENTA, RAYWHITE, DARKPURPLE, LIME, PINK, ORANGE};
+Color colors[] = { BROWN, YELLOW, GREEN, MAROON, MAGENTA, RAYWHITE, DARKPURPLE, LIME, PINK, ORANGE, BROWN, YELLOW,
+  GREEN, MAROON, MAGENTA, RAYWHITE, DARKPURPLE, LIME, PINK, ORANGE };
 Material materials[20];
 Mesh meshes[20];
 render_mesh render_meshes[20];
@@ -85,7 +85,7 @@ static bnd_world *world;
 static bnd_config config;
 
 int main(int argc, char **argv) {
-  program_config program_config = {0};
+  program_config program_config = { 0 };
   program_config.draw_ground = true;
 
   config = bnd_default_config();
@@ -217,7 +217,7 @@ static void draw_physics_bodies_typed(bnd_body_type type) {
         case BND_MESH:
           for (count_t i = 0; i < render_mesh_index; ++i) {
             render_mesh rm = render_meshes[i];
-            if (rm.body.index == enumerator.handle.index && rm.body.type == enumerator.handle.type) {
+            if (rm.handle.submesh_offset == shape.mesh.submesh_offset) {
               DrawMesh(rm.mesh, material, full_transform);
               break;
             }
@@ -231,13 +231,19 @@ static void draw_physics_bodies_typed(bnd_body_type type) {
   }
 }
 
-void register_mesh_for_rendering(bnd_body_handle body, Mesh mesh) {
+void register_mesh_for_rendering(bnd_mesh_handle handle, Mesh mesh) {
   if (render_mesh_index >= 20) {
     return;
   }
 
+  for (count_t i = 0; i < render_mesh_index; ++i) {
+    if (render_meshes[i].handle.submesh_offset == handle.submesh_offset) {
+      return;
+    }
+  }
+
   render_meshes[render_mesh_index++] = (render_mesh){
-    .body = body,
+    .handle = handle,
     .mesh = mesh,
   };
 }
@@ -261,7 +267,7 @@ static void draw_scene(program_config program_config, Camera camera, Shader shad
 
   // Draw ground plane
   if (program_config.draw_ground) {
-    DrawModel(groundModel, (Vector3){0.0f, 0.0f, 0.0f}, 1.0f, WHITE);
+    DrawModel(groundModel, (Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, WHITE);
   }
   draw_custom_grid(32, 1.0f);
 
@@ -287,7 +293,7 @@ static void update_camera(Camera *camera, float deltaTime) {
   Vector3 forward = GetCameraForward(camera);
   Vector3 right = GetCameraRight(camera);
 
-  Vector3 movement = {0};
+  Vector3 movement = { 0 };
 
   if (IsKeyDown(KEY_W))
     movement = Vector3Add(movement, Vector3Scale(forward, cam_settings.movement_speed * deltaTime));
@@ -303,19 +309,19 @@ static void update_camera(Camera *camera, float deltaTime) {
 
   if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
     Vector2 mouseDelta = GetMouseDelta();
-    Vector3 rotation = {0};
+    Vector3 rotation = { 0 };
     rotation.x = -mouseDelta.x * cam_settings.rotation_sensitivity; // Yaw
     rotation.y = -mouseDelta.y * cam_settings.rotation_sensitivity; // Pitch
 
-    UpdateCameraPro(camera, (Vector3){0}, rotation, 0.0f);
+    UpdateCameraPro(camera, (Vector3){ 0 }, rotation, 0.0f);
   }
 }
 
 static Camera setup_camera(program_config program_config) {
-  Camera3D camera = {0};
+  Camera3D camera = { 0 };
   camera.position = program_config.camera_position;
   camera.target = program_config.camera_target;
-  camera.up = (Vector3){0.0f, 1.0f, 0.0f};
+  camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
   camera.fovy = 45.0f;
   camera.projection = CAMERA_PERSPECTIVE;
 
@@ -330,11 +336,11 @@ static void draw_custom_grid(int slices, float spacing) {
   for (int i = -halfSlices; i <= halfSlices; i++) {
     Color lineColor = (i % 10 == 0) ? mainColor : subColor;
 
-    DrawLine3D((Vector3){i * spacing, 0.03f, -halfSlices * spacing},
-               (Vector3){i * spacing, 0.03f, halfSlices * spacing}, lineColor);
+    DrawLine3D((Vector3){ i * spacing, 0.03f, -halfSlices * spacing },
+        (Vector3){ i * spacing, 0.03f, halfSlices * spacing }, lineColor);
 
-    DrawLine3D((Vector3){-halfSlices * spacing, 0.03f, i * spacing},
-               (Vector3){halfSlices * spacing, 0.03f, i * spacing}, lineColor);
+    DrawLine3D((Vector3){ -halfSlices * spacing, 0.03f, i * spacing },
+        (Vector3){ halfSlices * spacing, 0.03f, i * spacing }, lineColor);
   }
 }
 
@@ -348,7 +354,7 @@ static void setup_scene(Shader shader) {
     cylinder.vertices[i * 3 + 1] -= 0.5;
   }
   UpdateMeshBuffer(cylinder, RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION, cylinder.vertices,
-                   3 * cylinder.vertexCount * sizeof(float), 0);
+      3 * cylinder.vertexCount * sizeof(float), 0);
 
   meshes[BND_CYLINDER] = cylinder;
 
@@ -378,11 +384,11 @@ static void init_physics() {
 }
 
 static void build_ui() {
-  CLAY(CLAY_ID("Container"), {.layout = {
-                                  .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                                  .padding = CLAY_PADDING_ALL(15),
-                                  .childGap = 15,
-                              }}) {
+  CLAY(CLAY_ID("Container"), { .layout = {
+                                 .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                                 .padding = CLAY_PADDING_ALL(15),
+                                 .childGap = 15,
+                               } }) {
     bool ui_debug = master_widget_state.show_ui_debug;
     if (ui_begin_area("Debug widget", &master_widget_state.is_collapsed)) {
       ui_checkbox("UI debug", &master_widget_state.show_ui_debug);
@@ -406,14 +412,14 @@ static void build_ui() {
         ui_value_float("Friction", &physics_config->simulation.friction, 0, 1);
         ui_value_int("Max GJK iterations", (int *)&physics_config->collision_detection.max_gjk_iterations, 1, 1000);
         ui_value_float("EPA tolerance", &physics_config->collision_detection.epa_tolerance, 0, 1);
-        ui_value_int("Iterations factor", (int *)&physics_config->collision_resolution.resolution_attempts_factor, 1,
-                     20);
+        ui_value_int(
+            "Iterations factor", (int *)&physics_config->collision_resolution.resolution_attempts_factor, 1, 20);
         ui_value_float("Penetration epsilon", &physics_config->collision_resolution.penetration_epsilon, 0.001, 0.5);
         ui_value_float("Velocity epsilon", &physics_config->collision_resolution.velocity_epsilon, 0.001, 0.5);
         ui_value_float("Sleep base bias", &physics_config->simulation.sleep_base_bias, 0, 1);
         ui_value_float("Sleep threshold", &physics_config->simulation.sleep_threshold, 0, 10);
-        ui_value_float("Restitution damping epsilon", &physics_config->collision_resolution.restitution_damping_limit,
-                       0, 1);
+        ui_value_float(
+            "Restitution damping epsilon", &physics_config->collision_resolution.restitution_damping_limit, 0, 1);
       }
 
       ui_end_area();
@@ -423,11 +429,11 @@ static void build_ui() {
   }
 
   if (master_widget_state.show_physics_world_stats) {
-    CLAY(CLAY_ID("Stats"), {.layout = {
-                                .layoutDirection = CLAY_LEFT_TO_RIGHT,
-                                .childGap = 10,
-                                .padding = CLAY_PADDING_ALL(3),
-                            }}) {
+    CLAY(CLAY_ID("Stats"), { .layout = {
+                               .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                               .childGap = 10,
+                               .padding = CLAY_PADDING_ALL(3),
+                             } }) {
       bnd_world_stats stats = bnd_stats(world);
 
       ui_label_stat("Body count", stats.body_count);
@@ -443,29 +449,29 @@ static Shader setup_lighting() {
 
   Shader shader = LoadShader(vs_shader_path, fs_shader_path);
 
-  Light keyLight = CreateLight(LIGHT_DIRECTIONAL, (Vector3){10.0f, 20.0f, 10.0f}, Vector3Zero(),
-                               WHITE, // #ffffff
-                               shader);
+  Light keyLight = CreateLight(LIGHT_DIRECTIONAL, (Vector3){ 10.0f, 20.0f, 10.0f }, Vector3Zero(),
+      WHITE, // #ffffff
+      shader);
   keyLight.enabled = 1;
   UpdateLightValues(shader, keyLight);
 
-  Light rimLight = CreateLight(LIGHT_POINT, (Vector3){-10.0f, 10.0f, -10.0f}, Vector3Zero(),
-                               (Color){0x44, 0x44, 0xff, 0xff}, // Blue rim light
-                               shader);
+  Light rimLight = CreateLight(LIGHT_POINT, (Vector3){ -10.0f, 10.0f, -10.0f }, Vector3Zero(),
+      (Color){ 0x44, 0x44, 0xff, 0xff }, // Blue rim light
+      shader);
   rimLight.enabled = 1;
   UpdateLightValues(shader, rimLight);
 
   int ambientLoc = GetShaderLocation(shader, "ambient");
-  SetShaderValue(shader, ambientLoc, (float[4]){0x40 / 255.0f, 0x40 / 255.0f, 0x40 / 255.0f, 1.0f},
-                 SHADER_UNIFORM_VEC4);
+  SetShaderValue(
+      shader, ambientLoc, (float[4]){ 0x40 / 255.0f, 0x40 / 255.0f, 0x40 / 255.0f, 1.0f }, SHADER_UNIFORM_VEC4);
 
   int fogColorLoc = GetShaderLocation(shader, "fogColor");
   int fogStartLoc = GetShaderLocation(shader, "fogStart");
   int fogEndLoc = GetShaderLocation(shader, "fogEnd");
 
-  SetShaderValue(shader, fogColorLoc, (float[3]){0x12 / 255.0f, 0x12 / 255.0f, 0x14 / 255.0f}, SHADER_UNIFORM_VEC3);
-  SetShaderValue(shader, fogStartLoc, (float[1]){20.0f}, SHADER_UNIFORM_FLOAT);
-  SetShaderValue(shader, fogEndLoc, (float[1]){100.0f}, SHADER_UNIFORM_FLOAT);
+  SetShaderValue(shader, fogColorLoc, (float[3]){ 0x12 / 255.0f, 0x12 / 255.0f, 0x14 / 255.0f }, SHADER_UNIFORM_VEC3);
+  SetShaderValue(shader, fogStartLoc, (float[1]){ 20.0f }, SHADER_UNIFORM_FLOAT);
+  SetShaderValue(shader, fogEndLoc, (float[1]){ 100.0f }, SHADER_UNIFORM_FLOAT);
 
   return shader;
 }
