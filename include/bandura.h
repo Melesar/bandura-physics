@@ -70,6 +70,7 @@ BNDAPI m3 matrix_transpose(m3 m);
 BNDAPI m3 matrix_inverse(m3 m);
 BNDAPI m3 matrix_add(m3 a, m3 b);
 BNDAPI m3 matrix_multiply(m3 a, m3 b);
+BNDAPI m3 matrix_scale(m3 m, float s);
 BNDAPI m3 matrix_negate(m3 m);
 BNDAPI v3 matrix_rotate(v3 v, m3 m);
 BNDAPI v3 matrix_rotate_inverse(v3 v, m3 m);
@@ -116,10 +117,7 @@ typedef struct {
   bnd_mesh_buffer index_buffer;
 } bnd_mesh_data;
 
-typedef struct {
-  count_t submesh_offset;
-  count_t submesh_count;
-} bnd_mesh_handle;
+typedef uint32_t bnd_mesh_handle;
 
 typedef struct {
   bnd_shape_type type;
@@ -281,7 +279,7 @@ BNDAPI m3 bnd_get_base_inertia(const bnd_world *world, bnd_body_handle handle);
 BNDAPI float bnd_get_motion_avg(const bnd_world *world, bnd_body_handle handle);
 BNDAPI count_t bnd_get_contacts(const bnd_world *world, bnd_contact *contacts, count_t max_contacts);
 
-BNDAPI bnd_mesh_handle bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data);
+BNDAPI bnd_mesh_handle bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, v3 *center_of_mass);
 
 BNDAPI void bnd_enumerate_bodies_typed(const bnd_world *world, bnd_body_type type, bnd_body_enumerator_typed *enumerator);
 BNDAPI bool bnd_body_next_typed(const bnd_world *world, bnd_body_enumerator_typed *enumerator);

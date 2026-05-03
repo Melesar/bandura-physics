@@ -51,9 +51,19 @@ typedef struct {
 } submesh;
 
 typedef struct {
+  count_t submesh_offset;
+  count_t submesh_count;
+} bnd_mesh;
+
+typedef struct {
   v3 *verticies;
   uint32_t *indicies;
+
   submesh *submeshes;
+  bnd_mesh *meshes;
+
+  m3 *inertias;
+  float *volumes;
 
   count_t vertex_count;
   count_t vertex_capacity;
@@ -61,6 +71,8 @@ typedef struct {
   count_t index_capacity;
   count_t submesh_count;
   count_t submesh_capacity;
+  count_t mesh_count;
+  count_t mesh_capacity;
 } mesh_storage;
 
 #define COMMON_FIELDS                                                                                                  \
@@ -135,6 +147,7 @@ typedef struct {
 } dynamic_bodies;
 
 typedef common_data static_bodies;
+
 struct bnd_world_t {
   dynamic_bodies dynamics;
   static_bodies statics;
@@ -197,6 +210,7 @@ count_t joints_generate_dynamic(bnd_world *world);
 void joints_generate_static(bnd_world *world);
 
 void meshes_init(bnd_world *world);
+void meshes_teardown(bnd_world *world);
 
 void shapes_init(bnd_world *world);
 void shapes_teardown(bnd_world *world);

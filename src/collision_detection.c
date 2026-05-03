@@ -35,8 +35,8 @@ static v3 box_support(const support_context *ctx, v3 direction) {
 
   v3 local_direction = normalize(rotate(direction, inv_rotation));
   v3 v = vec3((local_direction.x > 0 ? 1 : -1) * ctx->shape.box.size.x * 0.5,
-              (local_direction.y > 0 ? 1 : -1) * ctx->shape.box.size.y * 0.5,
-              (local_direction.z > 0 ? 1 : -1) * ctx->shape.box.size.z * 0.5);
+      (local_direction.y > 0 ? 1 : -1) * ctx->shape.box.size.y * 0.5,
+      (local_direction.z > 0 ? 1 : -1) * ctx->shape.box.size.z * 0.5);
 
   v = rotate(v, rotation);
   v = add(center, v);
@@ -78,8 +78,9 @@ static v3 mesh_support(const support_context *ctx, v3 direction) {
   v3 position = body_center(ctx->shape.offset, ctx->data->rotations[ctx->index], ctx->data->positions[ctx->index]);
   v3 local_direction = rotate(direction, qinvert(rotation));
 
-  count_t submesh_start = mesh_handle.submesh_offset;
-  count_t submesh_end = submesh_start + mesh_handle.submesh_count;
+  bnd_mesh mesh = meshes->meshes[mesh_handle];
+  count_t submesh_start = mesh.submesh_offset;
+  count_t submesh_end = submesh_start + mesh.submesh_count;
 
   float max_dot = -FLT_MAX;
   count_t max_vertex = ~0;
@@ -106,11 +107,11 @@ static v3 mesh_support(const support_context *ctx, v3 direction) {
   return support;
 }
 
-support_func support_functions[] = {box_support, sphere_support, cylinder_support, mesh_support};
+support_func support_functions[] = { box_support, sphere_support, cylinder_support, mesh_support };
 
 support_point support(const collision_detection_context *ctx, v3 direction) {
-  support_context sa = {ctx->world, ctx->data_a, ctx->shape_a, ctx->body_a};
-  support_context sb = {ctx->world, ctx->data_b, ctx->shape_b, ctx->body_b};
+  support_context sa = { ctx->world, ctx->data_a, ctx->shape_a, ctx->body_a };
+  support_context sb = { ctx->world, ctx->data_b, ctx->shape_b, ctx->body_b };
 
   support_point result;
   result.v1 = support_functions[ctx->shape_a.type](&sa, direction);
@@ -163,9 +164,14 @@ static count_t box_plane_collision(bnd_world *world, const collision_detection_c
   v3 plane_point = ctx->data_b->positions[ctx->body_b];
 
   v3 corners[] = {
-      {extents.x, extents.y, extents.z},    {extents.x, -extents.y, extents.z},  {extents.x, -extents.y, -extents.z},
-      {extents.x, extents.y, -extents.z},   {-extents.x, extents.y, extents.z},  {-extents.x, -extents.y, extents.z},
-      {-extents.x, -extents.y, -extents.z}, {-extents.x, extents.y, -extents.z},
+    { extents.x, extents.y, extents.z },
+    { extents.x, -extents.y, extents.z },
+    { extents.x, -extents.y, -extents.z },
+    { extents.x, extents.y, -extents.z },
+    { -extents.x, extents.y, extents.z },
+    { -extents.x, -extents.y, extents.z },
+    { -extents.x, -extents.y, -extents.z },
+    { -extents.x, extents.y, -extents.z },
   };
 
   const count_t max_contacts = 4;
@@ -256,7 +262,8 @@ static count_t mesh_plane_collision(bnd_world *world, const collision_detection_
   v3 plane_point = ctx->data_b->positions[ctx->body_b];
   v3 plane_normal = ctx->shape_b.plane.normal;
 
-  v3 mesh_center = body_center(ctx->shape_a.offset, ctx->data_a->rotations[ctx->body_a], ctx->data_a->positions[ctx->body_a]);
+  v3 mesh_center =
+      body_center(ctx->shape_a.offset, ctx->data_a->rotations[ctx->body_a], ctx->data_a->positions[ctx->body_a]);
   quat mesh_rotation = qmul(ctx->data_a->rotations[ctx->body_a], ctx->shape_a.rotation);
   quat inv_mesh_rotation = qinvert(mesh_rotation);
 
@@ -266,8 +273,9 @@ static count_t mesh_plane_collision(bnd_world *world, const collision_detection_
   const mesh_storage *meshes = &world->meshes;
   const bnd_mesh_handle mesh_handle = ctx->shape_a.mesh;
 
-  count_t submesh_start = mesh_handle.submesh_offset;
-  count_t submesh_end = submesh_start + mesh_handle.submesh_count;
+  bnd_mesh mesh = meshes->meshes[mesh_handle];
+  count_t submesh_start = mesh.submesh_offset;
+  count_t submesh_end = submesh_start + mesh.submesh_count;
 
   float min_dot = FLT_MAX;
   count_t collision_vertex = 0;

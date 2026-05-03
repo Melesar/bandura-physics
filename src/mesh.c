@@ -19,31 +19,164 @@ static void resize_buffer(void **buffer, count_t count, count_t *capacity, count
   *buffer = realloc(*buffer, *capacity * element_size);
 }
 
-static void import_buffer(const bnd_mesh_buffer *buffer, void **target, count_t *target_count, count_t *target_capacity, count_t target_size) {
-  count_t new_count = *target_count + buffer->elements_count;
-  resize_buffer(target, new_count, target_capacity, buffer->element_size);
+static void ensure_meshes_capacity(mesh_storage *meshes) {
+  if (meshes->mesh_count + 1 < meshes->mesh_capacity) {
+    return;
+  }
+
+  while (meshes->mesh_count + 1 > meshes->mesh_capacity) {
+    meshes->mesh_capacity *= 2;
+  }
+
+  meshes->meshes = realloc(meshes->meshes, meshes->mesh_capacity * sizeof(bnd_mesh));
+  meshes->inertias = realloc(meshes->inertias, meshes->mesh_capacity * sizeof(m3));
+  meshes->volumes = realloc(meshes->volumes, meshes->mesh_capacity * sizeof(float));
+}
+
+static void import_verticies(const bnd_mesh_buffer *buffer, mesh_storage *meshes, v3 com) {
+  count_t new_count = buffer->elements_count + meshes->vertex_count;
+  resize_buffer((void **)&meshes->verticies, new_count, &meshes->vertex_capacity, sizeof(v3));
+
+  v3 *src = buffer->buffer;
+  v3 *dest = &meshes->verticies[meshes->vertex_count];
+  for (count_t i = 0; i < buffer->elements_count; ++i) {
+    dest[i] = sub(src[i], com);
+  }
+}
+
+static void import_indicies(const bnd_mesh_buffer *buffer, mesh_storage *meshes) {
+  const uint32_t target_size = sizeof(uint32_t);
+
+  count_t new_count = meshes->index_count + buffer->elements_count;
+  resize_buffer((void **)&meshes->indicies, new_count, &meshes->index_capacity, target_size);
 
   count_t target_stride = 0;
   if (buffer->element_size < target_size) {
     target_stride = target_size - buffer->element_size;
   }
 
-  uint8_t *to = (uint8_t *)*target;
-  to += *target_count * buffer->element_size;
+  uint8_t *to = (uint8_t *)meshes->indicies;
+  to += meshes->index_count * target_size;
 
   if (buffer->stride == 0 && target_stride == 0) {
     memcpy(to, buffer->buffer, buffer->elements_count * buffer->element_size);
   } else {
+    memset(to, 0, buffer->elements_count * target_size);
+
     uint8_t *from = (uint8_t *)buffer->buffer;
     for (count_t i = 0; i < buffer->elements_count; ++i) {
       memcpy(to, from, buffer->element_size);
 
       from += buffer->element_size + buffer->stride;
-      to += buffer->element_size + target_stride;
+      to += target_size;
     }
   }
 
-  *target_count += buffer->elements_count;
+  meshes->index_count += buffer->elements_count;
+}
+
+static float tetr_inertia_moment(m3 m, count_t i) {
+  return m.m0[i] * m.m0[i] + m.m1[i] * m.m2[i] + m.m1[i] * m.m1[i] + m.m0[i] * m.m2[i] + m.m2[i] * m.m2[i] +
+         m.m0[i] * m.m1[i];
+}
+
+static float tetr_inertia_product(m3 m, count_t i, count_t j) {
+  return 2.0 * m.m0[i] * m.m0[j] + m.m1[i] * m.m2[j] + m.m2[i] * m.m1[j] + 2.0 * m.m1[i] * m.m1[j] + m.m0[i] * m.m2[j] +
+         m.m2[i] * m.m0[j] + 2.0 * m.m2[i] * m.m2[j] + m.m0[i] * m.m1[j] + m.m1[i] * m.m0[j];
+}
+
+static v3 read_vertex(const bnd_mesh_buffer *buffer, count_t i) {
+  v3 vertex = zero();
+  uint8_t *verticies = buffer->buffer;
+  uint32_t step = buffer->element_size + buffer->stride;
+
+  memcpy(&vertex, &verticies[i * step], buffer->element_size);
+
+  return vertex;
+}
+
+static uint32_t read_index(const bnd_mesh_buffer *buffer, count_t i) {
+  uint8_t *indices = buffer->buffer;
+  uint8_t *src = &indices[i * (buffer->element_size + buffer->stride)];
+
+  switch (buffer->element_size) {
+    case 1:
+      return src[0];
+
+    case 2: {
+      uint16_t index;
+      memcpy(&index, src, sizeof(index));
+      return index;
+    }
+
+    case 4: {
+      uint32_t index;
+      memcpy(&index, src, sizeof(index));
+      return index;
+    }
+
+    default:
+      return 0;
+  }
+}
+
+static void calculate_mass_properties(const bnd_mesh_data *data, m3 *inertia, v3 *com, float *volume) {
+  /**
+   * This function is a rewrite of SkComputeInertia3x3 from
+   *
+   * https://github.com/blackedout01/simkn
+   */
+
+  float ia = 0, ib = 0, ic = 0, iap = 0, ibp = 0, icp = 0;
+
+  *volume = 0;
+  *com = zero();
+  *inertia = (m3){ 0 };
+  for (count_t i = 0; i + 2 < data->index_buffer.elements_count; i += 3) {
+    v3 v0 = read_vertex(&data->vertex_buffer, read_index(&data->index_buffer, i + 0));
+    v3 v1 = read_vertex(&data->vertex_buffer, read_index(&data->index_buffer, i + 1));
+    v3 v2 = read_vertex(&data->vertex_buffer, read_index(&data->index_buffer, i + 2));
+
+    m3 m = { { v0.x, v0.y, v0.z }, { v1.x, v1.y, v1.z }, { v2.x, v2.y, v2.z } };
+
+    float det = dot(v0, cross(v1, v2));
+    float tetr_volume = det / 6.0;
+
+    v3 tetr_com = v0;
+    tetr_com = add(tetr_com, v1);
+    tetr_com = add(tetr_com, v2);
+    tetr_com = scale(tetr_com, 0.25);
+
+    float v100 = tetr_inertia_moment(m, 0);
+    float v010 = tetr_inertia_moment(m, 1);
+    float v001 = tetr_inertia_moment(m, 2);
+
+    ia += det * (v010 + v001);
+    ib += det * (v100 + v001);
+    ic += det * (v100 + v010);
+    iap += det * tetr_inertia_product(m, 1, 2);
+    ibp += det * tetr_inertia_product(m, 0, 1);
+    icp += det * tetr_inertia_product(m, 0, 2);
+
+    tetr_com = scale(tetr_com, tetr_volume);
+    *com = add(*com, tetr_com);
+    *volume += tetr_volume;
+  }
+
+  *com = scale(*com, 1.0 / *volume);
+  ia = ia / 60.0 - *volume * (com->y * com->y + com->z * com->z);
+  ib = ib / 60.0 - *volume * (com->x * com->x + com->z * com->z);
+  ic = ic / 60.0 - *volume * (com->x * com->x + com->y * com->y);
+  iap = iap / 120.0 - *volume * (com->y * com->z);
+  ibp = ibp / 120.0 - *volume * (com->x * com->y);
+  icp = icp / 120.0 - *volume * (com->x * com->z);
+
+  inertia->m0[0] = ia;
+  inertia->m1[1] = ib;
+  inertia->m2[2] = ic;
+  inertia->m0[1] = inertia->m1[0] = -ibp;
+  inertia->m0[2] = inertia->m2[0] = -icp;
+  inertia->m1[2] = inertia->m2[1] = -iap;
 }
 
 void meshes_init(bnd_world *world) {
@@ -54,6 +187,10 @@ void meshes_init(bnd_world *world) {
   meshes->submesh_capacity = num_meshes;
   meshes->submesh_count = 0;
 
+  meshes->meshes = malloc(num_meshes * sizeof(bnd_mesh));
+  meshes->mesh_capacity = num_meshes;
+  meshes->mesh_count = 0;
+
   meshes->verticies = malloc(num_meshes * DEFAULT_VERTEX_PER_MESH * sizeof(v3));
   meshes->vertex_capacity = num_meshes * DEFAULT_VERTEX_PER_MESH;
   meshes->vertex_count = 0;
@@ -61,12 +198,30 @@ void meshes_init(bnd_world *world) {
   meshes->indicies = malloc(num_meshes * DEFAULT_FACE_PER_MESH * 3 * sizeof(uint32_t));
   meshes->index_capacity = num_meshes * DEFAULT_FACE_PER_MESH * 3;
   meshes->index_count = 0;
+
+  meshes->inertias = malloc(num_meshes * sizeof(m3));
+  meshes->volumes = malloc(num_meshes * sizeof(float));
 }
 
-bnd_mesh_handle bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data) {
+void meshes_teardown(bnd_world *world) {
+  mesh_storage meshes = world->meshes;
+
+  free(meshes.submeshes);
+  free(meshes.meshes);
+  free(meshes.verticies);
+  free(meshes.indicies);
+  free(meshes.inertias);
+  free(meshes.volumes);
+}
+
+bnd_mesh_handle bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, v3 *center_of_mass) {
   if (!is_mesh_convex(data)) {
     raise_error(BND_ERROR_MESH_IS_CONCAVE, NULL, "Concave meshes are not properly supported at the moment");
   }
+
+  m3 inertia;
+  float volume;
+  calculate_mass_properties(data, &inertia, center_of_mass, &volume);
 
   mesh_storage *meshes = &world->meshes;
 
@@ -76,13 +231,19 @@ bnd_mesh_handle bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data) {
   sm.vertex_count = data->vertex_buffer.elements_count;
   sm.index_count = data->index_buffer.elements_count;
 
-  import_buffer(&data->vertex_buffer, (void **)&meshes->verticies, &meshes->vertex_count, &meshes->vertex_capacity, sizeof(v3));
-  import_buffer(&data->index_buffer, (void **)&meshes->indicies, &meshes->index_count, &meshes->index_capacity, sizeof(uint32_t));
+  import_verticies(&data->vertex_buffer, meshes, *center_of_mass);
+  import_indicies(&data->index_buffer, meshes);
 
   resize_buffer((void **)&meshes->submeshes, meshes->submesh_count + 1, &meshes->submesh_capacity, sizeof(submesh));
+  ensure_meshes_capacity(meshes);
 
-  count_t submesh_offset = meshes->submesh_count;
-  meshes->submeshes[meshes->submesh_count++] = sm;
+  count_t submesh_offset = meshes->submesh_count++;
+  meshes->submeshes[submesh_offset] = sm;
 
-  return (bnd_mesh_handle){submesh_offset, 1};
+  bnd_mesh_handle handle = meshes->mesh_count++;
+  meshes->meshes[handle] = (bnd_mesh){ submesh_offset, 1 };
+  meshes->inertias[handle] = inertia;
+  meshes->volumes[handle] = volume;
+
+  return handle;
 }

@@ -217,7 +217,7 @@ static void draw_physics_bodies_typed(bnd_body_type type) {
         case BND_MESH:
           for (count_t i = 0; i < render_mesh_index; ++i) {
             render_mesh rm = render_meshes[i];
-            if (rm.handle.submesh_offset == shape.mesh.submesh_offset) {
+            if (rm.handle == shape.mesh) {
               DrawMesh(rm.mesh, material, full_transform);
               break;
             }
@@ -237,7 +237,7 @@ void register_mesh_for_rendering(bnd_mesh_handle handle, Mesh mesh) {
   }
 
   for (count_t i = 0; i < render_mesh_index; ++i) {
-    if (render_meshes[i].handle.submesh_offset == handle.submesh_offset) {
+    if (render_meshes[i].handle == handle) {
       return;
     }
   }

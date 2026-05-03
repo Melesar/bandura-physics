@@ -31,7 +31,7 @@ void draw_arrow(Vector3 start, Vector3 direction, Color color) {
   set_arrow_color(color);
 
   Matrix base_translation = MatrixTranslate(start.x, start.y, start.z);
-  Matrix base_rotation = QuaternionToMatrix(QuaternionFromVector3ToVector3((Vector3){0, 1, 0}, n));
+  Matrix base_rotation = QuaternionToMatrix(QuaternionFromVector3ToVector3((Vector3){ 0, 1, 0 }, n));
   Matrix base_scale = MatrixScale(scale, distance, scale);
   Matrix base_transform = MatrixMultiply(MatrixMultiply(base_scale, base_rotation), base_translation);
 
@@ -134,20 +134,16 @@ ragdoll ragdoll_create(bnd_world *world, v3 position) {
   bnd_add_joint(world, torso.handle, pelvis.handle, vec3(0, -0.5, 0), vec3(0, 0.5, 0), joint_margin);
 
   bnd_add_joint(world, torso.handle, left_upper_arm.handle, vec3(0.3, 0.45, 0), vec3(-0.1, 0.6, 0), joint_margin);
-  bnd_add_joint(world, left_upper_arm.handle, left_lower_arm.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0),
-                    joint_margin);
+  bnd_add_joint(world, left_upper_arm.handle, left_lower_arm.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0), joint_margin);
 
   bnd_add_joint(world, torso.handle, right_upper_arm.handle, vec3(-0.3, 0.45, 0), vec3(0.1, 0.6, 0), joint_margin);
-  bnd_add_joint(world, right_upper_arm.handle, right_lower_arm.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0),
-                    joint_margin);
+  bnd_add_joint(world, right_upper_arm.handle, right_lower_arm.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0), joint_margin);
 
   bnd_add_joint(world, pelvis.handle, left_upper_leg.handle, vec3(0.23, -0.5, 0), vec3(0, 0.6, 0), joint_margin);
-  bnd_add_joint(world, left_upper_leg.handle, left_lower_leg.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0),
-                    joint_margin);
+  bnd_add_joint(world, left_upper_leg.handle, left_lower_leg.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0), joint_margin);
 
   bnd_add_joint(world, pelvis.handle, right_upper_leg.handle, vec3(-0.23, -0.5, 0), vec3(0, 0.6, 0), joint_margin);
-  bnd_add_joint(world, right_upper_leg.handle, right_lower_leg.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0),
-                    joint_margin);
+  bnd_add_joint(world, right_upper_leg.handle, right_lower_leg.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0), joint_margin);
 
   ragdoll doll = malloc(BONE_COUNT * sizeof(bnd_body_handle));
   doll[HEAD] = head.handle;
@@ -165,14 +161,12 @@ ragdoll ragdoll_create(bnd_world *world, v3 position) {
   return doll;
 }
 
-bnd_mesh_data raylib_mesh_to_bnd(Mesh m) {
+static bnd_mesh_data raylib_mesh_to_bnd(Mesh m) {
   bnd_mesh_data data = {
-    .vertex_buffer = {
-      .buffer = m.vertices,
+    .vertex_buffer = { .buffer = m.vertices,
       .element_size = 3 * sizeof(float),
       .elements_count = m.vertexCount,
-      .stride = 0
-    },
+      .stride = 0 },
   };
 
   if (m.indices != NULL) {
@@ -195,4 +189,23 @@ bnd_mesh_data raylib_mesh_to_bnd(Mesh m) {
   }
 
   return data;
+}
+
+bnd_mesh_handle import_raylib_mesh(bnd_world *world, Mesh mesh) {
+  v3 com;
+  bnd_mesh_data data = raylib_mesh_to_bnd(mesh);
+  bnd_mesh_handle handle = bnd_import_mesh(world, &data, &com);
+
+  for (int i = 0; i < mesh.vertexCount; ++i) {
+    mesh.vertices[3 * i] = mesh.vertices[3 * i] - com.x;
+    mesh.vertices[3 * i + 1] = mesh.vertices[3 * i + 1] - com.y;
+    mesh.vertices[3 * i + 2] = mesh.vertices[3 * i + 2] - com.z;
+  }
+
+  UpdateMeshBuffer(
+      mesh, RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION, mesh.vertices, mesh.vertexCount * 3 * sizeof(float), 0);
+
+  register_mesh_for_rendering(handle, mesh);
+
+  return handle;
 }

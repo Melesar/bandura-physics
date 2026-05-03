@@ -128,6 +128,7 @@ void bnd_teardown(bnd_world *world) {
   shapes_teardown(world);
   joints_teardown(world);
   contacts_teardown(world);
+  meshes_teardown(world);
 
   free(world);
 
