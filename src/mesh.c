@@ -175,13 +175,13 @@ static bool validate_mesh(const bnd_mesh_data *data) {
   }
 
   if (index_buffer.elements_count % 3 != 0) {
-    raise_error(BND_ERROR_MESH_INVALID, (void *)data, "Mesh contains %d indicies (non-divisible by 3)", index_buffer.elements_count);
+    raise_error(BND_ERROR_MESH_INVALID, (void *)data, "Mesh contains %u indicies (non-divisible by 3)", index_buffer.elements_count);
     return false;
   }
 
   bnd_mesh_buffer vertex_buffer = data->vertex_buffer;
   if (vertex_buffer.element_size != 3 * sizeof(float)) {
-    raise_error(BND_ERROR_MESH_INVALID, (void *) data, "Vertex buffer is required to have elements composed of 3 floats. Current element size: %d", vertex_buffer.element_size);
+    raise_error(BND_ERROR_MESH_INVALID, (void *) data, "Vertex buffer is required to have elements composed of 3 floats. Current element size: %u", vertex_buffer.element_size);
     return false;
   }
 
@@ -192,7 +192,7 @@ static bool validate_mesh(const bnd_mesh_data *data) {
     count_t i2 = read_index(&index_buffer, i + 2);
 
     if (i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count) {
-      raise_error(BND_ERROR_MESH_INVALID, (void *) data, "Face #%d contains index which is out of bounds: (%d, %d, %d) while vertex count is %d", i / 3, i0, i1, i2, vertex_count);
+      raise_error(BND_ERROR_MESH_INVALID, (void *) data, "Face #%u contains index which is out of bounds: (%u, %u, %u) while vertex count is %u", i / 3, i0, i1, i2, vertex_count);
       return false;
     }
 
@@ -202,7 +202,7 @@ static bool validate_mesh(const bnd_mesh_data *data) {
 
     v3 n = cross(sub(v2, v0), sub(v1, v0));
     if (len(n) < EPSILON) {
-      raise_error(BND_ERROR_MESH_INVALID, (void *) data, "Face #%d is degenerate. v0: (%.4f, %.4f, %.4f), v1: (%.4f, %.4f, %.4f), v2: (%.4f, %.4f, %.4f)",
+      raise_error(BND_ERROR_MESH_INVALID, (void *) data, "Face #%u is degenerate. v0: (%.4f, %.4f, %.4f), v1: (%.4f, %.4f, %.4f), v2: (%.4f, %.4f, %.4f)",
         i / 3, v0.x, v0.y, v0.z, v1.x, v1.y, v1.z, v2.x, v2.y, v2.z);
       return false;
     }
