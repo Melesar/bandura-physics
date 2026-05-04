@@ -1,6 +1,5 @@
 #include "bandura.h"
 #include "bnd-core.h"
-#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 
