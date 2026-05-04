@@ -154,8 +154,8 @@ static bool validate_mesh(const bnd_mesh_data *data) {
     return false;
   }
 
-  if (index_buffer.elements_count == 0) {
-    raise_error(BND_ERROR_MESH_INVALID, (void *) data, "Mesh index buffer is empty");
+  if (index_buffer.elements_count < 12) {
+    raise_error(BND_ERROR_MESH_INVALID, (void *) data, "Mesh index buffer must contain at least 12 elements. Current size: %u", index_buffer.elements_count);
     return false;
   }
 
@@ -165,6 +165,15 @@ static bool validate_mesh(const bnd_mesh_data *data) {
   }
 
   bnd_mesh_buffer vertex_buffer = data->vertex_buffer;
+  if (vertex_buffer.buffer == NULL) {
+    raise_error(BND_ERROR_MESH_INVALID, (void *) data, "Mesh vertex buffer is NULL");
+    return false;
+  }
+
+  if (vertex_buffer.elements_count < 4) {
+    raise_error(BND_ERROR_MESH_INVALID, (void *) data, "Mesh vertex buffer must contain at least 4 elements. Current size: %u", vertex_buffer.elements_count);
+  }
+
   if (vertex_buffer.element_size != 3 * sizeof(float)) {
     raise_error(BND_ERROR_MESH_INVALID, (void *) data, "Vertex buffer is required to have elements composed of 3 floats. Current element size: %u", vertex_buffer.element_size);
     return false;
