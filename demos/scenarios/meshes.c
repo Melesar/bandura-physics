@@ -22,8 +22,9 @@ void scenario_setup_scene(bnd_world *world) {
   rl_meshes[0] = GenMeshCone(1, 2, 16);
   rl_meshes[1] = GenMeshCylinder(1, 3, 16);
   rl_meshes[2] = GenMeshTorus(0.5, 3, 16, 16);
+  rl_meshes[3] = GenMeshSphere(1, 16, 16);
 
-  bnd_mesh_handle cone, cylinder, torus;
+  bnd_mesh_handle cone, cylinder, torus, sphere;
   bnd_body b;
   if (import_raylib_mesh(world, rl_meshes[0], &cone)) {
     b = bnd_add_mesh_dynamic(world, 5, cone);
@@ -33,6 +34,11 @@ void scenario_setup_scene(bnd_world *world) {
   if (import_raylib_mesh(world, rl_meshes[1], &cylinder)) {
     b = bnd_add_mesh_dynamic(world, 5, cylinder);
     *b.position = vec3(-1, 7, 0);
+  }
+
+  if (import_raylib_mesh(world, rl_meshes[3], &sphere)) {
+    b = bnd_add_mesh_dynamic(world, 5, sphere);
+    *b.position = vec3(3, 7, 0);
   }
 
   if (import_raylib_mesh(world, rl_meshes[2], &torus)) {
