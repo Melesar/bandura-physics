@@ -239,6 +239,10 @@ static bool raycast_mesh(ray r, const shape_context *ctx, bnd_raycast_hit *hit) 
 
   ray local_ray = ray_transform(r, position, rotation);
 
+  bool has_hit = false;
+  float closest_distance = r.max_distance;
+  v3 closest_point, normal;
+
   const mesh_storage *meshes = &ctx->world->meshes;
   for (count_t i = 0; i + 2 < meshes->index_count; i += 3) {
     v3 v0 = meshes->verticies[meshes->indicies[i + 0]];
@@ -252,25 +256,32 @@ static bool raycast_mesh(ray r, const shape_context *ctx, bnd_raycast_hit *hit) 
     }
 
     float t = (dot(n, v0) - dot(n, local_ray.origin)) / d;
-    if (t < 0 || t > r.max_distance) {
+    if (t < 0 || t > closest_distance) {
       continue;
     }
 
     v3 p = add(local_ray.origin, scale(local_ray.direction, t));
     v3 bary = barycentric(p, v0, v1, v2);
 
-    if (bary.x < EPSILON || bary.y < EPSILON || bary.z < EPSILON) {
+    if (bary.x < -EPSILON || bary.y < -EPSILON || bary.z < -EPSILON) {
       continue;
     }
 
-    hit->point = add(position, rotate(p, rotation));
-    hit->normal = normalize(rotate(n, rotation));
-    hit->distance = t;
-
-    return true;
+    has_hit = true;
+    closest_distance = t;
+    closest_point = p;
+    normal = n;
   }
 
-  return false;
+  if (!has_hit) {
+    return false;
+  }
+
+  hit->point = add(position, rotate(closest_point, rotation));
+  hit->normal = normalize(rotate(normal, rotation));
+  hit->distance = closest_distance;
+
+  return true;
 }
 
 static count_t raycast_bodies(const bnd_world *world, bnd_body_type type, v3 origin, v3 direction, float max_distance,
