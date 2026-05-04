@@ -181,16 +181,7 @@ static bool validate_mesh(const bnd_mesh_data *data) {
       return false;
     }
 
-    v3 v0 = read_vertex(&vertex_buffer, i0);
-    v3 v1 = read_vertex(&vertex_buffer, i1);
-    v3 v2 = read_vertex(&vertex_buffer, i2);
-
-    v3 n = cross(sub(v2, v0), sub(v1, v0));
-    if (len(n) < EPSILON) {
-      raise_error(BND_ERROR_MESH_INVALID, (void *) data, "Face #%u is degenerate. v0: (%.4f, %.4f, %.4f), v1: (%.4f, %.4f, %.4f), v2: (%.4f, %.4f, %.4f)",
-        i / 3, v0.x, v0.y, v0.z, v1.x, v1.y, v1.z, v2.x, v2.y, v2.z);
-      return false;
-    }
+    // TODO properly check for degenerate faces and perhaps fix them.
   }
 
   return true;

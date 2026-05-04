@@ -26,12 +26,12 @@ void scenario_setup_scene(bnd_world *world) {
   bnd_mesh_handle cone, cylinder, torus;
   bnd_body b;
   if (import_raylib_mesh(world, rl_meshes[0], &cone)) {
-    b = bnd_add_mesh_static(world, cone);
+    b = bnd_add_mesh_dynamic(world, 5, cone);
     *b.position = vec3(1.5, 7, 0);
   }
 
   if (import_raylib_mesh(world, rl_meshes[1], &cylinder)) {
-    b = bnd_add_mesh_static(world, cylinder);
+    b = bnd_add_mesh_dynamic(world, 5, cylinder);
     *b.position = vec3(-1, 7, 0);
   }
 
@@ -53,7 +53,7 @@ void scenario_handle_input(bnd_world *world, Camera *camera) {
   }
 }
 
-void scenario_simulate(bnd_world *world, float dt) {}
+void scenario_simulate(bnd_world *world, float dt) { bnd_simulate(world, dt); }
 
 void scenario_draw_scene(bnd_world *world) {
   if (!has_hit) {
