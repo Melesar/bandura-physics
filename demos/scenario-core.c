@@ -182,7 +182,7 @@ static bnd_mesh_data raylib_mesh_to_bnd(Mesh m) {
     data.index_buffer.stride = 0;
 
     for (int i = 0; i < m.triangleCount; ++i) {
-      buffer[3 * i + 0] = 3 * i;
+      buffer[3 * i + 0] = 3 * i + 0;
       buffer[3 * i + 1] = 3 * i + 1;
       buffer[3 * i + 2] = 3 * i + 2;
     }
