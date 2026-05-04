@@ -9,7 +9,7 @@ typedef struct {
   v3 axis[3];
 } collision_box;
 
-static v3 body_center(v3 shape_offset, quat global_rotation, v3 body_position) {
+static v3 body_center_ex(v3 shape_offset, quat global_rotation, v3 body_position) {
   v3 center = shape_offset;
   center = rotate(center, global_rotation);
   center = add(center, body_position);
@@ -17,19 +17,27 @@ static v3 body_center(v3 shape_offset, quat global_rotation, v3 body_position) {
   return center;
 }
 
-static quat body_rotation(const support_context *ctx) {
+static v3 body_a_center(const collision_detection_context *ctx) {
+  return body_center_ex(ctx->shape_a.offset, ctx->data_a->rotations[ctx->body_a], ctx->data_a->positions[ctx->body_a]);
+}
+
+v3 body_center(const shape_context *ctx) {
+  return body_center_ex(ctx->shape.offset, ctx->data->rotations[ctx->index], ctx->data->positions[ctx->index]);
+}
+
+quat body_rotation(const shape_context *ctx) {
   return qmul(ctx->data->rotations[ctx->index], ctx->shape.rotation);
 }
 
-static v3 sphere_support(const support_context *ctx, v3 direction) {
+static v3 sphere_support(const shape_context *ctx, v3 direction) {
   v3 center = add(ctx->data->positions[ctx->index], ctx->shape.offset);
   float radius = ctx->shape.sphere.radius;
 
   return add(center, scale(direction, radius));
 }
 
-static v3 box_support(const support_context *ctx, v3 direction) {
-  v3 center = body_center(ctx->shape.offset, ctx->data->rotations[ctx->index], ctx->data->positions[ctx->index]);
+static v3 box_support(const shape_context *ctx, v3 direction) {
+  v3 center = body_center(ctx);
   quat rotation = body_rotation(ctx);
   quat inv_rotation = qinvert(rotation);
 
@@ -44,8 +52,8 @@ static v3 box_support(const support_context *ctx, v3 direction) {
   return v;
 }
 
-static v3 cylinder_support(const support_context *ctx, v3 direction) {
-  v3 center = body_center(ctx->shape.offset, ctx->data->rotations[ctx->index], ctx->data->positions[ctx->index]);
+static v3 cylinder_support(const shape_context *ctx, v3 direction) {
+  v3 center = body_center(ctx);
   quat rotation = body_rotation(ctx);
   quat inv_rotation = qinvert(rotation);
 
@@ -70,12 +78,12 @@ static v3 cylinder_support(const support_context *ctx, v3 direction) {
   return v;
 }
 
-static v3 mesh_support(const support_context *ctx, v3 direction) {
+static v3 mesh_support(const shape_context *ctx, v3 direction) {
   const mesh_storage *meshes = &ctx->world->meshes;
   const bnd_mesh_handle mesh_handle = ctx->shape.mesh;
 
   quat rotation = body_rotation(ctx);
-  v3 position = body_center(ctx->shape.offset, ctx->data->rotations[ctx->index], ctx->data->positions[ctx->index]);
+  v3 position = body_center(ctx);
   v3 local_direction = rotate(direction, qinvert(rotation));
 
   bnd_mesh mesh = meshes->meshes[mesh_handle];
@@ -110,8 +118,8 @@ static v3 mesh_support(const support_context *ctx, v3 direction) {
 support_func support_functions[] = { box_support, sphere_support, cylinder_support, mesh_support };
 
 support_point support(const collision_detection_context *ctx, v3 direction) {
-  support_context sa = { ctx->world, ctx->data_a, ctx->shape_a, ctx->body_a };
-  support_context sb = { ctx->world, ctx->data_b, ctx->shape_b, ctx->body_b };
+  shape_context sa = { ctx->world, ctx->data_a, ctx->shape_a, ctx->body_a };
+  shape_context sb = { ctx->world, ctx->data_b, ctx->shape_b, ctx->body_b };
 
   support_point result;
   result.v1 = support_functions[ctx->shape_a.type](&sa, direction);
@@ -119,10 +127,6 @@ support_point support(const collision_detection_context *ctx, v3 direction) {
   result.v = sub(result.v1, result.v2);
 
   return result;
-}
-
-static v3 collision_detection_body_center(const collision_detection_context *ctx) {
-  return body_center(ctx->shape_a.offset, ctx->data_a->rotations[ctx->body_a], ctx->data_a->positions[ctx->body_a]);
 }
 
 static contact *new_contact(bnd_world *world, const collision_detection_context *ctx) {
@@ -157,7 +161,7 @@ static count_t box_plane_collision(bnd_world *world, const collision_detection_c
   quat box_rotation = ctx->data_a->rotations[ctx->body_a];
   quat shape_rotation = ctx->shape_a.rotation;
 
-  v3 box_center = collision_detection_body_center(ctx);
+  v3 box_center = body_a_center(ctx);
   v3 extents = scale(ctx->shape_a.box.size, 0.5);
 
   v3 plane_normal = ctx->shape_b.plane.normal;
@@ -197,7 +201,7 @@ static count_t box_plane_collision(bnd_world *world, const collision_detection_c
 }
 
 static count_t sphere_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
-  v3 sphere_center = collision_detection_body_center(ctx);
+  v3 sphere_center = body_a_center(ctx);
   float sphere_radius = ctx->shape_a.sphere.radius;
 
   v3 plane_point = ctx->data_b->positions[ctx->body_b];
@@ -222,7 +226,7 @@ static count_t cylinder_plane_collision(bnd_world *world, const collision_detect
   quat global_rotation = ctx->data_a->rotations[ctx->body_a];
   quat shape_rotation = ctx->shape_a.rotation;
 
-  v3 cylinder_center = collision_detection_body_center(ctx);
+  v3 cylinder_center = body_a_center(ctx);
   float cylinder_radius = ctx->shape_a.cylinder.radius;
   float cylinder_half_height = ctx->shape_a.cylinder.height * 0.5f;
 
@@ -262,8 +266,7 @@ static count_t mesh_plane_collision(bnd_world *world, const collision_detection_
   v3 plane_point = ctx->data_b->positions[ctx->body_b];
   v3 plane_normal = ctx->shape_b.plane.normal;
 
-  v3 mesh_center =
-      body_center(ctx->shape_a.offset, ctx->data_a->rotations[ctx->body_a], ctx->data_a->positions[ctx->body_a]);
+  v3 mesh_center = body_a_center(ctx);
   quat mesh_rotation = qmul(ctx->data_a->rotations[ctx->body_a], ctx->shape_a.rotation);
   quat inv_mesh_rotation = qinvert(mesh_rotation);
 

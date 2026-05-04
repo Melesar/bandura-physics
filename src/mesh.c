@@ -32,57 +32,6 @@ static void ensure_meshes_capacity(mesh_storage *meshes) {
   meshes->volumes = realloc(meshes->volumes, meshes->mesh_capacity * sizeof(float));
 }
 
-static void import_verticies(const bnd_mesh_buffer *buffer, mesh_storage *meshes, v3 com) {
-  count_t new_count = buffer->elements_count + meshes->vertex_count;
-  resize_buffer((void **)&meshes->verticies, new_count, &meshes->vertex_capacity, sizeof(v3));
-
-  v3 *src = buffer->buffer;
-  v3 *dest = &meshes->verticies[meshes->vertex_count];
-  for (count_t i = 0; i < buffer->elements_count; ++i) {
-    dest[i] = sub(src[i], com);
-  }
-}
-
-static void import_indicies(const bnd_mesh_buffer *buffer, mesh_storage *meshes) {
-  const uint32_t target_size = sizeof(uint32_t);
-
-  count_t new_count = meshes->index_count + buffer->elements_count;
-  resize_buffer((void **)&meshes->indicies, new_count, &meshes->index_capacity, target_size);
-
-  count_t target_stride = 0;
-  if (buffer->element_size < target_size) {
-    target_stride = target_size - buffer->element_size;
-  }
-
-  uint8_t *to = (uint8_t *)meshes->indicies;
-  to += meshes->index_count * target_size;
-
-  if (buffer->stride == 0 && target_stride == 0) {
-    memcpy(to, buffer->buffer, buffer->elements_count * buffer->element_size);
-  } else {
-    memset(to, 0, buffer->elements_count * target_size);
-
-    uint8_t *from = (uint8_t *)buffer->buffer;
-    for (count_t i = 0; i < buffer->elements_count; ++i) {
-      memcpy(to, from, buffer->element_size);
-
-      from += buffer->element_size + buffer->stride;
-      to += target_size;
-    }
-  }
-
-  meshes->index_count += buffer->elements_count;
-}
-
-static float tetr_inertia_moment(m3 m, count_t i) {
-  return m.m0[i] * m.m0[i] + m.m1[i] * m.m2[i] + m.m1[i] * m.m1[i] + m.m0[i] * m.m2[i] + m.m2[i] * m.m2[i] +
-         m.m0[i] * m.m1[i];
-}
-
-static float tetr_inertia_product(m3 m, count_t i, count_t j) {
-  return 2.0 * m.m0[i] * m.m0[j] + m.m1[i] * m.m2[j] + m.m2[i] * m.m1[j] + 2.0 * m.m1[i] * m.m1[j] + m.m0[i] * m.m2[j] +
-         m.m2[i] * m.m0[j] + 2.0 * m.m2[i] * m.m2[j] + m.m0[i] * m.m1[j] + m.m1[i] * m.m0[j];
-}
 
 static v3 read_vertex(const bnd_mesh_buffer *buffer, count_t i) {
   v3 vertex = zero();
@@ -117,6 +66,42 @@ static uint32_t read_index(const bnd_mesh_buffer *buffer, count_t i) {
     default:
       return 0;
   }
+}
+
+static void import_verticies(const bnd_mesh_buffer *buffer, mesh_storage *meshes, v3 com) {
+  count_t new_count = buffer->elements_count + meshes->vertex_count;
+  resize_buffer((void **)&meshes->verticies, new_count, &meshes->vertex_capacity, sizeof(v3));
+
+  v3 *dest = &meshes->verticies[meshes->vertex_count];
+  for (count_t i = 0; i < buffer->elements_count; ++i) {
+    v3 v = read_vertex(buffer, i);
+    dest[i] = sub(v, com);
+  }
+
+  meshes->vertex_count = new_count;
+}
+
+static void import_indicies(const bnd_mesh_buffer *buffer, mesh_storage *meshes) {
+  count_t new_count = meshes->index_count + buffer->elements_count;
+  resize_buffer((void **)&meshes->indicies, new_count, &meshes->index_capacity, sizeof(uint32_t));
+
+  uint32_t *dest = &meshes->indicies[meshes->index_count];
+  for (count_t i = 0; i < buffer->elements_count; ++i) {
+    uint32_t index = read_index(buffer, i);
+    dest[i] = index + meshes->index_count;
+  }
+
+  meshes->index_count = new_count;
+}
+
+static float tetr_inertia_moment(m3 m, count_t i) {
+  return m.m0[i] * m.m0[i] + m.m1[i] * m.m2[i] + m.m1[i] * m.m1[i] + m.m0[i] * m.m2[i] + m.m2[i] * m.m2[i] +
+         m.m0[i] * m.m1[i];
+}
+
+static float tetr_inertia_product(m3 m, count_t i, count_t j) {
+  return 2.0 * m.m0[i] * m.m0[j] + m.m1[i] * m.m2[j] + m.m2[i] * m.m1[j] + 2.0 * m.m1[i] * m.m1[j] + m.m0[i] * m.m2[j] +
+         m.m2[i] * m.m0[j] + 2.0 * m.m2[i] * m.m2[j] + m.m0[i] * m.m1[j] + m.m1[i] * m.m0[j];
 }
 
 static bool is_mesh_convex(const bnd_mesh_data *data) {

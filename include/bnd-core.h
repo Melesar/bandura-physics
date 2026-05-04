@@ -180,9 +180,9 @@ typedef struct {
   const common_data *data;
   bnd_body_shape shape;
   count_t index;
-} support_context;
+} shape_context;
 
-typedef v3 (*support_func)(const support_context *, v3);
+typedef v3 (*support_func)(const shape_context *, v3);
 
 void raise_error(bnd_error type, void *data, const char *template, ...);
 
@@ -231,5 +231,8 @@ support_point support(const collision_detection_context *ctx, v3 direction);
 
 float distance_to_triangle(v3 from, v3 a, v3 b, v3 c, v3 *closest);
 float distance_to_line_segment(v3 from, v3 a, v3 b, v3 *closest);
+
+v3 body_center(const shape_context *ctx);
+quat body_rotation(const shape_context *ctx);
 
 #endif
