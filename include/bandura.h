@@ -84,6 +84,7 @@ typedef uint32_t count_t;
 
 typedef enum {
   BND_ERROR_INVALID_POLYTOPE,
+  BND_ERROR_MESH_INVALID,
   BND_ERROR_MESH_IS_CONCAVE,
 } bnd_error;
 
@@ -279,7 +280,7 @@ BNDAPI m3 bnd_get_base_inertia(const bnd_world *world, bnd_body_handle handle);
 BNDAPI float bnd_get_motion_avg(const bnd_world *world, bnd_body_handle handle);
 BNDAPI count_t bnd_get_contacts(const bnd_world *world, bnd_contact *contacts, count_t max_contacts);
 
-BNDAPI bnd_mesh_handle bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, v3 *center_of_mass);
+BNDAPI bool bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, bnd_mesh_handle *handle, v3 *center_of_mass);
 
 BNDAPI void bnd_enumerate_bodies_typed(const bnd_world *world, bnd_body_type type, bnd_body_enumerator_typed *enumerator);
 BNDAPI bool bnd_body_next_typed(const bnd_world *world, bnd_body_enumerator_typed *enumerator);

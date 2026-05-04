@@ -54,7 +54,7 @@ typedef bnd_body_handle *ragdoll;
 int register_gizmo(Vector3 *pos, Quaternion *rot);
 void unregister_gizmo(int id);
 
-bnd_mesh_handle import_raylib_mesh(bnd_world *world, Mesh mesh);
+bool import_raylib_mesh(bnd_world *world, Mesh mesh, bnd_mesh_handle *handle);
 void register_mesh_for_rendering(bnd_mesh_handle handle, Mesh mesh);
 
 void draw_arrow(Vector3 start, Vector3 direction, Color color);

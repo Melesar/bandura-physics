@@ -191,10 +191,12 @@ static bnd_mesh_data raylib_mesh_to_bnd(Mesh m) {
   return data;
 }
 
-bnd_mesh_handle import_raylib_mesh(bnd_world *world, Mesh mesh) {
+bool import_raylib_mesh(bnd_world *world, Mesh mesh, bnd_mesh_handle *handle) {
   v3 com;
   bnd_mesh_data data = raylib_mesh_to_bnd(mesh);
-  bnd_mesh_handle handle = bnd_import_mesh(world, &data, &com);
+  if (!bnd_import_mesh(world, &data, handle, &com)) {
+    return false;
+  }
 
   for (int i = 0; i < mesh.vertexCount; ++i) {
     mesh.vertices[3 * i] = mesh.vertices[3 * i] - com.x;
@@ -205,7 +207,7 @@ bnd_mesh_handle import_raylib_mesh(bnd_world *world, Mesh mesh) {
   UpdateMeshBuffer(
       mesh, RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION, mesh.vertices, mesh.vertexCount * 3 * sizeof(float), 0);
 
-  register_mesh_for_rendering(handle, mesh);
+  register_mesh_for_rendering(*handle, mesh);
 
-  return handle;
+  return true;
 }

@@ -1,11 +1,10 @@
+#include "bandura.h"
 #include "bnd-core.h"
 #include <stdlib.h>
 #include <string.h>
 
 #define DEFAULT_VERTEX_PER_MESH 512
 #define DEFAULT_FACE_PER_MESH 256
-
-static bool is_mesh_convex(const bnd_mesh_data *data) { return true; }
 
 static void resize_buffer(void **buffer, count_t count, count_t *capacity, count_t element_size) {
   if (count <= *capacity) {
@@ -120,6 +119,48 @@ static uint32_t read_index(const bnd_mesh_buffer *buffer, count_t i) {
   }
 }
 
+static bool is_mesh_convex(const bnd_mesh_data *data) {
+  for (count_t i = 0; i + 2 < data->index_buffer.elements_count; i += 3) {
+    count_t i0 = read_index(&data->index_buffer, i + 0);
+    count_t i1 = read_index(&data->index_buffer, i + 1);
+    count_t i2 = read_index(&data->index_buffer, i + 2);
+
+    v3 v0 = read_vertex(&data->vertex_buffer, i0);
+    v3 v1 = read_vertex(&data->vertex_buffer, i1);
+    v3 v2 = read_vertex(&data->vertex_buffer, i2);
+
+    v3 n = cross(sub(v2, v0), sub(v1, v0));
+    float d = -dot(n, v2);
+
+    bool has_sign = false;
+    float s = 0;
+    for (count_t j = 0; j < data->vertex_buffer.elements_count; ++j) {
+      if (j == i0 || j == i1 || j == i2) {
+        continue;
+      }
+
+      v3 v = read_vertex(&data->vertex_buffer, j);
+      float sv = dot(n, v) + d;
+      if (fabsf(sv) < EPSILON) {
+        continue;
+      }
+
+      if (!has_sign) {
+        s = sv;
+        has_sign = true;
+      } else if ((sv < 0 && s > 0) || (sv > 0 && s < 0)) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+static bool validate_mesh(const bnd_mesh_data *data) {
+  return true;
+}
+
 static void calculate_mass_properties(const bnd_mesh_data *data, m3 *inertia, v3 *com, float *volume) {
   /**
    * This function is a rewrite of SkComputeInertia3x3 from
@@ -214,9 +255,14 @@ void meshes_teardown(bnd_world *world) {
   free(meshes.volumes);
 }
 
-bnd_mesh_handle bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, v3 *center_of_mass) {
+bool bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, bnd_mesh_handle *handle, v3 *center_of_mass) {
+  if (!validate_mesh(data)) {
+    return false;
+  }
+
   if (!is_mesh_convex(data)) {
     raise_error(BND_ERROR_MESH_IS_CONCAVE, NULL, "Concave meshes are not properly supported at the moment");
+    return false;
   }
 
   m3 inertia;
@@ -240,10 +286,10 @@ bnd_mesh_handle bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, v3 
   count_t submesh_offset = meshes->submesh_count++;
   meshes->submeshes[submesh_offset] = sm;
 
-  bnd_mesh_handle handle = meshes->mesh_count++;
-  meshes->meshes[handle] = (bnd_mesh){ submesh_offset, 1 };
-  meshes->inertias[handle] = inertia;
-  meshes->volumes[handle] = volume;
+  *handle = meshes->mesh_count++;
+  meshes->meshes[*handle] = (bnd_mesh){ submesh_offset, 1 };
+  meshes->inertias[*handle] = inertia;
+  meshes->volumes[*handle] = volume;
 
-  return handle;
+  return true;
 }
