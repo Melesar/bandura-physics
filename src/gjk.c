@@ -1,9 +1,10 @@
 #include "bnd-core.h"
+#include <math.h>
 #include <float.h>
 
 #define TOLERANCE FLT_EPSILON
 
-const v3 initial_direction = vec3(1, 0, 0);
+const v3 initial_direction = (v3){ 1, 0, 0 };
 
 inline static int sign(float x) {
   if (fabsf(x) < TOLERANCE) {
@@ -159,13 +160,13 @@ static bool simplex_update(simplex *s, v3 *direction) {
 
 bool gjk_check_intersection_bodies(bnd_world *world, bnd_body_handle body_1, bnd_body_handle body_2, simplex *simplex) {
   count_t n;
-  collision_detection_context ctx = {
-      .data_a = body_1.type == BND_DYNAMIC ? (common_data *)&world->dynamics : &world->statics,
-      .data_b = body_2.type == BND_DYNAMIC ? (common_data *)&world->dynamics : &world->statics,
-      .body_a = handle_to_inner_index(world, body_1),
-      .body_b = handle_to_inner_index(world, body_2),
-      .shape_a = bnd_get_shapes(world, body_1, &n)[0],
-      .shape_b = bnd_get_shapes(world, body_2, &n)[0]};
+  collision_detection_context ctx = { .data_a = body_1.type == BND_DYNAMIC ? (common_data *)&world->dynamics
+                                                                           : &world->statics,
+    .data_b = body_2.type == BND_DYNAMIC ? (common_data *)&world->dynamics : &world->statics,
+    .body_a = handle_to_inner_index(world, body_1),
+    .body_b = handle_to_inner_index(world, body_2),
+    .shape_a = bnd_get_shapes(world, body_1, &n)[0],
+    .shape_b = bnd_get_shapes(world, body_2, &n)[0] };
 
   return gjk_check_intersection(world, &ctx, simplex);
 }

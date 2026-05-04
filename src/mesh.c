@@ -2,6 +2,7 @@
 #include "bnd-core.h"
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #define DEFAULT_VERTEX_PER_MESH 512
 #define DEFAULT_FACE_PER_MESH 256
@@ -31,7 +32,6 @@ static void ensure_meshes_capacity(mesh_storage *meshes) {
   meshes->inertias = realloc(meshes->inertias, meshes->mesh_capacity * sizeof(m3));
   meshes->volumes = realloc(meshes->volumes, meshes->mesh_capacity * sizeof(float));
 }
-
 
 static v3 read_vertex(const bnd_mesh_buffer *buffer, count_t i) {
   v3 vertex = zero();
@@ -145,28 +145,32 @@ static bool is_mesh_convex(const bnd_mesh_data *data) {
 static bool validate_mesh(const bnd_mesh_data *data) {
   bnd_mesh_buffer index_buffer = data->index_buffer;
   if (index_buffer.buffer == NULL) {
-    raise_error(BND_ERROR_MESH_INVALID, (void *) data, "Mesh index buffer is NULL");
+    raise_error(BND_ERROR_MESH_INVALID, (void *)data, "Mesh index buffer is NULL");
     return false;
   }
 
   if (index_buffer.element_size != 1 && index_buffer.element_size != 2 && index_buffer.element_size != 4) {
-    raise_error(BND_ERROR_MESH_INVALID, (void *) data, "Unsupported index buffer element size. Supported sizes are 1, 2 or 4 bytes");
+    raise_error(BND_ERROR_MESH_INVALID, (void *)data,
+        "Unsupported index buffer element size. Supported sizes are 1, 2 or 4 bytes");
     return false;
   }
 
   if (index_buffer.elements_count == 0) {
-    raise_error(BND_ERROR_MESH_INVALID, (void *) data, "Mesh index buffer is empty");
+    raise_error(BND_ERROR_MESH_INVALID, (void *)data, "Mesh index buffer is empty");
     return false;
   }
 
   if (index_buffer.elements_count % 3 != 0) {
-    raise_error(BND_ERROR_MESH_INVALID, (void *)data, "Mesh contains %u indicies (non-divisible by 3)", index_buffer.elements_count);
+    raise_error(BND_ERROR_MESH_INVALID, (void *)data, "Mesh contains %u indicies (non-divisible by 3)",
+        index_buffer.elements_count);
     return false;
   }
 
   bnd_mesh_buffer vertex_buffer = data->vertex_buffer;
   if (vertex_buffer.element_size != 3 * sizeof(float)) {
-    raise_error(BND_ERROR_MESH_INVALID, (void *) data, "Vertex buffer is required to have elements composed of 3 floats. Current element size: %u", vertex_buffer.element_size);
+    raise_error(BND_ERROR_MESH_INVALID, (void *)data,
+        "Vertex buffer is required to have elements composed of 3 floats. Current element size: %u",
+        vertex_buffer.element_size);
     return false;
   }
 
@@ -177,7 +181,9 @@ static bool validate_mesh(const bnd_mesh_data *data) {
     count_t i2 = read_index(&index_buffer, i + 2);
 
     if (i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count) {
-      raise_error(BND_ERROR_MESH_INVALID, (void *) data, "Face #%u contains index which is out of bounds: (%u, %u, %u) while vertex count is %u", i / 3, i0, i1, i2, vertex_count);
+      raise_error(BND_ERROR_MESH_INVALID, (void *)data,
+          "Face #%u contains index which is out of bounds: (%u, %u, %u) while vertex count is %u", i / 3, i0, i1, i2,
+          vertex_count);
       return false;
     }
 
@@ -287,7 +293,7 @@ bool bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, bnd_mesh_handl
   }
 
   if (!is_mesh_convex(data)) {
-    raise_error(BND_ERROR_MESH_IS_CONCAVE, (void *) data, "Concave meshes are not properly supported at the moment");
+    raise_error(BND_ERROR_MESH_IS_CONCAVE, (void *)data, "Concave meshes are not properly supported at the moment");
     return false;
   }
 

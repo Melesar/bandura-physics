@@ -2,6 +2,7 @@
 #define CORE_H
 
 #include "raylib.h"
+#include "raymath.h"
 #include "bandura.h"
 #include "clay.h"
 
@@ -29,8 +30,8 @@
 typedef struct {
   char *window_title;
   bool draw_ground;
-  Vector3 camera_position;
-  Vector3 camera_target;
+  v3 camera_position;
+  v3 camera_target;
 } program_config;
 
 typedef enum {
@@ -57,7 +58,7 @@ void unregister_gizmo(int id);
 bool import_raylib_mesh(bnd_world *world, Mesh mesh, bnd_mesh_handle *handle);
 void register_mesh_for_rendering(bnd_mesh_handle handle, Mesh mesh);
 
-void draw_arrow(Vector3 start, Vector3 direction, Color color);
+void draw_arrow(v3 start, v3 direction, Color color);
 
 void draw_model_with_wireframe(Model model, Vector3 position, float scale, Color color);
 
@@ -93,4 +94,12 @@ void ui_checkbox(const char *label, bool *is_checked);
 bool ui_dropdown(const char *label, char **values, count_t values_count, count_t *selected, bool *active);
 
 Clay_Color ui_text_color(int control);
+
+quat ray_quat(Quaternion q);
+v3 ray_vec(Vector3 x);
+
+Vector3 vec_ray(v3 v);
+Quaternion quat_ray(quat q);
+
+
 #endif
