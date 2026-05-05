@@ -9,14 +9,12 @@ const Options = struct {
     profiling: bool,
     installTests: bool,
     includeDemos: bool,
-    collisionsDebug: bool,
 
     fn getOptions(b: *std.Build) Options {
         return .{
             .profiling = b.option(bool, "profiling", "Enable profiling") orelse false,
             .installTests = b.option(bool, "install-tests", "Install tests binary") orelse false,
             .includeDemos = b.option(bool, "include-demos", "Build demo projects") orelse true,
-            .collisionsDebug = b.option(bool, "collisions-debug", "DJK debug") orelse false,
         };
     }
 };
@@ -230,9 +228,6 @@ fn libraryFlags(b: *std.Build, options: Options, target: std.Target, optimize: s
     if (options.profiling)
         try flags.append(b.allocator, "-DBND_PROFILING");
 
-    if (options.collisionsDebug)
-        try flags.append(b.allocator, "-DCOLLISIONS_DEBUG");
-
     try flags.append(b.allocator, "-fvisibility=hidden");
 
     return flags.toOwnedSlice(b.allocator);
@@ -254,7 +249,7 @@ fn compilerFlags(b: *std.Build, target: std.Target, optimize: std.builtin.Optimi
 
     switch (optimize) {
         .Debug => {
-            try flags.appendSlice(b.allocator, &.{ "-g", "-O0", "-DDEBUG_MODE" });
+            try flags.appendSlice(b.allocator, &.{ "-g", "-O0", "-DBND_DEBUG" });
         },
 
         .ReleaseSafe => {
@@ -273,7 +268,7 @@ fn compilerFlags(b: *std.Build, target: std.Target, optimize: std.builtin.Optimi
     if (optimize == .Debug or optimize == .ReleaseSafe) {
         try sanitizers.append(b.allocator, "float-divide-by-zero");
 
-        if (target.os.tag != .macos or target.cpu.arch != .aarch64) {
+        if ((target.os.tag != .macos or target.cpu.arch != .aarch64) and target.os.tag != .windows) {
             try sanitizers.append(b.allocator, "leak");
         }
     }
