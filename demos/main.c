@@ -188,30 +188,31 @@ static void draw_physics_bodies_typed(bnd_body_type type) {
     count_t shapes_count;
     bnd_body_shape *shapes = bnd_get_shapes(world, enumerator.handle, &shapes_count);
 
-    m4 scale;
-    m4 transform = MatrixMultiply(QuaternionToMatrix(rotation), MatrixTranslate(position.x, position.y, position.z));
+    Matrix scale;
+    Matrix transform =
+        MatrixMultiply(QuaternionToMatrix(quat_ray(rotation)), MatrixTranslate(position.x, position.y, position.z));
     Material material = materials[enumerator.handle.index % 20];
 
     for (count_t k = 0; k < shapes_count; ++k) {
       bnd_body_shape shape = shapes[k];
-      m4 shape_transform =
-          mul(as_matrix(shape.rotation), MatrixTranslate(shape.offset.x, shape.offset.y, shape.offset.z));
-      m4 full_transform = mul(shape_transform, transform);
+      Matrix shape_transform = MatrixMultiply(QuaternionToMatrix(quat_ray(shape.rotation)),
+          MatrixTranslate(shape.offset.x, shape.offset.y, shape.offset.z));
+      Matrix full_transform = MatrixMultiply(shape_transform, transform);
 
       switch (shape.type) {
         case BND_BOX:
           scale = MatrixScale(shape.box.size.x, shape.box.size.y, shape.box.size.z);
-          DrawMesh(meshes[BND_BOX], material, mul(scale, full_transform));
+          DrawMesh(meshes[BND_BOX], material, MatrixMultiply(scale, full_transform));
           break;
 
         case BND_SPHERE:
           scale = MatrixScale(shape.sphere.radius, shape.sphere.radius, shape.sphere.radius);
-          DrawMesh(meshes[BND_SPHERE], material, mul(scale, full_transform));
+          DrawMesh(meshes[BND_SPHERE], material, MatrixMultiply(scale, full_transform));
           break;
 
         case BND_CYLINDER:
           scale = MatrixScale(shape.cylinder.radius, shape.cylinder.height, shape.cylinder.radius);
-          DrawMesh(meshes[BND_CYLINDER], material, mul(scale, full_transform));
+          DrawMesh(meshes[BND_CYLINDER], material, MatrixMultiply(scale, full_transform));
           break;
 
         case BND_MESH:
@@ -319,8 +320,8 @@ static void update_camera(Camera *camera, float deltaTime) {
 
 static Camera setup_camera(program_config program_config) {
   Camera3D camera = { 0 };
-  camera.position = program_config.camera_position;
-  camera.target = program_config.camera_target;
+  camera.position = vec_ray(program_config.camera_position);
+  camera.target = vec_ray(program_config.camera_target);
   camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
   camera.fovy = 45.0f;
   camera.projection = CAMERA_PERSPECTIVE;

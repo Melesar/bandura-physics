@@ -2,6 +2,7 @@
 #include "bnd-core.h"
 #include "profiler.h"
 
+#include <math.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,8 +18,8 @@ static v3 cylinder_inertia(float radius, float height, float mass) {
 }
 
 static v3 sphere_inertia(float radius, float mass) {
-  float scale = 2.0 * mass * radius * radius / 5.0;
-  return scale(one(), scale);
+  float s = 2.0 * mass * radius * radius / 5.0;
+  return scale(one(), s);
 }
 
 static v3 box_inertia(v3 size, float mass) {

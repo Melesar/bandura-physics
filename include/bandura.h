@@ -4,81 +4,27 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define RAYMATH_DISABLE_CPP_OPERATORS
-#include "raymath.h"
-
 #if defined(_WIN32)
   #define BNDAPI __declspec(dllexport)
 #else
   #define BNDAPI __attribute((visibility("default")))
 #endif
 
-#define cross(x, y) Vector3CrossProduct(x, y)
-#define dot(x, y) Vector3DotProduct(x, y)
-#define add(x, y) Vector3Add(x, y)
-#define scale(x, y) Vector3Scale(x, y)
-#define normalize(x) Vector3Normalize(x)
-#define sub(x, y) Vector3Subtract(x, y)
-#define len(x) Vector3Length(x)
-#define lensq(x) Vector3LengthSqr(x)
-#define distance(x, y) Vector3Distance(x, y)
-#define distancesqr(x, y) Vector3DistanceSqr(x, y)
-#define vec3(x, y, z)                                                                                                  \
-  (v3) { x, y, z }
-#define zero() Vector3Zero()
-#define one() Vector3One()
-#define up() ((Vector3){0, 1, 0})
-#define right() ((Vector3){1, 0, 0})
-#define forward() ((Vector3){0, 0, 1})
-#define rotate(x, y) Vector3RotateByQuaternion(x, y)
-#define negate(x) Vector3Negate(x)
-#define transform(x, y) Vector3Transform(x, y)
-#define invert(x) Vector3Invert(x)
-#define barycentric(p, a, b, c) Vector3Barycenter(p, a, b, c)
+#define EPSILON 0.000001f
 
-#define qadd(x, y) QuaternionAdd(x, y)
-#define qscale(x, y) QuaternionScale(x, y)
-#define qmul(x, y) QuaternionMultiply(x, y)
-#define qnormalize(x) QuaternionNormalize(x)
-#define qinvert(x) QuaternionInvert(x)
-#define as_matrix(x) QuaternionToMatrix(x)
-#define qidentity() QuaternionIdentity()
+typedef struct {
+  float x, y, z;
+} v3;
 
-#define mul(x, y) MatrixMultiply(x, y)
-#define transpose(x) MatrixTranspose(x)
-#define translate(v) MatrixTranslate(v.x, v.y, v.z)
-#define inverse(x) MatrixInvert(x)
-#define m4identity(x) MatrixIdentity(x)
-
-#define vlerp(x, y, t) Vector3Lerp(x, y, t)
-#define lerp(x, y, t) Lerp(x, y, t)
-#define slerp(x, y, t) QuaternionSlerp(x, y, t)
-
-typedef Vector3 v3;
-typedef Vector4 v4;
-typedef Quaternion quat;
-typedef Matrix m4;
+typedef struct {
+  float x, y, z, w;
+} quat;
 
 typedef struct {
   float m0[3]; // Row 0
   float m1[3]; // Row 1
   float m2[3]; // Row 2
 } m3;
-
-BNDAPI m3 matrix_identity();
-BNDAPI m3 matrix_transpose(m3 m);
-BNDAPI m3 matrix_inverse(m3 m);
-BNDAPI m3 matrix_add(m3 a, m3 b);
-BNDAPI m3 matrix_multiply(m3 a, m3 b);
-BNDAPI m3 matrix_scale(m3 m, float s);
-BNDAPI m3 matrix_negate(m3 m);
-BNDAPI v3 matrix_rotate(v3 v, m3 m);
-BNDAPI v3 matrix_rotate_inverse(v3 v, m3 m);
-BNDAPI m3 matrix_from_basis(v3 x, v3 y, v3 z);
-BNDAPI m3 matrix_skew_symmetric(v3 v);
-BNDAPI m3 matrix_initial_inertia(v3 inertia);
-BNDAPI m3 matrix_inertia(m3 initial_inertia, quat rotation);
-BNDAPI m3 matrix_displacement_inertia(m3 i0, v3 offset, float mass);
 
 typedef uint32_t count_t;
 
@@ -293,4 +239,48 @@ BNDAPI count_t bnd_raycast(const bnd_world *world, v3 origin, v3 direction, floa
                         bnd_raycast_hit *hits);
 
 BNDAPI void bnd_teardown(bnd_world *world);
+
+BNDAPI v3 cross(v3 x, v3 y);
+BNDAPI float dot(v3 x, v3 y);
+BNDAPI v3 add(v3 x, v3 y);
+BNDAPI v3 scale(v3 x, float y);
+BNDAPI v3 normalize(v3 x);
+BNDAPI v3 sub(v3 x, v3 y);
+BNDAPI float len(v3 x);
+BNDAPI float lensq(v3 x);
+BNDAPI float distance(v3 x, v3 y);
+BNDAPI float distancesqr(v3 x, v3 y);
+BNDAPI v3 vec3(float x, float y, float z);
+
+BNDAPI v3 zero();
+BNDAPI v3 one();
+BNDAPI v3 up();
+BNDAPI v3 right();
+BNDAPI v3 forward();
+BNDAPI v3 rotate(v3 x, quat y);
+BNDAPI v3 negate(v3 x);
+BNDAPI v3 barycentric(v3 p, v3 a, v3 b, v3 c);
+
+BNDAPI quat qadd(quat x, quat y);
+BNDAPI quat qscale(quat x, float y);
+BNDAPI quat qmul(quat x, quat y);
+BNDAPI quat qnormalize(quat x);
+BNDAPI quat qinvert(quat x);
+BNDAPI quat qidentity();
+
+
+BNDAPI m3 matrix_identity();
+BNDAPI m3 matrix_transpose(m3 m);
+BNDAPI m3 matrix_inverse(m3 m);
+BNDAPI m3 matrix_add(m3 a, m3 b);
+BNDAPI m3 matrix_multiply(m3 a, m3 b);
+BNDAPI m3 matrix_scale(m3 m, float s);
+BNDAPI m3 matrix_negate(m3 m);
+BNDAPI v3 matrix_rotate(v3 v, m3 m);
+BNDAPI v3 matrix_rotate_inverse(v3 v, m3 m);
+BNDAPI m3 matrix_from_basis(v3 x, v3 y, v3 z);
+BNDAPI m3 matrix_skew_symmetric(v3 v);
+BNDAPI m3 matrix_initial_inertia(v3 inertia);
+BNDAPI m3 matrix_inertia(m3 initial_inertia, quat rotation);
+BNDAPI m3 matrix_displacement_inertia(m3 i0, v3 offset, float mass);
 #endif

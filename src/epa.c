@@ -1,6 +1,6 @@
-#include "bandura.h"
 #include "bnd-core.h"
-#include "raymath.h"
+
+#include <math.h>
 #include <string.h>
 #include <float.h>
 #include <stdlib.h>
@@ -443,7 +443,7 @@ static void epa_calculate_contact(const polytope *polytope, contact *contact) {
 
 static void epa_update_visible_faces(polytope *polytope, support_point p) {
   uint16_t stack_ptr = 1;
-  uint16_t stack[VISIBLE_FACES_STACK_SIZE] = {polytope->nearest};
+  uint16_t stack[VISIBLE_FACES_STACK_SIZE] = { polytope->nearest };
 
   polytope_node *face_node = &polytope->nodes[polytope->nearest];
   polytope->flags[polytope->nearest] |= FLAG_FOR_REMOVAL;
@@ -516,9 +516,9 @@ static bool epa_expand_polytope(polytope *polytope, support_point p) {
     uint16_t connected_vertex_index = edge_node->edge.verticies[1];
     while (connected_vertex_index != first_connected_vertex_index) {
       /**
-       * Sometimes, in rare cases, this routine might add a duplicate edge - the one which is identical to some other one.
-       * I saw this happen when spawning objects at the same position, so that they overlap.
-       * Need to investigate this further, but for now in this case we just bail out and return some bogus contact data.
+       * Sometimes, in rare cases, this routine might add a duplicate edge - the one which is identical to some other
+       * one. I saw this happen when spawning objects at the same position, so that they overlap. Need to investigate
+       * this further, but for now in this case we just bail out and return some bogus contact data.
        */
       uint16_t new_edge = polytope_add_edge(polytope, new_vertex, connected_vertex_index);
       if (polytope_add_face(polytope, prev_edge, new_edge, edge_index) == NIL) {
@@ -567,8 +567,8 @@ void epa_init(const bnd_config *config) {
   pt = polytope_init(memory, config->memory.epa_max_nodes);
 }
 
-void epa_get_contact(const collision_detection_context *ctx, const simplex *simplex, float tolerance,
-                     contact *contact) {
+void epa_get_contact(
+    const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact) {
   polytope_from_simplex(pt, simplex);
 
   count_t attempts = 0;

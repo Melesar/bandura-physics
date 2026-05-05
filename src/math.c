@@ -1,6 +1,119 @@
-#define RAYMATH_IMPLEMENTATION
 #include "bandura.h"
 #include <float.h>
+#include <math.h>
+
+v3 cross(v3 x, v3 y) { return vec3(x.y * y.z - x.z * y.y, x.z * y.x - x.x * y.z, x.x * y.y - x.y * y.x); }
+
+float dot(v3 x, v3 y) { return x.x * y.x + x.y * y.y + x.z * y.z; }
+
+v3 add(v3 x, v3 y) { return vec3(x.x + y.x, x.y + y.y, x.z + y.z); }
+
+v3 scale(v3 x, float y) { return vec3(x.x * y, x.y * y, x.z * y); }
+
+v3 normalize(v3 x) {
+  float l = len(x);
+  return l > EPSILON ? scale(x, 1.0 / l) : x;
+}
+
+v3 sub(v3 x, v3 y) { return vec3(x.x - y.x, x.y - y.y, x.z - y.z); }
+
+float len(v3 x) { return sqrtf(lensq(x)); }
+
+float lensq(v3 x) { return x.x * x.x + x.y * x.y + x.z * x.z; }
+
+float distance(v3 x, v3 y) { return len(sub(x, y)); }
+
+float distancesqr(v3 x, v3 y) { return lensq(sub(x, y)); }
+
+v3 vec3(float x, float y, float z) { return (v3){ x, y, z }; }
+
+v3 zero() { return vec3(0, 0, 0); }
+
+v3 one() { return vec3(1, 1, 1); }
+
+v3 up() { return vec3(0, 1, 0); }
+
+v3 right() { return vec3(1, 0, 0); }
+
+v3 forward() { return vec3(0, 0, 1); }
+
+v3 rotate(v3 v, quat q) {
+  v3 result;
+  result.x = v.x * (q.x * q.x + q.w * q.w - q.y * q.y - q.z * q.z) + v.y * (2 * q.x * q.y - 2 * q.w * q.z) +
+             v.z * (2 * q.x * q.z + 2 * q.w * q.y);
+  result.y = v.x * (2 * q.w * q.z + 2 * q.x * q.y) + v.y * (q.w * q.w - q.x * q.x + q.y * q.y - q.z * q.z) +
+             v.z * (-2 * q.w * q.x + 2 * q.y * q.z);
+  result.z = v.x * (-2 * q.w * q.y + 2 * q.x * q.z) + v.y * (2 * q.w * q.x + 2 * q.y * q.z) +
+             v.z * (q.w * q.w - q.x * q.x - q.y * q.y + q.z * q.z);
+
+  return result;
+}
+
+v3 negate(v3 x) { return vec3(-x.x, -x.y, -x.z); }
+
+v3 barycentric(v3 p, v3 a, v3 b, v3 c) {
+  v3 v0 = sub(b, a);
+  v3 v1 = sub(c, a);
+  v3 v2 = sub(p, a);
+
+  float d00 = dot(v0, v0);
+  float d01 = dot(v0, v1);
+  float d11 = dot(v1, v1);
+  float d20 = dot(v2, v0);
+  float d21 = dot(v2, v1);
+
+  float denom = d00 * d11 - d01 * d01;
+
+  float y = (d11 * d20 - d01 * d21) / denom;
+  float z = (d00 * d21 - d01 * d20) / denom;
+  float x = 1.0f - z - y;
+
+  return vec3(x, y, z);
+}
+
+quat qadd(quat x, quat y) { return (quat){ x.x + y.x, x.y + y.y, x.z + y.z, x.w + y.w }; }
+
+quat qscale(quat x, float y) { return (quat){ x.x * y, x.y * y, x.z * y, x.w * y }; }
+
+quat qmul(quat x, quat y) {
+  float qax = x.x, qay = x.y, qaz = x.z, qaw = x.w;
+  float qbx = y.x, qby = y.y, qbz = y.z, qbw = y.w;
+
+  quat result;
+  result.x = qax * qbw + qaw * qbx + qay * qbz - qaz * qby;
+  result.y = qay * qbw + qaw * qby + qaz * qbx - qax * qbz;
+  result.z = qaz * qbw + qaw * qbz + qax * qby - qay * qbx;
+  result.w = qaw * qbw - qax * qbx - qay * qby - qaz * qbz;
+
+  return result;
+}
+
+quat qnormalize(quat x) {
+  float length = sqrtf(x.x * x.x + x.y * x.y + x.z * x.z + x.w * x.w);
+  if (length == 0.0f)
+    length = 1.0f;
+  float ilength = 1.0f / length;
+
+  return qscale(x, ilength);
+}
+
+quat qinvert(quat x) {
+  quat result = x;
+  float lengthSq = x.x * x.x + x.y * x.y + x.z * x.z + x.w * x.w;
+
+  if (lengthSq != 0.0f) {
+    float invLength = 1.0f / lengthSq;
+
+    result.x *= -invLength;
+    result.y *= -invLength;
+    result.z *= -invLength;
+    result.w *= invLength;
+  }
+
+  return result;
+}
+
+quat qidentity() { return (quat){ 0, 0, 0, 1 }; }
 
 m3 matrix_identity() { return (m3){ { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } }; }
 
