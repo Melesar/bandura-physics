@@ -1,23 +1,25 @@
+#include "bandura.h"
 #include "bnd-core.h"
 #include "profiler.h"
 
+#include <math.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
-const count_t max_body_index = (count_t)~0 >> 9;
+extern count_t max_body_index;
 
-static void swap_bodies(physics_world *world, body_type type, count_t index_a, count_t index_b);
-static void move_body(physics_world *world, count_t src_index, count_t dst_index);
+static void swap_bodies(bnd_world *world, bnd_body_type type, count_t index_a, count_t index_b);
+static void move_body(bnd_world *world, count_t src_index, count_t dst_index);
 
 static v3 cylinder_inertia(float radius, float height, float mass) {
   float principal = mass * (3 * radius * radius + height * height) / 12.0;
-  return (v3){principal, mass * radius * radius / 2.0, principal};
+  return (v3){ principal, mass * radius * radius / 2.0, principal };
 }
 
 static v3 sphere_inertia(float radius, float mass) {
-  float scale = 2.0 * mass * radius * radius / 5.0;
-  return scale(one(), scale);
+  float s = 2.0 * mass * radius * radius / 5.0;
+  return scale(one(), s);
 }
 
 static v3 box_inertia(v3 size, float mass) {
@@ -26,27 +28,37 @@ static v3 box_inertia(v3 size, float mass) {
   float yy = size.y * size.y;
   float zz = size.z * size.z;
 
-  v3 i = {yy + zz, xx + zz, xx + yy};
+  v3 i = { yy + zz, xx + zz, xx + yy };
   return scale(i, m);
 }
 
-static v3 inertia_vector(body_shape shape, float mass) {
+static m3 mesh_inertia(const bnd_world *world, bnd_mesh_handle handle, float mass) {
+  m3 base_inertia = world->meshes.inertias[handle];
+  float scale = mass / world->meshes.volumes[handle];
+
+  return matrix_scale(base_inertia, scale);
+}
+
+static m3 inertia_matrix(const bnd_world *world, bnd_body_shape shape, float mass) {
   switch (shape.type) {
-    case SHAPE_BOX:
-      return box_inertia(shape.box.size, mass);
+    case BND_BOX:
+      return matrix_initial_inertia(box_inertia(shape.box.size, mass));
 
-    case SHAPE_SPHERE:
-      return sphere_inertia(shape.sphere.radius, mass);
+    case BND_SPHERE:
+      return matrix_initial_inertia(sphere_inertia(shape.sphere.radius, mass));
 
-    case SHAPE_CYLINDER:
-      return cylinder_inertia(shape.cylinder.radius, shape.cylinder.height, mass);
+    case BND_CYLINDER:
+      return matrix_initial_inertia(cylinder_inertia(shape.cylinder.radius, shape.cylinder.height, mass));
+
+    case BND_MESH:
+      return mesh_inertia(world, shape.mesh, mass);
 
     default:
-      return one();
+      return matrix_initial_inertia(one());
   }
 }
 
-static void clear_forces(physics_world *world) {
+static void clear_forces(bnd_world *world) {
   dynamic_bodies *dynamics = &world->dynamics;
 
   const count_t size = sizeof(v3) * dynamics->count;
@@ -57,19 +69,19 @@ static void clear_forces(physics_world *world) {
   memset(dynamics->accelerations, 0, size);
 }
 
-static void update_awake_statuses(physics_world *world, float dt) {
+static void update_awake_statuses(bnd_world *world, float dt) {
   dynamic_bodies *dynamics = &world->dynamics;
   if (dynamics->count == 0)
     return;
 
-  const float sleep_threshold = world->config.sleep_threshold;
+  const float sleep_threshold = world->config.simulation.sleep_threshold;
   count_t awake_count = dynamics->awake_count;
   for (count_t i = 0; i < awake_count; ++i) {
     v3 angular_velocity = matrix_rotate(dynamics->angular_momenta[i], dynamics->inv_intertias[i]);
 
     float current_motion = dynamics->motion_avgs[i];
     float new_motion = lensq(dynamics->velocities[i]) + lensq(angular_velocity);
-    float bias = powf(world->config.sleep_base_bias, dt);
+    float bias = powf(world->config.simulation.sleep_base_bias, dt);
 
     float motion = current_motion * bias + new_motion * (1 - bias);
     motion = fminf(motion, 10 * sleep_threshold);
@@ -91,7 +103,7 @@ static void update_awake_statuses(physics_world *world, float dt) {
     if (left >= awake_count || right <= awake_count - 1)
       break;
 
-    swap_bodies(world, BODY_DYNAMIC, left, right);
+    swap_bodies(world, BND_DYNAMIC, left, right);
   }
 
   for (count_t i = awake_count - 1; i >= left && i != (count_t)-1; --i) {
@@ -100,7 +112,7 @@ static void update_awake_statuses(physics_world *world, float dt) {
 
     count_t target_index = awake_count - 1;
     if (i != target_index)
-      swap_bodies(world, BODY_DYNAMIC, i, target_index);
+      swap_bodies(world, BND_DYNAMIC, i, target_index);
 
     dynamics->velocities[target_index] = dynamics->angular_momenta[target_index] = zero();
     awake_count -= 1;
@@ -112,7 +124,7 @@ static void update_awake_statuses(physics_world *world, float dt) {
 
     count_t target_index = awake_count;
     if (i != target_index)
-      swap_bodies(world, BODY_DYNAMIC, i, target_index);
+      swap_bodies(world, BND_DYNAMIC, i, target_index);
 
     awake_count += 1;
   }
@@ -120,8 +132,8 @@ static void update_awake_statuses(physics_world *world, float dt) {
   dynamics->awake_count = awake_count;
 }
 
-static void calculate_compound_shape_dynamic(body_shape *shapes, float *masses, count_t count, float *total_mass,
-                                             m3 *inertia) {
+static void calculate_compound_shape_dynamic(
+    const bnd_world *world, bnd_body_shape *shapes, float *masses, count_t count, float *total_mass, m3 *inertia) {
   *total_mass = 0;
   for (count_t i = 0; i < count; ++i) {
     *total_mass += masses[i];
@@ -129,7 +141,7 @@ static void calculate_compound_shape_dynamic(body_shape *shapes, float *masses, 
 
   v3 center_of_mass = zero();
   for (count_t i = 0; i < count; ++i) {
-    body_shape shape = shapes[i];
+    bnd_body_shape shape = shapes[i];
     float mass = masses[i];
 
     center_of_mass = add(center_of_mass, scale(shape.offset, mass / *total_mass));
@@ -139,12 +151,12 @@ static void calculate_compound_shape_dynamic(body_shape *shapes, float *masses, 
     shapes[i].offset = sub(shapes[i].offset, center_of_mass);
   }
 
-  *inertia = (m3){0};
+  *inertia = (m3){ 0 };
   for (count_t i = 0; i < count; ++i) {
-    body_shape shape = shapes[i];
+    bnd_body_shape shape = shapes[i];
     float mass = masses[i];
 
-    m3 body_inertia = matrix_initial_inertia(inertia_vector(shape, mass));
+    m3 body_inertia = inertia_matrix(world, shape, mass);
     body_inertia = matrix_inertia(body_inertia, shape.rotation);
     body_inertia = matrix_displacement_inertia(body_inertia, shape.offset, mass);
 
@@ -152,12 +164,12 @@ static void calculate_compound_shape_dynamic(body_shape *shapes, float *masses, 
   }
 }
 
-common_data *as_common(physics_world *world, body_type type) {
+common_data *as_common(bnd_world *world, bnd_body_type type) {
   switch (type) {
-    case BODY_DYNAMIC:
+    case BND_DYNAMIC:
       return (common_data *)&world->dynamics;
 
-    case BODY_STATIC:
+    case BND_STATIC:
       return (common_data *)&world->statics;
 
     default:
@@ -165,44 +177,20 @@ common_data *as_common(physics_world *world, body_type type) {
   }
 }
 
-const common_data *as_common_const(const physics_world *world, body_type type) {
-  return as_common((physics_world *)world, type);
+const common_data *as_common_const(const bnd_world *world, bnd_body_type type) {
+  return as_common((bnd_world *)world, type);
 }
 
-physics_config physics_default_config() {
-  return (physics_config){
-      .gravity = (v3){0, -9.81f, 0},
-      .dynamics_capacity = 32,
-      .statics_capacity = 8,
-      .contacts_capacity = 64,
-      .joints_capacity = 64,
-      .shapes_brackets_capacity = {64, 1, 1, 1, 1},
-      .linear_damping = 0.95,
-      .angular_damping = 0.8,
-      .restitution = 0.2,
-      .friction = 0.9,
-      .max_gjk_iterations = 100,
-      .epa_tolerance = 0.01,
-      .epa_max_nodes = 512,
-      .resolution_attempts_factor = 15,
-      .sleep_base_bias = 0.5,
-      .sleep_threshold = 0.3,
-      .penetration_epsilon = 0.01,
-      .velocity_epsilon = 0.01,
-      .restitution_damping_limit = 0.25,
-  };
-}
-
-body_handle make_body_handle(const physics_world *world, body_type type, count_t index) {
+bnd_body_handle make_body_handle(const bnd_world *world, bnd_body_type type, count_t index) {
   const common_data *data = as_common_const(world, type);
-  return (body_handle){
-      .type = type,
-      .generation = data->generations[index],
-      .index = data->inner_lookup[index],
+  return (bnd_body_handle){
+    .type = type,
+    .generation = data->generations[index],
+    .index = data->inner_lookup[index],
   };
 }
 
-count_t handle_to_inner_index(const physics_world *world, body_handle handle) {
+count_t handle_to_inner_index(const bnd_world *world, bnd_body_handle handle) {
   return as_common_const(world, handle.type)->outer_lookup[handle.index].index;
 }
 
@@ -241,20 +229,6 @@ void new_outer_lookup(common_data *data, outer_lookup_node *target_node, count_t
   target_node->next = next;
 }
 
-static void init_commons(common_data *data, count_t capacity) {
-  data->capacity = capacity;
-  data->count = 0;
-  data->free_count = 0;
-  data->first_outer_node = max_body_index;
-  data->positions = malloc(sizeof(v3) * capacity);
-  data->rotations = malloc(sizeof(quat) * capacity);
-  data->shapes = malloc(sizeof(body_shapes) * capacity);
-  data->free_list = malloc(sizeof(count_t) * capacity);
-  data->generations = malloc(sizeof(uint8_t) * capacity);
-  data->outer_lookup = malloc(sizeof(outer_lookup_node) * capacity);
-  data->inner_lookup = malloc(sizeof(count_t) * capacity);
-}
-
 static void realloc_commons(common_data *data) {
   data->capacity = data->capacity << 1;
   data->positions = realloc(data->positions, sizeof(v3) * data->capacity);
@@ -281,16 +255,6 @@ static void realloc_dynamics(dynamic_bodies *data) {
   data->motion_avgs = realloc(data->motion_avgs, sizeof(float) * data->capacity);
 }
 
-static void teardown_commons(common_data *data) {
-  free(data->positions);
-  free(data->rotations);
-  free(data->shapes);
-  free(data->free_list);
-  free(data->generations);
-  free(data->outer_lookup);
-  free(data->inner_lookup);
-}
-
 static shape_dimension_bracket get_shapes_bracket(count_t shapes_count) {
   assert(shapes_count <= (1 << (BRACKET_COUNT - 1)));
 
@@ -304,14 +268,14 @@ static shape_dimension_bracket get_shapes_bracket(count_t shapes_count) {
   return BRACKET_COUNT;
 }
 
-static void init_body_common(physics_world *world, common_data *data, shape_dimension_bracket bracket,
-                             body_shape *shapes, count_t shapes_count, count_t index) {
+static void init_body_common(bnd_world *world, common_data *data, shape_dimension_bracket bracket,
+    bnd_body_shape *shapes, count_t shapes_count, count_t index) {
   data->positions[index] = zero();
   data->rotations[index] = qidentity();
   data->shapes[index] = shapes_write(world, bracket, shapes, shapes_count);
 }
 
-static void init_body_dynamic(physics_world *world, float mass, m3 inertia_tensor, count_t index) {
+static void init_body_dynamic(bnd_world *world, float mass, m3 inertia_tensor, count_t index) {
   dynamic_bodies *data = &world->dynamics;
 
   data->inv_masses[index] = 1.0 / mass;
@@ -319,7 +283,7 @@ static void init_body_dynamic(physics_world *world, float mass, m3 inertia_tenso
   data->angular_momenta[index] = zero();
   data->inv_inertia_tensors[index] = matrix_inverse(inertia_tensor);
   data->inv_intertias[index] = data->inv_inertia_tensors[index];
-  data->motion_avgs[index] = 2 * world->config.sleep_threshold;
+  data->motion_avgs[index] = 2 * world->config.simulation.sleep_threshold;
   data->forces[index] = zero();
   data->torques[index] = zero();
   data->impulses[index] = zero();
@@ -327,7 +291,7 @@ static void init_body_dynamic(physics_world *world, float mass, m3 inertia_tenso
   data->accelerations[index] = zero();
 }
 
-static count_t insert_new_dynamic_body(physics_world *world) {
+static count_t insert_new_dynamic_body(bnd_world *world) {
   dynamic_bodies *data = &world->dynamics;
 
   count_t prev_count = data->count;
@@ -354,43 +318,7 @@ static count_t insert_new_dynamic_body(physics_world *world) {
   return index;
 }
 
-physics_world *physics_init(const physics_config *config) {
-  physics_world *world = malloc(sizeof(physics_world));
-
-  init_commons((common_data *)&world->dynamics, config->dynamics_capacity);
-  init_commons((common_data *)&world->statics, config->statics_capacity);
-
-  const count_t vectors = sizeof(v3) * config->dynamics_capacity;
-  const count_t floats = sizeof(float) * config->dynamics_capacity;
-  const count_t matrices = sizeof(m3) * config->dynamics_capacity;
-
-  world->dynamics.forces = malloc(vectors);
-  world->dynamics.torques = malloc(vectors);
-  world->dynamics.impulses = malloc(vectors);
-  world->dynamics.angular_impulses = malloc(vectors);
-  world->dynamics.accelerations = malloc(vectors);
-
-  world->dynamics.inv_masses = malloc(floats);
-  world->dynamics.velocities = malloc(vectors);
-  world->dynamics.angular_momenta = malloc(vectors);
-  world->dynamics.inv_inertia_tensors = malloc(matrices);
-  world->dynamics.inv_intertias = malloc(matrices);
-  world->dynamics.motion_avgs = malloc(floats);
-  world->dynamics.awake_count = 0;
-  world->generation = 0;
-
-  world->config = *config;
-
-  contacts_init(world);
-  joints_init(world);
-  shapes_init(world);
-  epa_init(config);
-  profiler_init_default();
-
-  return world;
-}
-
-static body add_primitive_body_static(physics_world *world, body_shape shape) {
+static bnd_body add_primitive_body_static(bnd_world *world, bnd_body_shape shape) {
   static_bodies *data = &world->statics;
   if (data->capacity < data->count + 1) {
     realloc_commons(data);
@@ -405,14 +333,14 @@ static body add_primitive_body_static(physics_world *world, body_shape shape) {
 
   world->generation += 1;
 
-  return (body){.position = &data->positions[index],
-                .rotation = &data->rotations[index],
-                .velocity = NULL,
-                .angular_momentum = NULL,
-                .handle = make_body_handle(world, BODY_STATIC, index)};
+  return (bnd_body){ .position = &data->positions[index],
+    .rotation = &data->rotations[index],
+    .velocity = NULL,
+    .angular_momentum = NULL,
+    .handle = make_body_handle(world, BND_STATIC, index) };
 }
 
-static body add_primitive_body_dynamic(physics_world *world, body_shape shape, float mass) {
+static bnd_body add_primitive_body_dynamic(bnd_world *world, bnd_body_shape shape, float mass) {
   dynamic_bodies *data = &world->dynamics;
   if (data->capacity < data->count + 1) {
     realloc_commons((common_data *)data);
@@ -422,7 +350,7 @@ static body add_primitive_body_dynamic(physics_world *world, body_shape shape, f
   count_t index = insert_new_dynamic_body(world);
   init_body_common(world, (common_data *)data, BRACKET_PRIMITIVE, &shape, 1, index);
 
-  m3 inertia = matrix_initial_inertia(inertia_vector(shape, mass));
+  m3 inertia = inertia_matrix(world, shape, mass);
   init_body_dynamic(world, mass, inertia, index);
 
   data->awake_count += 1;
@@ -430,55 +358,54 @@ static body add_primitive_body_dynamic(physics_world *world, body_shape shape, f
 
   world->generation += 1;
 
-  return (body){
-      .position = &data->positions[index],
-      .rotation = &data->rotations[index],
-      .velocity = &data->velocities[index],
-      .angular_momentum = &data->angular_momenta[index],
-      .handle = make_body_handle(world, BODY_DYNAMIC, index),
+  return (bnd_body){
+    .position = &data->positions[index],
+    .rotation = &data->rotations[index],
+    .velocity = &data->velocities[index],
+    .angular_momentum = &data->angular_momenta[index],
+    .handle = make_body_handle(world, BND_DYNAMIC, index),
   };
 }
 
-void physics_add_plane(physics_world *world, v3 point, v3 normal) {
-  body plane = add_primitive_body_static(
-      world, (body_shape){.type = SHAPE_PLANE, .plane = {.normal = normal}, .offset = zero(), .rotation = qidentity()});
+void bnd_add_plane(bnd_world *world, v3 point, v3 normal) {
+  bnd_body plane = add_primitive_body_static(world,
+      (bnd_body_shape){ .type = BND_PLANE, .plane = { .normal = normal }, .offset = zero(), .rotation = qidentity() });
   world->statics.positions[handle_to_inner_index(world, plane.handle)] = point;
 }
 
-body physics_add_box_dynamic(physics_world *world, float mass, v3 size) {
-  return add_primitive_body_dynamic(
-      world, (body_shape){.type = SHAPE_BOX, .box = {.size = size}, .offset = zero(), .rotation = qidentity()}, mass);
+bnd_body bnd_add_box_dynamic(bnd_world *world, float mass, v3 size) {
+  return add_primitive_body_dynamic(world,
+      (bnd_body_shape){ .type = BND_BOX, .box = { .size = size }, .offset = zero(), .rotation = qidentity() }, mass);
 }
 
-body physics_add_box_static(physics_world *world, v3 size) {
+bnd_body bnd_add_box_static(bnd_world *world, v3 size) {
   return add_primitive_body_static(
-      world, (body_shape){.type = SHAPE_BOX, .box = {.size = size}, .offset = zero(), .rotation = qidentity()});
+      world, (bnd_body_shape){ .type = BND_BOX, .box = { .size = size }, .offset = zero(), .rotation = qidentity() });
 }
 
-body physics_add_sphere_dynamic(physics_world *world, float mass, float radius) {
-  return add_primitive_body_dynamic(
-      world,
-      (body_shape){.type = SHAPE_SPHERE, .sphere = {.radius = radius}, .offset = zero(), .rotation = qidentity()},
+bnd_body bnd_add_sphere_dynamic(bnd_world *world, float mass, float radius) {
+  return add_primitive_body_dynamic(world,
+      (bnd_body_shape){ .type = BND_SPHERE, .sphere = { .radius = radius }, .offset = zero(), .rotation = qidentity() },
       mass);
 }
 
-body physics_add_cylinder_static(physics_world *world, float radius, float height) {
-  return add_primitive_body_static(world, (body_shape){.type = SHAPE_CYLINDER,
-                                                       .cylinder = {.radius = radius, .height = height},
-                                                       .offset = zero(),
-                                                       .rotation = qidentity()});
+bnd_body bnd_add_cylinder_static(bnd_world *world, float radius, float height) {
+  return add_primitive_body_static(world, (bnd_body_shape){ .type = BND_CYLINDER,
+                                            .cylinder = { .radius = radius, .height = height },
+                                            .offset = zero(),
+                                            .rotation = qidentity() });
 }
 
-body physics_add_cylinder_dynamic(physics_world *world, float mass, float radius, float height) {
+bnd_body bnd_add_cylinder_dynamic(bnd_world *world, float mass, float radius, float height) {
   return add_primitive_body_dynamic(world,
-                                    (body_shape){.type = SHAPE_CYLINDER,
-                                                 .cylinder = {.radius = radius, .height = height},
-                                                 .offset = zero(),
-                                                 .rotation = qidentity()},
-                                    mass);
+      (bnd_body_shape){ .type = BND_CYLINDER,
+        .cylinder = { .radius = radius, .height = height },
+        .offset = zero(),
+        .rotation = qidentity() },
+      mass);
 }
 
-body physics_add_compound_body_static(physics_world *world, body_shape *shapes, count_t shapes_count) {
+bnd_body bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, count_t shapes_count) {
   shape_dimension_bracket bracket = get_shapes_bracket(shapes_count);
 
   static_bodies *data = &world->statics;
@@ -495,14 +422,14 @@ body physics_add_compound_body_static(physics_world *world, body_shape *shapes, 
 
   world->generation += 1;
 
-  return (body){.position = &data->positions[index],
-                .rotation = &data->rotations[index],
-                .velocity = NULL,
-                .angular_momentum = NULL,
-                .handle = make_body_handle(world, BODY_STATIC, index)};
+  return (bnd_body){ .position = &data->positions[index],
+    .rotation = &data->rotations[index],
+    .velocity = NULL,
+    .angular_momentum = NULL,
+    .handle = make_body_handle(world, BND_STATIC, index) };
 }
 
-body physics_add_compound_body_dynamic(physics_world *world, body_shape *shapes, float *masses, count_t shapes_count) {
+bnd_body bnd_add_compound_body_dynamic(bnd_world *world, bnd_body_shape *shapes, float *masses, count_t shapes_count) {
   shape_dimension_bracket bracket = get_shapes_bracket(shapes_count);
 
   dynamic_bodies *data = &world->dynamics;
@@ -516,8 +443,8 @@ body physics_add_compound_body_dynamic(physics_world *world, body_shape *shapes,
 
   float mass;
   m3 inertia;
-  body_shape *body_shapes = shapes_get(world, data->shapes[index]);
-  calculate_compound_shape_dynamic(body_shapes, masses, shapes_count, &mass, &inertia);
+  bnd_body_shape *body_shapes = shapes_get(world, data->shapes[index]);
+  calculate_compound_shape_dynamic(world, body_shapes, masses, shapes_count, &mass, &inertia);
   init_body_dynamic(world, mass, inertia, index);
 
   data->awake_count += 1;
@@ -525,14 +452,24 @@ body physics_add_compound_body_dynamic(physics_world *world, body_shape *shapes,
 
   world->generation += 1;
 
-  return (body){.position = &data->positions[index],
-                .rotation = &data->rotations[index],
-                .velocity = &data->velocities[index],
-                .angular_momentum = &data->angular_momenta[index],
-                .handle = make_body_handle(world, BODY_DYNAMIC, index)};
+  return (bnd_body){ .position = &data->positions[index],
+    .rotation = &data->rotations[index],
+    .velocity = &data->velocities[index],
+    .angular_momentum = &data->angular_momenta[index],
+    .handle = make_body_handle(world, BND_DYNAMIC, index) };
 }
 
-void physics_remove_body(physics_world *world, body_handle handle) {
+bnd_body bnd_add_mesh_dynamic(bnd_world *world, float mass, bnd_mesh_handle mesh) {
+  return add_primitive_body_dynamic(
+      world, (bnd_body_shape){ .type = BND_MESH, .mesh = mesh, .offset = zero(), .rotation = qidentity() }, mass);
+}
+
+bnd_body bnd_add_mesh_static(bnd_world *world, bnd_mesh_handle mesh) {
+  return add_primitive_body_static(
+      world, (bnd_body_shape){ .type = BND_MESH, .mesh = mesh, .offset = zero(), .rotation = qidentity() });
+}
+
+void bnd_remove_body(bnd_world *world, bnd_body_handle handle) {
   common_data *data = as_common(world, handle.type);
   count_t index = handle_to_inner_index(world, handle);
 
@@ -546,7 +483,7 @@ void physics_remove_body(physics_world *world, body_handle handle) {
   body_shapes shapes = data->shapes[index];
   shapes_clear_slot(world, shapes.bracket, shapes.offset);
 
-  if (handle.type == BODY_DYNAMIC) {
+  if (handle.type == BND_DYNAMIC) {
     count_t body_count = data->count;
     count_t awake_count = world->dynamics.awake_count;
 
@@ -584,8 +521,8 @@ void physics_remove_body(physics_world *world, body_handle handle) {
   world->generation += 1;
 }
 
-void physics_apply_force(physics_world *world, body_handle handle, v3 force) {
-  if (handle.type != BODY_DYNAMIC)
+void bnd_apply_force(bnd_world *world, bnd_body_handle handle, v3 force) {
+  if (handle.type != BND_DYNAMIC)
     return;
 
   count_t index = handle_to_inner_index(world, handle);
@@ -597,8 +534,8 @@ void physics_apply_force(physics_world *world, body_handle handle, v3 force) {
   world->dynamics.forces[index] = add(prev_force, force);
 }
 
-void physics_apply_force_at(physics_world *world, body_handle handle, v3 force, v3 position) {
-  if (handle.type != BODY_DYNAMIC)
+void bnd_apply_force_at(bnd_world *world, bnd_body_handle handle, v3 force, v3 position) {
+  if (handle.type != BND_DYNAMIC)
     return;
 
   count_t index = handle_to_inner_index(world, handle);
@@ -616,8 +553,8 @@ void physics_apply_force_at(physics_world *world, body_handle handle, v3 force, 
   world->dynamics.torques[index] = add(prev_torque, torque);
 }
 
-void physics_apply_impulse(physics_world *world, body_handle handle, v3 impulse) {
-  if (handle.type != BODY_DYNAMIC)
+void bnd_apply_impulse(bnd_world *world, bnd_body_handle handle, v3 impulse) {
+  if (handle.type != BND_DYNAMIC)
     return;
 
   count_t index = handle_to_inner_index(world, handle);
@@ -629,8 +566,8 @@ void physics_apply_impulse(physics_world *world, body_handle handle, v3 impulse)
   world->dynamics.impulses[index] = add(prev_impulse, impulse);
 }
 
-void physics_apply_impulse_at(physics_world *world, body_handle handle, v3 impulse, v3 position) {
-  if (handle.type != BODY_DYNAMIC)
+void bnd_apply_impulse_at(bnd_world *world, bnd_body_handle handle, v3 impulse, v3 position) {
+  if (handle.type != BND_DYNAMIC)
     return;
 
   count_t index = handle_to_inner_index(world, handle);
@@ -644,17 +581,17 @@ void physics_apply_impulse_at(physics_world *world, body_handle handle, v3 impul
   world->dynamics.angular_impulses[index] = add(prev_angular_impulse, angular_impulse);
 }
 
-physics_config *physics_edit_config(physics_world *world) { return &world->config; }
+bnd_config *bnd_edit_config(bnd_world *world) { return &world->config; }
 
-physics_world_stats physics_get_stats(const physics_world *world) { return world->stats; }
+bnd_world_stats bnd_stats(const bnd_world *world) { return world->stats; }
 
-count_t physics_body_count(const physics_world *world, body_type type) { return as_common_const(world, type)->count; }
+count_t bnd_body_count(const bnd_world *world, bnd_body_type type) { return as_common_const(world, type)->count; }
 
-count_t physics_awake_count(const physics_world *world) { return world->dynamics.awake_count; }
+count_t bnd_awake_count(const bnd_world *world) { return world->dynamics.awake_count; }
 
-count_t physics_collisions_count(const physics_world *world) { return world->contacts.count; }
+count_t bnd_collisions_count(const bnd_world *world) { return world->contacts.count; }
 
-v3 physics_get_position(const physics_world *world, body_handle handle) {
+v3 bnd_get_position(const bnd_world *world, bnd_body_handle handle) {
   const common_data *data = as_common_const(world, handle.type);
 
   count_t index = handle_to_inner_index(world, handle);
@@ -665,7 +602,7 @@ v3 physics_get_position(const physics_world *world, body_handle handle) {
   return data->positions[index];
 }
 
-quat physics_get_rotation(const physics_world *world, body_handle handle) {
+quat bnd_get_rotation(const bnd_world *world, bnd_body_handle handle) {
   const common_data *data = as_common_const(world, handle.type);
 
   count_t index = handle_to_inner_index(world, handle);
@@ -676,7 +613,7 @@ quat physics_get_rotation(const physics_world *world, body_handle handle) {
   return data->rotations[index];
 }
 
-body_shape *physics_get_shapes(const physics_world *world, body_handle handle, count_t *count) {
+bnd_body_shape *bnd_get_shapes(const bnd_world *world, bnd_body_handle handle, count_t *count) {
   const common_data *data = as_common_const(world, handle.type);
 
   count_t index = handle_to_inner_index(world, handle);
@@ -689,8 +626,8 @@ body_shape *physics_get_shapes(const physics_world *world, body_handle handle, c
   return shapes_get(world, shapes);
 }
 
-v3 physics_get_velocity(const physics_world *world, body_handle handle) {
-  if (handle.type != BODY_DYNAMIC) {
+v3 bnd_get_velocity(const bnd_world *world, bnd_body_handle handle) {
+  if (handle.type != BND_DYNAMIC) {
     return zero();
   }
 
@@ -702,8 +639,8 @@ v3 physics_get_velocity(const physics_world *world, body_handle handle) {
   return world->dynamics.velocities[index];
 }
 
-v3 physics_get_angular_velocity(const physics_world *world, body_handle handle) {
-  if (handle.type != BODY_DYNAMIC) {
+v3 bnd_get_angular_velocity(const bnd_world *world, bnd_body_handle handle) {
+  if (handle.type != BND_DYNAMIC) {
     return zero();
   }
 
@@ -720,8 +657,8 @@ v3 physics_get_angular_velocity(const physics_world *world, body_handle handle) 
   return matrix_rotate(momentum, matrix_inertia(inv_inertia, rotation));
 }
 
-v3 physics_get_angular_momentum(const physics_world *world, body_handle handle) {
-  if (handle.type != BODY_DYNAMIC) {
+v3 bnd_get_angular_momentum(const bnd_world *world, bnd_body_handle handle) {
+  if (handle.type != BND_DYNAMIC) {
     return zero();
   }
 
@@ -733,15 +670,15 @@ v3 physics_get_angular_momentum(const physics_world *world, body_handle handle) 
   return world->dynamics.angular_momenta[index];
 }
 
-m3 physics_get_inertia(const physics_world *world, body_handle handle) {
-  if (handle.type != BODY_DYNAMIC) {
-    return (m3){0};
+m3 bnd_get_inertia(const bnd_world *world, bnd_body_handle handle) {
+  if (handle.type != BND_DYNAMIC) {
+    return (m3){ 0 };
   }
 
   const dynamic_bodies *dynamics = &world->dynamics;
   count_t index = handle_to_inner_index(world, handle);
   if (handle.generation != dynamics->generations[index]) {
-    return (m3){0};
+    return (m3){ 0 };
   }
 
   quat rotation = dynamics->rotations[index];
@@ -750,15 +687,15 @@ m3 physics_get_inertia(const physics_world *world, body_handle handle) {
   return matrix_inverse(matrix_inertia(inv_inertia, rotation));
 }
 
-m3 physics_get_base_inertia(const physics_world *world, body_handle handle) {
-  if (handle.type != BODY_DYNAMIC) {
-    return (m3){0};
+m3 bnd_get_base_inertia(const bnd_world *world, bnd_body_handle handle) {
+  if (handle.type != BND_DYNAMIC) {
+    return (m3){ 0 };
   }
 
   const dynamic_bodies *dynamics = &world->dynamics;
   count_t index = handle_to_inner_index(world, handle);
   if (handle.generation != dynamics->generations[index]) {
-    return (m3){0};
+    return (m3){ 0 };
   }
 
   m3 inv_inertia = dynamics->inv_inertia_tensors[index];
@@ -766,8 +703,8 @@ m3 physics_get_base_inertia(const physics_world *world, body_handle handle) {
   return matrix_inverse(inv_inertia);
 }
 
-float physics_get_motion_avg(const physics_world *world, body_handle handle) {
-  if (handle.type != BODY_DYNAMIC) {
+float bnd_get_motion_avg(const bnd_world *world, bnd_body_handle handle) {
+  if (handle.type != BND_DYNAMIC) {
     return 0;
   }
 
@@ -779,28 +716,28 @@ float physics_get_motion_avg(const physics_world *world, body_handle handle) {
   return world->dynamics.motion_avgs[index];
 }
 
-count_t physics_get_contacts(const physics_world *world, contact_t *contacts, count_t max_contacts) {
+count_t bnd_get_contacts(const bnd_world *world, bnd_contact *contacts, count_t max_contacts) {
   count_t count = world->contacts.count < max_contacts ? world->contacts.count : max_contacts;
   for (count_t i = 0; i < count; ++i) {
     contact full_contact = world->contacts.values[i];
-    body_type type = i < world->contacts.dynamic_count ? BODY_DYNAMIC : BODY_STATIC;
+    bnd_body_type type = i < world->contacts.dynamic_count ? BND_DYNAMIC : BND_STATIC;
 
-    contacts[i] = (contact_t){.point = full_contact.point,
-                              .normal = full_contact.normal,
-                              .depth = full_contact.depth,
-                              .body_a = make_body_handle(world, BODY_DYNAMIC, full_contact.index_a),
-                              .body_b = make_body_handle(world, type, full_contact.index_b)};
+    contacts[i] = (bnd_contact){ .point = full_contact.point,
+      .normal = full_contact.normal,
+      .depth = full_contact.depth,
+      .body_a = make_body_handle(world, BND_DYNAMIC, full_contact.index_a),
+      .body_b = make_body_handle(world, type, full_contact.index_b) };
   }
 
   return count;
 }
 
-void physics_enumerate_bodies_typed(const physics_world *world, body_type type, body_enumerator *enumerator) {
-  enumerator->handle = (body_handle){.type = type, .index = max_body_index & 0x7FFFFF};
+void bnd_enumerate_bodies_typed(const bnd_world *world, bnd_body_type type, bnd_body_enumerator *enumerator) {
+  enumerator->handle = (bnd_body_handle){ .type = type, .index = max_body_index & 0x7FFFFF };
   enumerator->generation = world->generation;
 }
 
-bool physics_body_next_typed(const physics_world *world, body_enumerator_typed *enumerator) {
+bool bnd_body_next_typed(const bnd_world *world, bnd_body_enumerator_typed *enumerator) {
   if (enumerator->generation != world->generation) {
     return false;
   }
@@ -826,12 +763,12 @@ bool physics_body_next_typed(const physics_world *world, body_enumerator_typed *
   return true;
 }
 
-void integrate_bodies(physics_world *world, float dt) {
+void integrate_bodies(bnd_world *world, float dt) {
   PROFILE_FUNCTION
 
-  v3 gravity_acc = world->config.gravity;
-  float linear_damping = powf(world->config.linear_damping, dt);
-  float angular_damping = powf(world->config.angular_damping, dt);
+  v3 gravity_acc = world->config.simulation.gravity;
+  float linear_damping = powf(world->config.simulation.linear_damping, dt);
+  float angular_damping = powf(world->config.simulation.angular_damping, dt);
 
   dynamic_bodies *dynamics = &world->dynamics;
   for (count_t i = 0; i < dynamics->awake_count; ++i) {
@@ -868,7 +805,7 @@ void integrate_bodies(physics_world *world, float dt) {
   }
 }
 
-void physics_step(physics_world *world, float dt) {
+void bnd_simulate(bnd_world *world, float dt) {
   profiler_start_frame();
   {
     PROFILE_FUNCTION
@@ -884,15 +821,15 @@ void physics_step(physics_world *world, float dt) {
   }
 
   profiler_frame_metadata metadata = {
-      .body_count = world->dynamics.count + world->statics.count,
-      .contacts_count = world->contacts.count,
+    .body_count = world->dynamics.count + world->statics.count,
+    .contacts_count = world->contacts.count,
   };
 
   profiler_end_frame(metadata);
 }
 
-void physics_awaken_body(physics_world *world, body_handle handle) {
-  if (handle.type != BODY_DYNAMIC)
+void bnd_awaken_body(bnd_world *world, bnd_body_handle handle) {
+  if (handle.type != BND_DYNAMIC)
     return;
 
   count_t index = handle_to_inner_index(world, handle);
@@ -906,13 +843,13 @@ void physics_awaken_body(physics_world *world, body_handle handle) {
 
   count_t target_index = dynamics->awake_count > 0 ? dynamics->awake_count - 1 : 0;
   if (index != target_index)
-    swap_bodies(world, BODY_DYNAMIC, index, target_index);
+    swap_bodies(world, BND_DYNAMIC, index, target_index);
 
-  dynamics->motion_avgs[target_index] = 2.0 * world->config.sleep_threshold;
+  dynamics->motion_avgs[target_index] = 2.0 * world->config.simulation.sleep_threshold;
   dynamics->awake_count += 1;
 }
 
-void physics_reset(physics_world *world) {
+void bnd_reset_world(bnd_world *world) {
   world->dynamics.count = 0;
   world->dynamics.free_count = 0;
   world->dynamics.awake_count = 0;
@@ -930,33 +867,7 @@ void physics_reset(physics_world *world) {
   joints_reset(world);
 }
 
-void physics_teardown(physics_world *world) {
-  teardown_commons((common_data *)&world->dynamics);
-  teardown_commons((common_data *)&world->statics);
-
-  free(world->dynamics.forces);
-  free(world->dynamics.torques);
-  free(world->dynamics.impulses);
-  free(world->dynamics.angular_impulses);
-  free(world->dynamics.accelerations);
-
-  free(world->dynamics.inv_masses);
-  free(world->dynamics.velocities);
-  free(world->dynamics.angular_momenta);
-  free(world->dynamics.inv_inertia_tensors);
-  free(world->dynamics.inv_intertias);
-  free(world->dynamics.motion_avgs);
-
-  shapes_teardown(world);
-  joints_teardown(world);
-  contacts_teardown(world);
-
-  free(world);
-
-  profiler_teardown();
-}
-
-static void swap_bodies(physics_world *world, body_type type, count_t index_a, count_t index_b) {
+static void swap_bodies(bnd_world *world, bnd_body_type type, count_t index_a, count_t index_b) {
   common_data *data = as_common(world, type);
 
 #define SWAP_COMMON(t, arr)                                                                                            \
@@ -975,7 +886,7 @@ static void swap_bodies(physics_world *world, body_type type, count_t index_a, c
   SWAP_COMMON(uint8_t, generations);
   SWAP_COMMON(count_t, inner_lookup)
 
-  if (type == BODY_DYNAMIC) {
+  if (type == BND_DYNAMIC) {
     SWAP_DYNAMIC(float, inv_masses)
     SWAP_DYNAMIC(v3, velocities)
     SWAP_DYNAMIC(v3, angular_momenta)
@@ -999,7 +910,7 @@ static void swap_bodies(physics_world *world, body_type type, count_t index_a, c
 #undef SWAP_DYNAMIC
 }
 
-static void move_body(physics_world *world, count_t src_index, count_t dst_index) {
+static void move_body(bnd_world *world, count_t src_index, count_t dst_index) {
   dynamic_bodies *data = &world->dynamics;
 
   data->positions[dst_index] = data->positions[src_index];

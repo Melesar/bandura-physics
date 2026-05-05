@@ -2,7 +2,7 @@
 #include "profiler.h"
 #include <stdlib.h>
 
-void contacts_generate(physics_world *world) {
+void contacts_generate(bnd_world *world) {
   PROFILE_FUNCTION
 
   count_t dynamic_count = 0;
@@ -17,22 +17,22 @@ void contacts_generate(physics_world *world) {
   world->stats.contacts_count = world->contacts.count;
 }
 
-void contacts_reset(physics_world *world) {
+void contacts_reset(bnd_world *world) {
   world->contacts.count = 0;
   world->contacts.dynamic_count = 0;
 }
 
-void contacts_init(physics_world *world) {
+void contacts_init(bnd_world *world) {
   contacts *contacts = &world->contacts;
-  contacts->values = malloc(world->config.contacts_capacity * sizeof(contact));
-  contacts->capacity = world->config.contacts_capacity;
+  contacts->values = malloc(world->config.memory.contacts_capacity * sizeof(contact));
+  contacts->capacity = world->config.memory.contacts_capacity;
   contacts->count = 0;
   contacts->dynamic_count = 0;
 }
 
-void contacts_teardown(physics_world *world) { free(world->contacts.values); }
+void contacts_teardown(bnd_world *world) { free(world->contacts.values); }
 
-void contacts_ensure_capacity(physics_world *world, count_t additional_count) {
+void contacts_ensure_capacity(bnd_world *world, count_t additional_count) {
   contacts *contacts = &world->contacts;
 
   count_t count_needed = contacts->count + additional_count;
@@ -46,14 +46,14 @@ void contacts_ensure_capacity(physics_world *world, count_t additional_count) {
   }
 }
 
-contact *contacts_new_default(physics_world *world, count_t body_a, count_t body_b) {
+contact *contacts_new_default(bnd_world *world, count_t body_a, count_t body_b) {
   contacts_ensure_capacity(world, 1);
 
   contact *c = &world->contacts.values[world->contacts.count++];
   c->index_a = body_a;
   c->index_b = body_b;
-  c->friction = world->config.friction;
-  c->restitution = world->config.restitution;
+  c->friction = world->config.simulation.friction;
+  c->restitution = world->config.simulation.restitution;
 
   return c;
 }

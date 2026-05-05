@@ -6,25 +6,25 @@
 
 #define SHAPE_BRACKET_BLOCK_CAPACITY 64
 
-static count_t bracket_block_count(const physics_world *world, shape_dimension_bracket bracket) {
+static count_t bracket_block_count(const bnd_world *world, shape_dimension_bracket bracket) {
   return world->shape_brackets[bracket].capacity / SHAPE_BRACKET_BLOCK_CAPACITY;
 }
 
 static shapes_bracket allocate_bracket(count_t capacity, count_t block_count, count_t shapes_count) {
   uint64_t *slots = malloc(block_count * sizeof(uint64_t));
-  body_shape *shapes = malloc(shapes_count * sizeof(body_shape));
+  bnd_body_shape *shapes = malloc(shapes_count * sizeof(bnd_body_shape));
 
   memset(slots, 0, block_count * sizeof(uint64_t));
 
   return (shapes_bracket){slots, shapes, capacity};
 }
 
-void shapes_init(physics_world *world) {
-  const physics_config *config = &world->config;
+void shapes_init(bnd_world *world) {
+  const bnd_config *config = &world->config;
 
   for (count_t i = 0; i < BRACKET_COUNT; ++i) {
-    count_t blocks_count = config->shapes_brackets_capacity[i] / SHAPE_BRACKET_BLOCK_CAPACITY +
-                           ((config->shapes_brackets_capacity[i] & (SHAPE_BRACKET_BLOCK_CAPACITY - 1)) > 0);
+    count_t blocks_count = config->memory.shapes_brackets_capacity[i] / SHAPE_BRACKET_BLOCK_CAPACITY +
+                           ((config->memory.shapes_brackets_capacity[i] & (SHAPE_BRACKET_BLOCK_CAPACITY - 1)) > 0);
     count_t bracket_capacity = blocks_count * SHAPE_BRACKET_BLOCK_CAPACITY;
 
     count_t bracket_dimension = 1 << i;
@@ -34,14 +34,14 @@ void shapes_init(physics_world *world) {
   }
 }
 
-void shapes_teardown(physics_world *world) {
+void shapes_teardown(bnd_world *world) {
   for (count_t i = 0; i < BRACKET_COUNT; ++i) {
     free(world->shape_brackets[i].slots);
     free(world->shape_brackets[i].shapes);
   }
 }
 
-void shapes_reset(physics_world *world) {
+void shapes_reset(bnd_world *world) {
   for (count_t i = 0; i < BRACKET_COUNT; ++i) {
     shapes_bracket *bracket = &world->shape_brackets[i];
     count_t blocks_count = bracket_block_count(world, i);
@@ -51,7 +51,7 @@ void shapes_reset(physics_world *world) {
   }
 }
 
-bool shapes_any_slot_available(const physics_world *world, shape_dimension_bracket bracket) {
+bool shapes_any_slot_available(const bnd_world *world, shape_dimension_bracket bracket) {
   count_t blocks_count = bracket_block_count(world, bracket);
   uint64_t *slots = world->shape_brackets[bracket].slots;
 
@@ -64,13 +64,13 @@ bool shapes_any_slot_available(const physics_world *world, shape_dimension_brack
   return false;
 }
 
-void shapes_expand_bracket(physics_world *world, shape_dimension_bracket bracket) {
+void shapes_expand_bracket(bnd_world *world, shape_dimension_bracket bracket) {
   count_t bracket_capacity = 1 << bracket;
 
   count_t current_capacity = world->shape_brackets[bracket].capacity;
   count_t current_block_count = bracket_block_count(world, bracket);
   uint64_t *current_slots = world->shape_brackets[bracket].slots;
-  body_shape *current_shapes = world->shape_brackets[bracket].shapes;
+  bnd_body_shape *current_shapes = world->shape_brackets[bracket].shapes;
 
   count_t new_capacity = current_capacity + SHAPE_BRACKET_BLOCK_CAPACITY;
   count_t new_block_count = current_block_count + 1;
@@ -78,7 +78,7 @@ void shapes_expand_bracket(physics_world *world, shape_dimension_bracket bracket
 
   shapes_bracket new_bracket = allocate_bracket(new_capacity, new_block_count, shapes_count);
   memcpy(new_bracket.slots, current_slots, current_block_count * sizeof(uint64_t));
-  memcpy(new_bracket.shapes, current_shapes, current_capacity * bracket_capacity * sizeof(body_shape));
+  memcpy(new_bracket.shapes, current_shapes, current_capacity * bracket_capacity * sizeof(bnd_body_shape));
 
   world->shape_brackets[bracket] = new_bracket;
 
@@ -86,11 +86,11 @@ void shapes_expand_bracket(physics_world *world, shape_dimension_bracket bracket
   free(current_slots);
 }
 
-bool shapes_put_into_empty_slot(physics_world *world, shape_dimension_bracket bracket, body_shape *shapes,
+bool shapes_put_into_empty_slot(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes,
                                 count_t shapes_count, count_t *slot_number) {
   count_t blocks_count = bracket_block_count(world, bracket);
   uint64_t *slots = world->shape_brackets[bracket].slots;
-  body_shape *shapes_buffer = world->shape_brackets[bracket].shapes;
+  bnd_body_shape *shapes_buffer = world->shape_brackets[bracket].shapes;
 
   for (count_t i = 0; i < blocks_count; ++i) {
     if (slots[i] == (uint64_t)~0)
@@ -104,8 +104,8 @@ bool shapes_put_into_empty_slot(physics_world *world, shape_dimension_bracket br
       count_t bracket_capacity = 1 << bracket;
       count_t shape_offset = (i * SHAPE_BRACKET_BLOCK_CAPACITY + k) * bracket_capacity;
 
-      body_shape *slot = shapes_buffer + shape_offset;
-      memcpy(slot, shapes, shapes_count * sizeof(body_shape));
+      bnd_body_shape *slot = shapes_buffer + shape_offset;
+      memcpy(slot, shapes, shapes_count * sizeof(bnd_body_shape));
 
       slots[i] |= mask;
       *slot_number = shape_offset;
@@ -117,7 +117,7 @@ bool shapes_put_into_empty_slot(physics_world *world, shape_dimension_bracket br
   return false;
 }
 
-void shapes_clear_slot(physics_world *world, shape_dimension_bracket bracket, count_t slot) {
+void shapes_clear_slot(bnd_world *world, shape_dimension_bracket bracket, count_t slot) {
   count_t block_count = bracket_block_count(world, bracket);
   count_t bracket_capacity = 1 << bracket;
 
@@ -129,7 +129,7 @@ void shapes_clear_slot(physics_world *world, shape_dimension_bracket bracket, co
   }
 }
 
-body_shapes shapes_write(physics_world *world, shape_dimension_bracket bracket, body_shape *shapes, count_t count) {
+body_shapes shapes_write(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes, count_t count) {
   const count_t max_count = 1 << (BRACKET_COUNT - 1);
   assert(count <= max_count);
 
@@ -143,7 +143,7 @@ body_shapes shapes_write(physics_world *world, shape_dimension_bracket bracket, 
   return (body_shapes){.bracket = bracket, .offset = shape_slot, .count = count};
 }
 
-body_shape *shapes_get(const physics_world *world, body_shapes shapes) {
+bnd_body_shape *shapes_get(const bnd_world *world, body_shapes shapes) {
   return world->shape_brackets[shapes.bracket].shapes + shapes.offset;
 }
 
@@ -156,7 +156,7 @@ void test_shapes_write_primitive_bracket_uses_second_block(void) {
 
   for (count_t i = 0; i < 65; ++i) {
     body_shape shape = {0};
-    shape.type = SHAPE_SPHERE;
+    shape.type = BND_SPHERE;
     shape.sphere.radius = (float)i + 0.5f;
 
     body_shapes written = shapes_write(&world, BRACKET_PRIMITIVE, &shape, 1);
@@ -187,7 +187,7 @@ void test_shapes_write_four_bracket_keeps_alignment_across_blocks(void) {
     count_t count = (i & 1) == 0 ? 3 : 4;
 
     for (count_t k = 0; k < count; ++k) {
-      shapes[k].type = SHAPE_CYLINDER;
+      shapes[k].type = BND_CYLINDER;
       shapes[k].cylinder.radius = (float)(i * 10 + k + 1);
       shapes[k].cylinder.height = (float)(100 + i * 10 + k);
     }
@@ -216,9 +216,9 @@ void test_shapes_expand_bracket_preserves_existing_data_after_two_blocks(void) {
 
   for (count_t i = 0; i < 128; ++i) {
     body_shape shapes[2] = {0};
-    shapes[0].type = SHAPE_BOX;
+    shapes[0].type = BND_BOX;
     shapes[0].box.size.x = (float)(i + 1);
-    shapes[1].type = SHAPE_SPHERE;
+    shapes[1].type = BND_SPHERE;
     shapes[1].sphere.radius = (float)(i + 200);
 
     body_shapes written = shapes_write(&world, BRACKET_TWO, shapes, 2);
@@ -231,10 +231,10 @@ void test_shapes_expand_bracket_preserves_existing_data_after_two_blocks(void) {
   assert(!shapes_any_slot_available(&world, BRACKET_TWO));
 
   body_shape extra_shapes[2] = {0};
-  extra_shapes[0].type = SHAPE_CYLINDER;
+  extra_shapes[0].type = BND_CYLINDER;
   extra_shapes[0].cylinder.radius = 7.0f;
   extra_shapes[0].cylinder.height = 9.0f;
-  extra_shapes[1].type = SHAPE_SPHERE;
+  extra_shapes[1].type = BND_SPHERE;
   extra_shapes[1].sphere.radius = 11.0f;
 
   body_shapes extra = shapes_write(&world, BRACKET_TWO, extra_shapes, 2);
@@ -248,14 +248,14 @@ void test_shapes_expand_bracket_preserves_existing_data_after_two_blocks(void) {
   assert(world.shape_brackets[BRACKET_TWO].slots[1] == (uint64_t)~0);
   assert(world.shape_brackets[BRACKET_TWO].slots[2] == 1);
 
-  assert(first[0].type == SHAPE_BOX);
+  assert(first[0].type == BND_BOX);
   assert(first[0].box.size.x == 1.0f);
-  assert(first[1].type == SHAPE_SPHERE);
+  assert(first[1].type == BND_SPHERE);
   assert(first[1].sphere.radius == 200.0f);
 
-  assert(middle[0].type == SHAPE_BOX);
+  assert(middle[0].type == BND_BOX);
   assert(middle[0].box.size.x == 65.0f);
-  assert(middle[1].type == SHAPE_SPHERE);
+  assert(middle[1].type == BND_SPHERE);
   assert(middle[1].sphere.radius == 264.0f);
 
   assert(memcmp(stored_extra, extra_shapes, sizeof(extra_shapes)) == 0);
@@ -274,7 +274,7 @@ void test_shapes_clear_slot_reuses_second_block_slot_with_bracket_alignment(void
     body_shape shapes[8] = {0};
 
     for (count_t k = 0; k < 6; ++k) {
-      shapes[k].type = SHAPE_SPHERE;
+      shapes[k].type = BND_SPHERE;
       shapes[k].sphere.radius = (float)(i * 10 + k + 1);
     }
 
@@ -292,7 +292,7 @@ void test_shapes_clear_slot_reuses_second_block_slot_with_bracket_alignment(void
 
   body_shape replacement_shapes[8] = {0};
   for (count_t i = 0; i < 5; ++i) {
-    replacement_shapes[i].type = SHAPE_BOX;
+    replacement_shapes[i].type = BND_BOX;
     replacement_shapes[i].box.size.x = (float)(300 + i);
   }
 
@@ -303,7 +303,7 @@ void test_shapes_clear_slot_reuses_second_block_slot_with_bracket_alignment(void
   assert(replacement.offset == entries[65].offset);
   assert(replacement.count == 5);
   assert(memcmp(stored_replacement, replacement_shapes, 5 * sizeof(body_shape)) == 0);
-  assert(preserved_neighbor[0].type == SHAPE_SPHERE);
+  assert(preserved_neighbor[0].type == BND_SPHERE);
   assert(preserved_neighbor[0].sphere.radius == 641.0f);
 
   shapes_teardown(&world);

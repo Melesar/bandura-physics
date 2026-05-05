@@ -4,6 +4,7 @@
 #include "raymath.h"
 #include "rlgl.h"
 #include <stdlib.h>
+#include <string.h>
 
 Mesh arrow_base;
 Mesh arrow_head;
@@ -17,26 +18,26 @@ void init_debugging() {
   mat = LoadMaterialDefault();
 }
 
-void draw_arrow(Vector3 start, Vector3 direction, Color color) {
-  const float scale = 0.2;
+void draw_arrow(v3 start, v3 direction, Color color) {
+  const float scale_factor = 0.2;
 
-  Vector3 end = Vector3Add(start, direction);
-  float distance = Vector3Length(direction);
+  v3 end = add(start, direction);
+  float distance = len(direction);
   if (distance < EPSILON) {
     return;
   }
-  Vector3 n = Vector3Scale(direction, 1.0 / distance);
+  v3 n = scale(direction, 1.0 / distance);
 
   set_arrow_color(color);
 
   Matrix base_translation = MatrixTranslate(start.x, start.y, start.z);
-  Matrix base_rotation = QuaternionToMatrix(QuaternionFromVector3ToVector3((Vector3){0, 1, 0}, n));
-  Matrix base_scale = MatrixScale(scale, distance, scale);
+  Matrix base_rotation = QuaternionToMatrix(QuaternionFromVector3ToVector3((Vector3){ 0, 1, 0 }, vec_ray(n)));
+  Matrix base_scale = MatrixScale(scale_factor, distance, scale_factor);
   Matrix base_transform = MatrixMultiply(MatrixMultiply(base_scale, base_rotation), base_translation);
 
   Matrix head_translation = MatrixTranslate(end.x, end.y, end.z);
   Matrix head_rotation = base_rotation;
-  Matrix head_scale = MatrixScale(scale, scale, scale);
+  Matrix head_scale = MatrixScale(scale_factor, scale_factor, scale_factor);
   Matrix head_transform = MatrixMultiply(MatrixMultiply(head_scale, head_rotation), head_translation);
 
   DrawMesh(arrow_base, mat, base_transform);
@@ -53,9 +54,9 @@ void draw_model_with_wireframe(Model model, Vector3 position, float scale, Color
   rlDisableWireMode();
 }
 
-static v3 joint_attachment_point(const physics_world *world, joint j, count_t index) {
-  v3 position = physics_get_position(world, j.bodies[index]);
-  quat rotation = physics_get_rotation(world, j.bodies[index]);
+static v3 joint_attachment_point(const bnd_world *world, bnd_joint j, count_t index) {
+  v3 position = bnd_get_position(world, j.bodies[index]);
+  quat rotation = bnd_get_rotation(world, j.bodies[index]);
 
   v3 point = j.relative_contact_positions[index];
   point = rotate(point, rotation);
@@ -64,91 +65,87 @@ static v3 joint_attachment_point(const physics_world *world, joint j, count_t in
   return point;
 }
 
-void physics_draw_collisions(const physics_world *world) {
+void physics_draw_collisions(const bnd_world *world) {
 #define max_count 50
 
-  contact_t contacts[max_count];
-  count_t count = physics_get_contacts(world, contacts, max_count);
+  bnd_contact contacts[max_count];
+  count_t count = bnd_get_contacts(world, contacts, max_count);
 
   for (count_t i = 0; i < count; ++i) {
-    contact_t contact = contacts[i];
+    bnd_contact contact = contacts[i];
 
     draw_arrow(contact.point, scale(contact.normal, 0.2), RED);
   }
 
-  const joint *joints = physics_get_joints(world, &count);
+  const bnd_joint *joints = bnd_get_joints(world, &count);
   for (count_t i = 0; i < count; ++i) {
     v3 p1 = joint_attachment_point(world, joints[i], 0);
     v3 p2 = joint_attachment_point(world, joints[i], 1);
 
-    DrawSphere(p1, 0.05, GREEN);
-    DrawSphere(p2, 0.05, BLUE);
+    DrawSphere(vec_ray(p1), 0.05, GREEN);
+    DrawSphere(vec_ray(p2), 0.05, BLUE);
   }
 
 #undef max_count
 }
 
-ragdoll ragdoll_create(physics_world *world, v3 position) {
-  body head = physics_add_sphere_dynamic(world, 3, 0.4);
-  *head.position = Vector3Add(position, vec3(0, 5, 0));
+ragdoll ragdoll_create(bnd_world *world, v3 position) {
+  bnd_body head = bnd_add_sphere_dynamic(world, 3, 0.4);
+  *head.position = add(position, vec3(0, 5, 0));
 
-  body torso = physics_add_cylinder_dynamic(world, 25, 0.3, 1.0);
-  *torso.position = Vector3Add(position, vec3(0, 4, 0));
+  bnd_body torso = bnd_add_cylinder_dynamic(world, 25, 0.3, 1.0);
+  *torso.position = add(position, vec3(0, 4, 0));
 
-  body pelvis = physics_add_cylinder_dynamic(world, 20, 0.25, 1.0);
-  *pelvis.position = Vector3Add(position, vec3(0, 3, 0));
+  bnd_body pelvis = bnd_add_cylinder_dynamic(world, 20, 0.25, 1.0);
+  *pelvis.position = add(position, vec3(0, 3, 0));
 
-  body left_upper_leg = physics_add_cylinder_dynamic(world, 10, 0.2, 1.2);
-  *left_upper_leg.position = Vector3Add(position, vec3(0.23, 1.8, -0.2));
-  *left_upper_leg.rotation = QuaternionFromEuler(PI / 6, 0, 0);
+  bnd_body left_upper_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2);
+  *left_upper_leg.position = add(position, vec3(0.23, 1.8, -0.2));
+  *left_upper_leg.rotation = ray_quat(QuaternionFromEuler(PI / 6, 0, 0));
 
-  body left_lower_leg = physics_add_cylinder_dynamic(world, 10, 0.2, 1.2);
-  *left_lower_leg.position = Vector3Add(position, vec3(0.23, 0.6, -0.2));
-  *left_lower_leg.rotation = QuaternionFromEuler(-PI / 6, 0, 0);
+  bnd_body left_lower_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2);
+  *left_lower_leg.position = add(position, vec3(0.23, 0.6, -0.2));
+  *left_lower_leg.rotation = ray_quat(QuaternionFromEuler(-PI / 6, 0, 0));
 
-  body right_upper_leg = physics_add_cylinder_dynamic(world, 10, 0.2, 1.2);
-  *right_upper_leg.position = Vector3Add(position, vec3(-0.23, 1.8, 0));
+  bnd_body right_upper_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2);
+  *right_upper_leg.position = add(position, vec3(-0.23, 1.8, 0));
 
-  body right_lower_leg = physics_add_cylinder_dynamic(world, 10, 0.2, 1.2);
-  *right_lower_leg.position = Vector3Add(position, vec3(-0.23, 0.6, 0));
+  bnd_body right_lower_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2);
+  *right_lower_leg.position = add(position, vec3(-0.23, 0.6, 0));
 
-  body left_upper_arm = physics_add_cylinder_dynamic(world, 10, 0.1, 1.2);
-  *left_upper_arm.position = Vector3Add(position, vec3(0.4, 3.9, -0.4));
-  *left_upper_arm.rotation = QuaternionFromEuler(PI / 5, 0, 0);
+  bnd_body left_upper_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2);
+  *left_upper_arm.position = add(position, vec3(0.4, 3.9, -0.4));
+  *left_upper_arm.rotation = ray_quat(QuaternionFromEuler(PI / 5, 0, 0));
 
-  body left_lower_arm = physics_add_cylinder_dynamic(world, 10, 0.1, 1.2);
-  *left_lower_arm.position = Vector3Add(position, vec3(0.43, 3.37, -1.45));
-  *left_lower_arm.rotation = QuaternionFromEuler(PI / 2, 0, 0);
+  bnd_body left_lower_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2);
+  *left_lower_arm.position = add(position, vec3(0.43, 3.37, -1.45));
+  *left_lower_arm.rotation = ray_quat(QuaternionFromEuler(PI / 2, 0, 0));
 
-  body right_upper_arm = physics_add_cylinder_dynamic(world, 10, 0.1, 1.2);
-  *right_upper_arm.position = Vector3Add(position, vec3(-0.43, 3.8, 0));
+  bnd_body right_upper_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2);
+  *right_upper_arm.position = add(position, vec3(-0.43, 3.8, 0));
 
-  body right_lower_arm = physics_add_cylinder_dynamic(world, 10, 0.1, 1.2);
-  *right_lower_arm.position = Vector3Add(position, vec3(-0.43, 2.63, -0.3));
-  *right_lower_arm.rotation = QuaternionFromEuler(PI / 6, 0, 0);
+  bnd_body right_lower_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2);
+  *right_lower_arm.position = add(position, vec3(-0.43, 2.63, -0.3));
+  *right_lower_arm.rotation = ray_quat(QuaternionFromEuler(PI / 6, 0, 0));
 
   const float joint_margin = 0.1;
 
-  physics_add_joint(world, head.handle, torso.handle, vec3(0, -0.4, 0), vec3(0, 0.5, 0), joint_margin);
-  physics_add_joint(world, torso.handle, pelvis.handle, vec3(0, -0.5, 0), vec3(0, 0.5, 0), joint_margin);
+  bnd_add_joint(world, head.handle, torso.handle, vec3(0, -0.4, 0), vec3(0, 0.5, 0), joint_margin);
+  bnd_add_joint(world, torso.handle, pelvis.handle, vec3(0, -0.5, 0), vec3(0, 0.5, 0), joint_margin);
 
-  physics_add_joint(world, torso.handle, left_upper_arm.handle, vec3(0.3, 0.45, 0), vec3(-0.1, 0.6, 0), joint_margin);
-  physics_add_joint(world, left_upper_arm.handle, left_lower_arm.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0),
-                    joint_margin);
+  bnd_add_joint(world, torso.handle, left_upper_arm.handle, vec3(0.3, 0.45, 0), vec3(-0.1, 0.6, 0), joint_margin);
+  bnd_add_joint(world, left_upper_arm.handle, left_lower_arm.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0), joint_margin);
 
-  physics_add_joint(world, torso.handle, right_upper_arm.handle, vec3(-0.3, 0.45, 0), vec3(0.1, 0.6, 0), joint_margin);
-  physics_add_joint(world, right_upper_arm.handle, right_lower_arm.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0),
-                    joint_margin);
+  bnd_add_joint(world, torso.handle, right_upper_arm.handle, vec3(-0.3, 0.45, 0), vec3(0.1, 0.6, 0), joint_margin);
+  bnd_add_joint(world, right_upper_arm.handle, right_lower_arm.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0), joint_margin);
 
-  physics_add_joint(world, pelvis.handle, left_upper_leg.handle, vec3(0.23, -0.5, 0), vec3(0, 0.6, 0), joint_margin);
-  physics_add_joint(world, left_upper_leg.handle, left_lower_leg.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0),
-                    joint_margin);
+  bnd_add_joint(world, pelvis.handle, left_upper_leg.handle, vec3(0.23, -0.5, 0), vec3(0, 0.6, 0), joint_margin);
+  bnd_add_joint(world, left_upper_leg.handle, left_lower_leg.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0), joint_margin);
 
-  physics_add_joint(world, pelvis.handle, right_upper_leg.handle, vec3(-0.23, -0.5, 0), vec3(0, 0.6, 0), joint_margin);
-  physics_add_joint(world, right_upper_leg.handle, right_lower_leg.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0),
-                    joint_margin);
+  bnd_add_joint(world, pelvis.handle, right_upper_leg.handle, vec3(-0.23, -0.5, 0), vec3(0, 0.6, 0), joint_margin);
+  bnd_add_joint(world, right_upper_leg.handle, right_lower_leg.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0), joint_margin);
 
-  ragdoll doll = malloc(BONE_COUNT * sizeof(body_handle));
+  ragdoll doll = malloc(BONE_COUNT * sizeof(bnd_body_handle));
   doll[HEAD] = head.handle;
   doll[TORSO] = torso.handle;
   doll[PELVIS] = pelvis.handle;
@@ -163,3 +160,62 @@ ragdoll ragdoll_create(physics_world *world, v3 position) {
 
   return doll;
 }
+
+static bnd_mesh_data raylib_mesh_to_bnd(Mesh m) {
+  bnd_mesh_data data = {
+    .vertex_buffer = { .buffer = m.vertices,
+      .element_size = 3 * sizeof(float),
+      .elements_count = m.vertexCount,
+      .stride = 0 },
+  };
+
+  if (m.indices != NULL) {
+    data.index_buffer.buffer = m.indices;
+    data.index_buffer.element_size = sizeof(unsigned short);
+    data.index_buffer.elements_count = 3 * m.triangleCount;
+    data.index_buffer.stride = 0;
+  } else {
+    uint32_t *buffer = malloc(3 * m.triangleCount * sizeof(uint32_t));
+    data.index_buffer.buffer = buffer;
+    data.index_buffer.element_size = sizeof(uint32_t);
+    data.index_buffer.elements_count = 3 * m.triangleCount;
+    data.index_buffer.stride = 0;
+
+    for (int i = 0; i < m.triangleCount; ++i) {
+      buffer[3 * i + 0] = 3 * i + 0;
+      buffer[3 * i + 1] = 3 * i + 1;
+      buffer[3 * i + 2] = 3 * i + 2;
+    }
+  }
+
+  return data;
+}
+
+bool import_raylib_mesh(bnd_world *world, Mesh mesh, bnd_mesh_handle *handle) {
+  v3 com;
+  bnd_mesh_data data = raylib_mesh_to_bnd(mesh);
+  if (!bnd_import_mesh(world, &data, handle, &com)) {
+    return false;
+  }
+
+  for (int i = 0; i < mesh.vertexCount; ++i) {
+    mesh.vertices[3 * i] = mesh.vertices[3 * i] - com.x;
+    mesh.vertices[3 * i + 1] = mesh.vertices[3 * i + 1] - com.y;
+    mesh.vertices[3 * i + 2] = mesh.vertices[3 * i + 2] - com.z;
+  }
+
+  UpdateMeshBuffer(
+      mesh, RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION, mesh.vertices, mesh.vertexCount * 3 * sizeof(float), 0);
+
+  register_mesh_for_rendering(*handle, mesh);
+
+  return true;
+}
+
+quat ray_quat(Quaternion q) { return (quat){ q.x, q.y, q.z, q.w }; }
+
+v3 ray_vec(Vector3 x) { return vec3(x.x, x.y, x.z); }
+
+Vector3 vec_ray(v3 v) { return (Vector3){ v.x, v.y, v.z }; }
+
+Quaternion quat_ray(quat q) { return (Quaternion){ q.x, q.y, q.z, q.w }; }

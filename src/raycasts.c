@@ -1,39 +1,56 @@
 #include "bnd-core.h"
 #include <float.h>
 #include <math.h>
+#include <stdio.h>
 
-static bool raycast_sphere(v3 origin, v3 direction, float max_distance, v3 center, float radius, raycast_hit *hit) {
-  v3 offset = sub(center, origin);
+typedef struct {
+  v3 origin;
+  v3 direction;
+  float max_distance;
+} ray;
+
+static ray ray_transform(ray r, v3 witness, quat rotation) {
+  quat inv_rotation = qinvert(rotation);
+  r.origin = rotate(sub(r.origin, witness), inv_rotation);
+  r.direction = rotate(r.direction, inv_rotation);
+
+  return r;
+}
+
+static bool raycast_sphere(ray r, const shape_context *ctx, bnd_raycast_hit *hit) {
+  v3 position = body_center(ctx);
+
+  v3 offset = sub(position, r.origin);
   float o = lensq(offset);
-  float r = radius * radius;
+  float rr = ctx->shape.sphere.radius * ctx->shape.sphere.radius;
 
-  float tc = dot(offset, direction);
-  if (tc < 0.0f && o > r)
+  float tc = dot(offset, r.direction);
+  if (tc < 0.0f && o > rr)
     return false;
 
   float d2 = o - tc * tc;
-  if (d2 > r)
+  if (d2 > rr)
     return false;
 
-  float delta = sqrtf(r - d2);
-  float t = (o > r) ? tc - delta : tc + delta;
+  float delta = sqrtf(rr - d2);
+  float t = (o > rr) ? tc - delta : tc + delta;
 
-  if (t < 0.0f || t > max_distance)
+  if (t < 0.0f || t > r.max_distance)
     return false;
 
   hit->distance = t;
-  hit->point = add(origin, scale(direction, t));
-  hit->normal = normalize(sub(hit->point, center));
+  hit->point = add(r.origin, scale(r.direction, t));
+  hit->normal = normalize(sub(hit->point, position));
 
   return true;
 }
 
-static bool raycast_box(v3 origin, v3 direction, float max_distance, v3 position, v3 size, quat rotation,
-                        raycast_hit *hit) {
-  v3 half = scale(size, 0.5f);
-  quat inv_rotation = qinvert(rotation);
-  v3 local_origin = rotate(sub(origin, position), inv_rotation);
-  v3 local_direction = rotate(direction, inv_rotation);
+static bool raycast_box(ray r, const shape_context *ctx, bnd_raycast_hit *hit) {
+  v3 half = scale(ctx->shape.box.size, 0.5f);
+  v3 position = body_center(ctx);
+  quat rotation = body_rotation(ctx);
+
+  ray local_ray = ray_transform(r, position, rotation);
 
   float tmin = -FLT_MAX;
   float tmax = FLT_MAX;
@@ -43,8 +60,8 @@ static bool raycast_box(v3 origin, v3 direction, float max_distance, v3 position
   const float epsilon = 1e-6f;
 
   for (count_t axis = 0; axis < 3; ++axis) {
-    float o = ((float *)&local_origin)[axis];
-    float d = ((float *)&local_direction)[axis];
+    float o = ((float *)&local_ray.origin)[axis];
+    float d = ((float *)&local_ray.direction)[axis];
     float h = ((float *)&half)[axis];
 
     if (fabsf(d) < epsilon) {
@@ -95,30 +112,30 @@ static bool raycast_box(v3 origin, v3 direction, float max_distance, v3 position
     local_normal = far_normal;
   }
 
-  if (distance < 0.0f || distance > max_distance) {
+  if (distance < 0.0f || distance > r.max_distance) {
     return false;
   }
 
   hit->distance = distance;
-  hit->point = add(origin, scale(direction, distance));
+  hit->point = add(r.origin, scale(r.direction, distance));
   hit->normal = rotate(local_normal, rotation);
 
   return true;
 }
 
-static bool raycast_cylinder(v3 origin, v3 direction, float max_distance, v3 position, float radius, float height,
-                             quat rotation, raycast_hit *hit) {
-  quat inv_rotation = qinvert(rotation);
-  v3 lo = rotate(sub(origin, position), inv_rotation);
-  v3 ld = rotate(direction, inv_rotation);
+static bool raycast_cylinder(ray r, const shape_context *ctx, bnd_raycast_hit *hit) {
+  v3 position = body_center(ctx);
+  quat rotation = body_rotation(ctx);
 
-  float half_h = height * 0.5f;
+  ray local_ray = ray_transform(r, position, rotation);
+
+  float half_h = ctx->shape.cylinder.height * 0.5f;
   const float epsilon = 1e-6f;
 
   // --- infinite cylinder (XZ plane) ---
-  float a = ld.x * ld.x + ld.z * ld.z;
-  float b = 2.0f * (lo.x * ld.x + lo.z * ld.z);
-  float c = lo.x * lo.x + lo.z * lo.z - radius * radius;
+  float a = local_ray.direction.x * local_ray.direction.x + local_ray.direction.z * local_ray.direction.z;
+  float b = 2.0f * (local_ray.origin.x * local_ray.direction.x + local_ray.origin.z * local_ray.direction.z);
+  float c = local_ray.origin.x * local_ray.origin.x + local_ray.origin.z * local_ray.origin.z - ctx->shape.cylinder.radius * ctx->shape.cylinder.radius;
 
   float t_body_enter = -FLT_MAX;
   float t_body_exit = FLT_MAX;
@@ -143,10 +160,10 @@ static bool raycast_cylinder(v3 origin, v3 direction, float max_distance, v3 pos
   float t_cap_enter, t_cap_exit;
   v3 normal_cap_enter, normal_cap_exit;
 
-  if (fabsf(ld.y) > epsilon) {
-    float inv_dy = 1.0f / ld.y;
-    float t1 = (-half_h - lo.y) * inv_dy;
-    float t2 = (half_h - lo.y) * inv_dy;
+  if (fabsf(local_ray.direction.y) > epsilon) {
+    float inv_dy = 1.0f / local_ray.direction.y;
+    float t1 = (-half_h - local_ray.origin.y) * inv_dy;
+    float t2 = (half_h - local_ray.origin.y) * inv_dy;
     if (t1 < t2) {
       t_cap_enter = t1;
       normal_cap_enter = (v3){0, -1, 0};
@@ -160,7 +177,7 @@ static bool raycast_cylinder(v3 origin, v3 direction, float max_distance, v3 pos
     }
   } else {
     // ray parallel to caps — must be between them
-    if (lo.y < -half_h || lo.y > half_h)
+    if (local_ray.origin.y < -half_h || local_ray.origin.y > half_h)
       return false;
     t_cap_enter = -FLT_MAX;
     normal_cap_enter = (v3){0, -1, 0};
@@ -178,13 +195,13 @@ static bool raycast_cylinder(v3 origin, v3 direction, float max_distance, v3 pos
   float t = t_enter;
   if (t < 0.0f)
     t = t_exit;
-  if (t < 0.0f || t > max_distance)
+  if (t < 0.0f || t > r.max_distance)
     return false;
 
   // --- normal in local space ---
   v3 local_normal;
   if (t == t_body_enter || (t_enter < 0.0f && t == t_body_exit)) {
-    v3 p = add(lo, scale(ld, t));
+    v3 p = add(local_ray.origin, scale(local_ray.direction, t));
     v3 radial = (v3){p.x, 0, p.z};
     local_normal = normalize(radial);
   } else {
@@ -192,63 +209,125 @@ static bool raycast_cylinder(v3 origin, v3 direction, float max_distance, v3 pos
   }
 
   hit->distance = t;
-  hit->point = add(origin, scale(direction, t));
+  hit->point = add(r.origin, scale(r.direction, t));
   hit->normal = rotate(local_normal, rotation);
   return true;
 }
 
-static bool raycast_plane(v3 origin, v3 direction, float max_distance, v3 point, v3 normal, raycast_hit *hit) {
-  float dod = dot(sub(point, origin), normal);
-  float dd = dot(direction, normal);
+static bool raycast_plane(ray r, const shape_context *ctx, bnd_raycast_hit *hit) {
+  float dod = dot(sub(ctx->data->positions[ctx->index], r.origin), ctx->shape.plane.normal);
+  float dd = dot(r.direction, ctx->shape.plane.normal);
 
   if (dd >= 0)
     return false;
 
   float distance = dod / dd;
 
-  if (distance > max_distance)
+  if (distance > r.max_distance)
     return false;
 
   hit->distance = distance;
-  hit->point = add(origin, scale(direction, distance));
-  hit->normal = normal;
+  hit->point = add(r.origin, scale(r.direction, distance));
+  hit->normal = ctx->shape.plane.normal;
 
   return true;
 }
 
-static count_t raycast_bodies(const physics_world *world, body_type type, v3 origin, v3 direction, float max_distance,
-                              count_t hit_count, count_t max_hits, raycast_hit *hits) {
+static bool raycast_mesh(ray r, const shape_context *ctx, bnd_raycast_hit *hit) {
+  v3 position = body_center(ctx);
+  quat rotation = body_rotation(ctx);
+
+  ray local_ray = ray_transform(r, position, rotation);
+
+  bool has_hit = false;
+  float closest_distance = r.max_distance;
+  v3 closest_point, normal;
+
+  const mesh_storage *meshes = &ctx->world->meshes;
+  for (count_t i = 0; i + 2 < meshes->index_count; i += 3) {
+    v3 v0 = meshes->verticies[meshes->indicies[i + 0]];
+    v3 v1 = meshes->verticies[meshes->indicies[i + 1]];
+    v3 v2 = meshes->verticies[meshes->indicies[i + 2]];
+
+    v3 n = cross(sub(v1, v0), sub(v2, v0));
+    float d = dot(n, local_ray.direction);
+    if (d >= -EPSILON) {
+      continue;
+    }
+
+    float t = (dot(n, v0) - dot(n, local_ray.origin)) / d;
+    if (t < 0 || t > closest_distance) {
+      continue;
+    }
+
+    v3 p = add(local_ray.origin, scale(local_ray.direction, t));
+    v3 bary = barycentric(p, v0, v1, v2);
+
+    if (bary.x < -EPSILON || bary.y < -EPSILON || bary.z < -EPSILON) {
+      continue;
+    }
+
+    has_hit = true;
+    closest_distance = t;
+    closest_point = p;
+    normal = n;
+  }
+
+  if (!has_hit) {
+    return false;
+  }
+
+  hit->point = add(position, rotate(closest_point, rotation));
+  hit->normal = normalize(rotate(normal, rotation));
+  hit->distance = closest_distance;
+
+  return true;
+}
+
+static count_t raycast_bodies(const bnd_world *world, bnd_body_type type, v3 origin, v3 direction, float max_distance,
+                              count_t hit_count, count_t max_hits, bnd_raycast_hit *hits) {
   if (hit_count >= max_hits) {
     return 0;
   }
 
+  ray r = { origin, direction, max_distance };
+
   count_t num_hits = 0;
   const common_data *data = as_common_const(world, type);
+
+  shape_context ctx;
+  ctx.world = world;
+  ctx.data = data;
+
   for (count_t i = 0; i < data->count; ++i) {
-    body_shape *shapes = shapes_get(world, data->shapes[i]);
+    bnd_body_shape *shapes = shapes_get(world, data->shapes[i]);
+    ctx.index = i;
 
     for (count_t j = 0; j < data->shapes[i].count; ++j) {
-      raycast_hit *hit = hits + hit_count + num_hits;
-      body_shape shape = shapes[j];
+      bnd_raycast_hit *hit = hits + hit_count + num_hits;
+      bnd_body_shape shape = shapes[j];
+      ctx.shape = shape;
 
       bool is_hit;
       switch (shape.type) {
-        case SHAPE_BOX:
-          is_hit =
-              raycast_box(origin, direction, max_distance, data->positions[i], shape.box.size, data->rotations[i], hit);
+        case BND_BOX:
+          is_hit = raycast_box(r, &ctx, hit);
           break;
 
-        case SHAPE_SPHERE:
-          is_hit = raycast_sphere(origin, direction, max_distance, data->positions[i], shape.sphere.radius, hit);
+        case BND_SPHERE:
+          is_hit = raycast_sphere(r, &ctx, hit);
           break;
 
-        case SHAPE_PLANE:
-          is_hit = raycast_plane(origin, direction, max_distance, data->positions[i], shape.plane.normal, hit);
+        case BND_CYLINDER:
+          is_hit = raycast_cylinder(r, &ctx, hit);
           break;
 
-        case SHAPE_CYLINDER:
-          is_hit = raycast_cylinder(origin, direction, max_distance, data->positions[i], shape.cylinder.radius,
-                                    shape.cylinder.height, data->rotations[i], hit);
+        case BND_MESH:
+          is_hit = raycast_mesh(r, &ctx, hit);
+          break;
+
+        case BND_PLANE:
+          is_hit = raycast_plane(r, &ctx, hit);
           break;
 
         default:
@@ -274,12 +353,12 @@ static count_t raycast_bodies(const physics_world *world, body_type type, v3 ori
   return num_hits;
 }
 
-count_t physics_raycast(const physics_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits,
-                        raycast_hit *hits) {
+count_t bnd_raycast(const bnd_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits,
+                    bnd_raycast_hit *hits) {
   count_t hit_count = 0;
 
-  hit_count += raycast_bodies(world, BODY_DYNAMIC, origin, direction, max_distance, hit_count, max_hits, hits);
-  hit_count += raycast_bodies(world, BODY_STATIC, origin, direction, max_distance, hit_count, max_hits, hits);
+  hit_count += raycast_bodies(world, BND_DYNAMIC, origin, direction, max_distance, hit_count, max_hits, hits);
+  hit_count += raycast_bodies(world, BND_STATIC, origin, direction, max_distance, hit_count, max_hits, hits);
 
   return hit_count;
 }

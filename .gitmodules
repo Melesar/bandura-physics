@@ -1,9 +1,9 @@
 [submodule "vendor/raylib"]
 	path = vendor/raylib
-	url = git@github:raysan5/raylib.git
+	url = https://github.com/raysan5/raylib.git
 [submodule "vendor/clay"]
 	path = vendor/clay
-	url = gh:nicbarker/clay
+	url = https://github.com/nicbarker/clay
 [submodule "vendor/raygui"]
 	path = vendor/raygui
-	url = gh:raysan5/raygui
+	url = https://github.com/raysan5/raygui

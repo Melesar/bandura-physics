@@ -51,9 +51,9 @@ static void draw_rotation_gizmo(Vector3 center, Vector3 axis, Color color) {
 
   // Find a perpendicular vector to the axis
   if (fabsf(axis.y) < 0.9f) {
-    perpendicular = Vector3Normalize(Vector3CrossProduct(axis, (Vector3){0, 1, 0}));
+    perpendicular = Vector3Normalize(Vector3CrossProduct(axis, (Vector3){ 0, 1, 0 }));
   } else {
-    perpendicular = Vector3Normalize(Vector3CrossProduct(axis, (Vector3){1, 0, 0}));
+    perpendicular = Vector3Normalize(Vector3CrossProduct(axis, (Vector3){ 1, 0, 0 }));
   }
 
   Vector3 prev_point = Vector3Add(center, Vector3Scale(perpendicular, gizmo_rotation_ring_radius));
@@ -131,21 +131,21 @@ gizmo_type check_gizmo_hover(Ray mouse_ray, Vector3 cylinder_pos) {
   gizmo_type result = GIZMO_NONE;
 
   // Check translation gizmos
-  Vector3 x_end = Vector3Add(cylinder_pos, (Vector3){gizmo_arrow_length, 0, 0});
+  Vector3 x_end = Vector3Add(cylinder_pos, (Vector3){ gizmo_arrow_length, 0, 0 });
   float dist_x = ray_to_line_distance(mouse_ray, cylinder_pos, x_end, NULL);
   if (dist_x < min_dist) {
     min_dist = dist_x;
     result = GIZMO_TRANSLATE_X;
   }
 
-  Vector3 y_end = Vector3Add(cylinder_pos, (Vector3){0, gizmo_arrow_length, 0});
+  Vector3 y_end = Vector3Add(cylinder_pos, (Vector3){ 0, gizmo_arrow_length, 0 });
   float dist_y = ray_to_line_distance(mouse_ray, cylinder_pos, y_end, NULL);
   if (dist_y < min_dist) {
     min_dist = dist_y;
     result = GIZMO_TRANSLATE_Y;
   }
 
-  Vector3 z_end = Vector3Add(cylinder_pos, (Vector3){0, 0, gizmo_arrow_length});
+  Vector3 z_end = Vector3Add(cylinder_pos, (Vector3){ 0, 0, gizmo_arrow_length });
   float dist_z = ray_to_line_distance(mouse_ray, cylinder_pos, z_end, NULL);
   if (dist_z < min_dist) {
     min_dist = dist_z;
@@ -153,19 +153,22 @@ gizmo_type check_gizmo_hover(Ray mouse_ray, Vector3 cylinder_pos) {
   }
 
   // Check rotation gizmos
-  float dist_rx = ray_to_circle_distance(mouse_ray, cylinder_pos, (Vector3){1, 0, 0}, gizmo_rotation_ring_radius, NULL);
+  float dist_rx =
+      ray_to_circle_distance(mouse_ray, cylinder_pos, (Vector3){ 1, 0, 0 }, gizmo_rotation_ring_radius, NULL);
   if (dist_rx < min_dist) {
     min_dist = dist_rx;
     result = GIZMO_ROTATE_X;
   }
 
-  float dist_ry = ray_to_circle_distance(mouse_ray, cylinder_pos, (Vector3){0, 1, 0}, gizmo_rotation_ring_radius, NULL);
+  float dist_ry =
+      ray_to_circle_distance(mouse_ray, cylinder_pos, (Vector3){ 0, 1, 0 }, gizmo_rotation_ring_radius, NULL);
   if (dist_ry < min_dist) {
     min_dist = dist_ry;
     result = GIZMO_ROTATE_Y;
   }
 
-  float dist_rz = ray_to_circle_distance(mouse_ray, cylinder_pos, (Vector3){0, 0, 1}, gizmo_rotation_ring_radius, NULL);
+  float dist_rz =
+      ray_to_circle_distance(mouse_ray, cylinder_pos, (Vector3){ 0, 0, 1 }, gizmo_rotation_ring_radius, NULL);
   if (dist_rz < min_dist) {
     min_dist = dist_rz;
     result = GIZMO_ROTATE_Z;
@@ -193,13 +196,13 @@ void manipulate_gizmos(Camera *camera) {
 
         // For translation, calculate initial offset along axis
         if (g->selected_gizmo >= GIZMO_TRANSLATE_X && g->selected_gizmo <= GIZMO_TRANSLATE_Z) {
-          Vector3 axis = {0, 0, 0};
+          Vector3 axis = { 0, 0, 0 };
           if (g->selected_gizmo == GIZMO_TRANSLATE_X)
-            axis = (Vector3){1, 0, 0};
+            axis = (Vector3){ 1, 0, 0 };
           else if (g->selected_gizmo == GIZMO_TRANSLATE_Y)
-            axis = (Vector3){0, 1, 0};
+            axis = (Vector3){ 0, 1, 0 };
           else if (g->selected_gizmo == GIZMO_TRANSLATE_Z)
-            axis = (Vector3){0, 0, 1};
+            axis = (Vector3){ 0, 0, 1 };
 
           Vector3 line_start = *g->pos;
           Vector3 line_end = Vector3Add(*g->pos, Vector3Scale(axis, 100));
@@ -213,13 +216,13 @@ void manipulate_gizmos(Camera *camera) {
 
         // For rotation, calculate initial angle
         if (g->selected_gizmo >= GIZMO_ROTATE_X) {
-          Vector3 axis = {0, 0, 0};
+          Vector3 axis = { 0, 0, 0 };
           if (g->selected_gizmo == GIZMO_ROTATE_X)
-            axis = (Vector3){1, 0, 0};
+            axis = (Vector3){ 1, 0, 0 };
           else if (g->selected_gizmo == GIZMO_ROTATE_Y)
-            axis = (Vector3){0, 1, 0};
+            axis = (Vector3){ 0, 1, 0 };
           else if (g->selected_gizmo == GIZMO_ROTATE_Z)
-            axis = (Vector3){0, 0, 1};
+            axis = (Vector3){ 0, 0, 1 };
 
           Vector3 intersection;
           ray_to_circle_distance(mouse_ray, *g->pos, axis, gizmo_rotation_ring_radius, &intersection);
@@ -228,9 +231,9 @@ void manipulate_gizmos(Camera *camera) {
           // Project to find perpendicular for angle calculation
           Vector3 perpendicular;
           if (fabsf(axis.y) < 0.9f) {
-            perpendicular = Vector3Normalize(Vector3CrossProduct(axis, (Vector3){0, 1, 0}));
+            perpendicular = Vector3Normalize(Vector3CrossProduct(axis, (Vector3){ 0, 1, 0 }));
           } else {
-            perpendicular = Vector3Normalize(Vector3CrossProduct(axis, (Vector3){1, 0, 0}));
+            perpendicular = Vector3Normalize(Vector3CrossProduct(axis, (Vector3){ 1, 0, 0 }));
           }
           Vector3 binormal = Vector3CrossProduct(axis, perpendicular);
 
@@ -246,13 +249,13 @@ void manipulate_gizmos(Camera *camera) {
         if (g->selected_gizmo == GIZMO_TRANSLATE_X || g->selected_gizmo == GIZMO_TRANSLATE_Y ||
             g->selected_gizmo == GIZMO_TRANSLATE_Z) {
           // Translation
-          Vector3 axis = {0, 0, 0};
+          Vector3 axis = { 0, 0, 0 };
           if (g->selected_gizmo == GIZMO_TRANSLATE_X)
-            axis = (Vector3){1, 0, 0};
+            axis = (Vector3){ 1, 0, 0 };
           else if (g->selected_gizmo == GIZMO_TRANSLATE_Y)
-            axis = (Vector3){0, 1, 0};
+            axis = (Vector3){ 0, 1, 0 };
           else if (g->selected_gizmo == GIZMO_TRANSLATE_Z)
-            axis = (Vector3){0, 0, 1};
+            axis = (Vector3){ 0, 0, 1 };
 
           // Project mouse movement onto axis
           Vector3 line_start = *g->pos;
@@ -270,13 +273,13 @@ void manipulate_gizmos(Camera *camera) {
           *g->pos = Vector3Add(g->start_pos, Vector3Scale(axis, delta));
         } else {
           // Rotation
-          Vector3 axis = {0, 0, 0};
+          Vector3 axis = { 0, 0, 0 };
           if (g->selected_gizmo == GIZMO_ROTATE_X)
-            axis = (Vector3){1, 0, 0};
+            axis = (Vector3){ 1, 0, 0 };
           else if (g->selected_gizmo == GIZMO_ROTATE_Y)
-            axis = (Vector3){0, 1, 0};
+            axis = (Vector3){ 0, 1, 0 };
           else if (g->selected_gizmo == GIZMO_ROTATE_Z)
-            axis = (Vector3){0, 0, 1};
+            axis = (Vector3){ 0, 0, 1 };
 
           Vector3 intersection;
           float dist = ray_to_circle_distance(mouse_ray, *g->pos, axis, gizmo_rotation_ring_radius, &intersection);
@@ -286,9 +289,9 @@ void manipulate_gizmos(Camera *camera) {
 
             Vector3 perpendicular;
             if (fabsf(axis.y) < 0.9f) {
-              perpendicular = Vector3Normalize(Vector3CrossProduct(axis, (Vector3){0, 1, 0}));
+              perpendicular = Vector3Normalize(Vector3CrossProduct(axis, (Vector3){ 0, 1, 0 }));
             } else {
-              perpendicular = Vector3Normalize(Vector3CrossProduct(axis, (Vector3){1, 0, 0}));
+              perpendicular = Vector3Normalize(Vector3CrossProduct(axis, (Vector3){ 1, 0, 0 }));
             }
             Vector3 binormal = Vector3CrossProduct(axis, perpendicular);
 
@@ -318,18 +321,18 @@ void draw_gizmos() {
     Color y_color = (g.hovered_gizmo == GIZMO_TRANSLATE_Y || g.selected_gizmo == GIZMO_TRANSLATE_Y) ? ORANGE : GREEN;
     Color z_color = (g.hovered_gizmo == GIZMO_TRANSLATE_Z || g.selected_gizmo == GIZMO_TRANSLATE_Z) ? ORANGE : BLUE;
 
-    draw_arrow(*g.pos, (Vector3){gizmo_arrow_length, 0, 0}, x_color);
-    draw_arrow(*g.pos, (Vector3){0, gizmo_arrow_length, 0}, y_color);
-    draw_arrow(*g.pos, (Vector3){0, 0, gizmo_arrow_length}, z_color);
+    draw_arrow(ray_vec(*g.pos), (v3){ gizmo_arrow_length, 0, 0 }, x_color);
+    draw_arrow(ray_vec(*g.pos), (v3){ 0, gizmo_arrow_length, 0 }, y_color);
+    draw_arrow(ray_vec(*g.pos), (v3){ 0, 0, gizmo_arrow_length }, z_color);
 
     // Draw rotation gizmos
     Color rx_color = (g.hovered_gizmo == GIZMO_ROTATE_X || g.selected_gizmo == GIZMO_ROTATE_X) ? ORANGE : RED;
     Color ry_color = (g.hovered_gizmo == GIZMO_ROTATE_Y || g.selected_gizmo == GIZMO_ROTATE_Y) ? ORANGE : GREEN;
     Color rz_color = (g.hovered_gizmo == GIZMO_ROTATE_Z || g.selected_gizmo == GIZMO_ROTATE_Z) ? ORANGE : BLUE;
 
-    draw_rotation_gizmo(*g.pos, (Vector3){1, 0, 0}, rx_color);
-    draw_rotation_gizmo(*g.pos, (Vector3){0, 1, 0}, ry_color);
-    draw_rotation_gizmo(*g.pos, (Vector3){0, 0, 1}, rz_color);
+    draw_rotation_gizmo(*g.pos, (Vector3){ 1, 0, 0 }, rx_color);
+    draw_rotation_gizmo(*g.pos, (Vector3){ 0, 1, 0 }, ry_color);
+    draw_rotation_gizmo(*g.pos, (Vector3){ 0, 0, 1 }, rz_color);
   }
 }
 
@@ -344,7 +347,7 @@ int register_gizmo(Vector3 *pos, Quaternion *rot) {
     gizmos = new_gizmos;
   }
 
-  gizmo g = {0};
+  gizmo g = { 0 };
   g.pos = pos;
   g.rot = rot;
   g.id = current_id++;
