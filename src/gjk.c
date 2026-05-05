@@ -1,4 +1,5 @@
 #include "bnd-core.h"
+#include "profiler.h"
 #include <math.h>
 #include <float.h>
 
@@ -158,20 +159,9 @@ static bool simplex_update(simplex *s, v3 *direction) {
   return false;
 }
 
-bool gjk_check_intersection_bodies(bnd_world *world, bnd_body_handle body_1, bnd_body_handle body_2, simplex *simplex) {
-  count_t n;
-  collision_detection_context ctx = { .data_a = body_1.type == BND_DYNAMIC ? (common_data *)&world->dynamics
-                                                                           : &world->statics,
-    .data_b = body_2.type == BND_DYNAMIC ? (common_data *)&world->dynamics : &world->statics,
-    .body_a = handle_to_inner_index(world, body_1),
-    .body_b = handle_to_inner_index(world, body_2),
-    .shape_a = bnd_get_shapes(world, body_1, &n)[0],
-    .shape_b = bnd_get_shapes(world, body_2, &n)[0] };
-
-  return gjk_check_intersection(world, &ctx, simplex);
-}
-
 bool gjk_check_intersection(bnd_world *world, const collision_detection_context *ctx, simplex *simplex) {
+  PROFILE_FUNCTION
+
   v3 direction = initial_direction;
 
   simplex->size = 0;

@@ -1,4 +1,5 @@
 #include "bnd-core.h"
+#include "profiler.h"
 
 #include <math.h>
 #include <string.h>
@@ -567,9 +568,14 @@ void epa_init(const bnd_config *config) {
   pt = polytope_init(memory, config->memory.epa_max_nodes);
 }
 
-void epa_get_contact(
-    const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact) {
-  polytope_from_simplex(pt, simplex);
+void epa_get_contact(const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact) {
+  PROFILE_FUNCTION
+
+  if (!polytope_from_simplex(pt, simplex)) {
+    raise_error(BND_ERROR_INVALID_POLYTOPE, (void *) simplex, "Invalid simplex");
+    epa_invalid_contact(simplex->points[0], contact);
+    return;
+  }
 
   count_t attempts = 0;
   support_point support_point;

@@ -5,7 +5,6 @@
 #include <assert.h>
 #include <math.h>
 #include <string.h>
-#include <time.h>
 
 #define SEED 100
 #define VORTEX_COUNT 6
@@ -31,6 +30,10 @@ typedef struct {
 } vortex;
 
 vortex vorticies[VORTEX_COUNT];
+
+static void on_error(bnd_error error, char *message, void *data) {
+  TraceLog(LOG_ERROR, message);
+}
 
 static vortex vortex_create(v3 pos, float pull_force, float kick_radius) {
   return (vortex){
@@ -129,6 +132,8 @@ void scenario_initialize(program_config *config, bnd_config *physics_config) {
   config->camera_target = (v3){ 0, 0, 0 };
 
   physics_config->simulation.friction = 0.3;
+
+  bnd_register_error_callback(on_error);
 }
 
 void scenario_setup_scene(bnd_world *world) {
