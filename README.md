@@ -284,7 +284,7 @@ Meshes have different representations depending on their format, development env
 bool bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, bnd_mesh_handle *handle, v3 *center_of_mass);
 ```
 
-  * `bnd_mesh_data` parameter carries information about the meshe's verticies and indicies. It's the user's responsibility to populate it from whatever external mesh format they use. Here is an example of converting the [Raylib's](https://www.raylib.com) mesh:
+  * `bnd_mesh_data` parameter carries information about the mesh's verticies and indicies. It's the user's responsibility to populate it from whatever external mesh format they use. Here is an example of converting the [Raylib's](https://www.raylib.com) mesh:
   ```c
   bnd_mesh_data raylib_mesh_to_bnd(Mesh m) {
     bnd_mesh_data data = {
@@ -318,7 +318,7 @@ bool bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, bnd_mesh_handl
   } 
   ```
   * `bnd_mesh_handle` will be populated with the handle to the imported mesh upon success. This handle will be needed later to create bodies with this mesh.
-  * `v3 center_of_mass` will be populated with the position of the meshe's center of mass upon success. This position is relative to the meshe's origin.
+  * `v3 center_of_mass` will be populated with the position of the mesh's center of mass upon success. This position is relative to the origin of the mesh.
   * The function will validate the mesh data inside `bnd_mesh_data` and return `false` in case it's invalid. It will also raise an error with an explanation of what went wrong (see [Handling errors](#handling-errors))
   * This functions should be called _once per mesh_. After that, its `bnd_mesh_handle` can be used to create as many bodies as you need from it.
 
