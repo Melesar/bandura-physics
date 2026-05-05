@@ -2,7 +2,6 @@
 #define BND_CORE_H
 
 #include "bandura.h"
-#include <stddef.h>
 
 typedef struct {
   v3 point;
