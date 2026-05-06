@@ -31,7 +31,7 @@ uint32_t frame_header_index;
 uint32_t frame_headers_capacity;
 uint32_t frame_headers_mask;
 
-const uint32_t monitors_framebuffer_capacity = 256;
+const uint32_t monitors_framebuffer_capacity = 1024;
 
 pthread_t monitor_threads[MAX_MONITORS_COUNT];
 semaphore monitor_semaphores[MAX_MONITORS_COUNT];
@@ -217,6 +217,7 @@ bool profiler_monitor_start(profiler_monitor *monitor) {
   __atomic_fetch_or(&monitors.mask, new_monitor_mask, __ATOMIC_RELAXED);
 
   monitor->framebuffer = calloc(monitors_framebuffer_capacity, sizeof(profiler_sample));
+  monitor->framebuffer_capacity = monitors_framebuffer_capacity;
   monitor->id = monitor_id;
   monitor->frame_index = frame_header_index;
 
@@ -242,10 +243,12 @@ bool profiler_monitor_read_next_frame(profiler_monitor *monitor) {
     return false;
   }
 
-  if (frame->count > monitors_framebuffer_capacity) {
-    // TODO resize the buffer?
-    assert(false); // Temporary for catching these issues should they appear.
-    return false;
+  if (frame->count > monitor->framebuffer_capacity) {
+    while (frame->count >= monitor->framebuffer_capacity) {
+      monitor->framebuffer_capacity <<= 1;
+    }
+
+    monitor->framebuffer = realloc(monitor->framebuffer, monitor->framebuffer_capacity * sizeof(profiler_sample));
   }
 
   monitor->samples_available = frame->count;

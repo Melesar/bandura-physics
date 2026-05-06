@@ -58,6 +58,7 @@ typedef struct {
 typedef struct {
   profiler_sample *framebuffer;
   profiler_frame_metadata frame_metadata;
+  uint32_t framebuffer_capacity;
   uint32_t frame_index;
   uint32_t samples_available;
   uint8_t id;
