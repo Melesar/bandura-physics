@@ -74,6 +74,11 @@ typedef struct {
   count_t mesh_capacity;
 } mesh_storage;
 
+typedef struct {
+  v3 center;
+  v3 half_extents;
+} aabb;
+
 #define COMMON_FIELDS                                                                                                  \
   count_t capacity;                                                                                                    \
   count_t count;                                                                                                       \
@@ -82,6 +87,7 @@ typedef struct {
   v3 *positions;                                                                                                       \
   quat *rotations;                                                                                                     \
   body_shapes *shapes;                                                                                                 \
+  aabb *aabbs;                                                                                                         \
   uint8_t *generations;                                                                                                \
   count_t *free_list;                                                                                                  \
   outer_lookup_node *outer_lookup;                                                                                     \
@@ -233,5 +239,8 @@ float distance_to_line_segment(v3 from, v3 a, v3 b, v3 *closest);
 
 v3 body_center(const shape_context *ctx);
 quat body_rotation(const shape_context *ctx);
+
+v3 v3_min(v3 a, v3 b);
+v3 v3_max(v3 a, v3 b);
 
 #endif

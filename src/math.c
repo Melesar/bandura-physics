@@ -421,3 +421,11 @@ float distance_to_triangle(v3 from, v3 a, v3 b, v3 c, v3 *closest) {
 
   return distance;
 }
+
+v3 v3_min(v3 a, v3 b) {
+  return vec3(fminf(a.x, b.x), fminf(a.y, b.y), fminf(a.z, b.z));
+}
+
+v3 v3_max(v3 a, v3 b) {
+  return vec3(fmaxf(a.x, b.x), fmaxf(a.y, b.y), fmaxf(a.z, b.z));
+}

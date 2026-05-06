@@ -30,6 +30,25 @@ quat body_rotation(const shape_context *ctx) {
   return qmul(ctx->data->rotations[ctx->index], ctx->shape.rotation);
 }
 
+static inline bool aabb_intersect(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b) {
+  const aabb *a = &data_a->aabbs[index_a];
+  const aabb *b = &data_b->aabbs[index_b];
+
+  if (fabsf(a->center.x - b->center.x) > a->half_extents.x + b->half_extents.x) {
+    return false;
+  }
+
+  if (fabsf(a->center.y - b->center.y) > a->half_extents.y + b->half_extents.y) {
+    return false;
+  }
+
+  if (fabsf(a->center.z - b->center.z) > a->half_extents.z + b->half_extents.z) {
+    return false;
+  }
+
+  return true;
+}
+
 static v3 sphere_support(const shape_context *ctx, v3 direction) {
   v3 center = add(ctx->data->positions[ctx->index], ctx->shape.offset);
   float radius = ctx->shape.sphere.radius;
@@ -348,6 +367,10 @@ count_t collisions_detect_dynamic(bnd_world *world) {
 
   for (count_t i = 0; i < dynamics->count; ++i) {
     for (count_t j = 0; j < i; ++j) {
+      if (!aabb_intersect(dynamics, dynamics, i, j)) {
+        continue;
+      }
+
       ctx.body_a = i;
       ctx.body_b = j;
 
@@ -387,6 +410,10 @@ void collisions_detect_static(bnd_world *world) {
 
   for (count_t i = 0; i < dynamics->count; ++i) {
     for (count_t j = 0; j < statics->count; ++j) {
+      if (!aabb_intersect(dynamics, statics, i, j)) {
+        continue;
+      }
+
       ctx.body_a = i;
       ctx.body_b = j;
 

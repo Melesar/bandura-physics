@@ -2,6 +2,7 @@
 #include "bnd-core.h"
 #include "profiler.h"
 
+#include <float.h>
 #include <math.h>
 #include <assert.h>
 #include <stdlib.h>
@@ -60,6 +61,60 @@ static m3 inertia_matrix(const bnd_world *world, bnd_body_shape shape, float mas
     default:
       return matrix_initial_inertia(one());
   }
+}
+
+static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
+  v3 position = data->positions[index];
+  quat rotation = data->rotations[index];
+  body_shapes shapes_data = data->shapes[index];
+
+  const bnd_body_shape *shapes = shapes_get(world, shapes_data);
+
+  v3 min = { FLT_MAX, FLT_MAX, FLT_MAX };
+  v3 max = negate(min);
+  for (count_t i = 0; i < shapes_data.count; ++i) {
+    bnd_body_shape shape = shapes[i];
+    quat shape_rotation = qmul(rotation, shape.rotation);
+    v3 shape_center = add(position, rotate(shape.offset, rotation));
+
+    aabb shape_bounds;
+    shape_bounds.center = shape_center;
+
+    v3 shape_min;
+    v3 shape_max;
+    switch (shape.type) {
+      case BND_BOX:
+        shape_min = add(shape_center, rotate(scale(shape.box.size, -0.5), shape_rotation));
+        shape_max = add(shape_center, rotate(scale(shape.box.size, 0.5), shape_rotation));
+        break;
+
+      case BND_SPHERE:
+        shape_min = add(shape_center, scale(one(), -shape.sphere.radius));
+        shape_max = add(shape_center, scale(one(), shape.sphere.radius));
+        break;
+
+      case BND_CYLINDER:
+        shape_min = add(shape_center, rotate(vec3(shape.cylinder.radius, -shape.cylinder.height, shape.cylinder.radius), shape_rotation));
+        shape_max = add(shape_center, rotate(vec3(shape.cylinder.radius, shape.cylinder.height, shape.cylinder.radius), shape_rotation));
+        break;
+
+      case BND_MESH:
+        break;
+
+      default:
+        shape_max = vec3(FLT_MAX, FLT_MAX, FLT_MAX);
+        shape_min = negate(shape_max);
+        break;
+    }
+
+    min = v3_min(min, shape_min);
+    max = v3_max(max, shape_max);
+  }
+
+  data->aabbs[index] = (aabb) {
+    .center = scale(add(min, max), 0.5),
+    .half_extents = scale(sub(max, min), 0.5),
+  };
 }
 
 static void clear_forces(bnd_world *world) {
@@ -241,6 +296,7 @@ static void realloc_commons(common_data *data) {
   data->positions = realloc(data->positions, sizeof(v3) * data->capacity);
   data->rotations = realloc(data->rotations, sizeof(quat) * data->capacity);
   data->shapes = realloc(data->shapes, sizeof(body_shapes) * data->capacity);
+  data->aabbs = realloc(data->aabbs, sizeof(aabb) * data->capacity);
   data->free_list = realloc(data->free_list, sizeof(count_t) * data->capacity);
   data->generations = realloc(data->generations, sizeof(uint8_t) * data->capacity);
   data->outer_lookup = realloc(data->outer_lookup, sizeof(outer_lookup_node) * data->capacity);
@@ -279,6 +335,8 @@ static void init_body_common(bnd_world *world, common_data *data, shape_dimensio
   data->positions[index] = zero();
   data->rotations[index] = qidentity();
   data->shapes[index] = shapes_write(world, bracket, shapes, shapes_count);
+
+  calculate_aabb(world, data, index);
 }
 
 static void init_body_dynamic(bnd_world *world, float mass, m3 inertia_tensor, count_t index) {
@@ -779,7 +837,14 @@ bool bnd_body_next_typed(const bnd_world *world, bnd_body_enumerator_typed *enum
   return true;
 }
 
-void integrate_bodies(bnd_world *world, float dt) {
+static void update_aabbs(bnd_world *world) {
+  dynamic_bodies *dynamics = &world->dynamics;
+  for (count_t i = 0; i < dynamics->awake_count; ++i) {
+    calculate_aabb(world, (common_data *) dynamics, i);
+  }
+}
+
+static void integrate_bodies(bnd_world *world, float dt) {
   PROFILE_FUNCTION
 
   v3 gravity_acc = world->config.simulation.gravity;
@@ -829,6 +894,7 @@ void bnd_simulate(bnd_world *world, float dt) {
     world->stats.body_count = world->dynamics.count + world->statics.count;
 
     integrate_bodies(world, dt);
+    update_aabbs(world);
     contacts_reset(world);
     contacts_generate(world);
     contacts_resolve(world, dt);

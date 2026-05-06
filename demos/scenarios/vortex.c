@@ -139,11 +139,11 @@ void scenario_initialize(program_config *config, bnd_config *physics_config) {
 void scenario_setup_scene(bnd_world *world) {
   SetRandomSeed(33);
 
-  bnd_mesh_handle cone_mesh;
-  if (import_raylib_mesh(world, GenMeshCone(1, 3, 16), &cone_mesh)) {
-    bnd_body cone = bnd_add_mesh_dynamic(world, 5, cone_mesh);
-    scatter_dynamic_body(world, cone, 2, 7);
-  }
+  // bnd_mesh_handle cone_mesh;
+  // if (import_raylib_mesh(world, GenMeshCone(1, 3, 16), &cone_mesh)) {
+  //   bnd_body cone = bnd_add_mesh_dynamic(world, 5, cone_mesh);
+  //   scatter_dynamic_body(world, cone, 2, 7);
+  // }
 
   for (int i = 0; i < 15; ++i) {
     float radius = random_range(0.3f, 0.75f);
