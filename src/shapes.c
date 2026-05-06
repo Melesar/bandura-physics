@@ -86,8 +86,7 @@ void shapes_expand_bracket(bnd_world *world, shape_dimension_bracket bracket) {
   free(current_slots);
 }
 
-bool shapes_put_into_empty_slot(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes,
-                                count_t shapes_count, count_t *slot_number) {
+bool shapes_put_into_empty_slot(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes, count_t shapes_count, count_t *slot_number) {
   count_t blocks_count = bracket_block_count(world, bracket);
   uint64_t *slots = world->shape_brackets[bracket].slots;
   bnd_body_shape *shapes_buffer = world->shape_brackets[bracket].shapes;
@@ -238,7 +237,8 @@ void test_shapes_expand_bracket_preserves_existing_data_after_two_blocks(void) {
   extra_shapes[1].sphere.radius = 11.0f;
 
   body_shapes extra = shapes_write(&world, BRACKET_TWO, extra_shapes, 2);
-  body_shape *first = world.shape_brackets[BRACKET_TWO].shapes;
+  body_shape
+  *first = world.shape_brackets[BRACKET_TWO].shapes;
   body_shape *middle = world.shape_brackets[BRACKET_TWO].shapes + 64 * 2;
   body_shape *stored_extra = shapes_get(&world, extra);
 

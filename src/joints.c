@@ -14,8 +14,7 @@ static inline void resize_if_needed(joints *joints) {
   joints->ids = realloc(joints->ids, joints->capacity * sizeof(count_t));
 }
 
-count_t bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, v3 contact_offset_a,
-                      v3 contact_offset_b, float max_distance) {
+count_t bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, v3 contact_offset_a, v3 contact_offset_b, float max_distance) {
   // Two static bodies shouldn't be bound together.
   if (body_a.type == BND_STATIC && body_b.type == BND_STATIC) {
     return ~0;

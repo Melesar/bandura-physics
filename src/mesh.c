@@ -95,13 +95,13 @@ static void import_indicies(const bnd_mesh_buffer *buffer, mesh_storage *meshes)
 }
 
 static float tetr_inertia_moment(m3 m, count_t i) {
-  return m.m0[i] * m.m0[i] + m.m1[i] * m.m2[i] + m.m1[i] * m.m1[i] + m.m0[i] * m.m2[i] + m.m2[i] * m.m2[i] +
-         m.m0[i] * m.m1[i];
+  return m.m0[i] * m.m0[i] + m.m1[i] * m.m2[i] + m.m1[i] * m.m1[i] + m.m0[i] * m.m2[i] + m.m2[i] * m.m2[i] + m.m0[i] * m.m1[i];
 }
 
 static float tetr_inertia_product(m3 m, count_t i, count_t j) {
-  return 2.0 * m.m0[i] * m.m0[j] + m.m1[i] * m.m2[j] + m.m2[i] * m.m1[j] + 2.0 * m.m1[i] * m.m1[j] + m.m0[i] * m.m2[j] +
-         m.m2[i] * m.m0[j] + 2.0 * m.m2[i] * m.m2[j] + m.m0[i] * m.m1[j] + m.m1[i] * m.m0[j];
+  return 2.0 * m.m0[i] * m.m0[j] + m.m1[i] * m.m2[j] + m.m2[i] * m.m1[j] +
+    2.0 * m.m1[i] * m.m1[j] + m.m0[i] * m.m2[j] + m.m2[i] * m.m0[j] +
+    2.0 * m.m2[i] * m.m2[j] + m.m0[i] * m.m1[j] + m.m1[i] * m.m0[j];
 }
 
 static bool is_mesh_convex(const bnd_mesh_data *data) {

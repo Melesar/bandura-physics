@@ -62,8 +62,7 @@ static int32_t find_direct_child(final_sample *samples, uint32_t samples_count, 
   return -1;
 }
 
-static uint32_t process_samples(profiler_sample *samples, uint32_t samples_count, final_sample *output,
-                                uint32_t available_capacity) {
+static uint32_t process_samples(profiler_sample *samples, uint32_t samples_count, final_sample *output, uint32_t available_capacity) {
   if (samples_count == 0 || available_capacity == 0) {
     return 0;
   }
@@ -72,10 +71,10 @@ static uint32_t process_samples(profiler_sample *samples, uint32_t samples_count
   profiler_sample root = samples[0];
 
   output[0] = (final_sample){
-      .label_id = root.label_id,
-      .parent_index = root.parent_index,
-      .call_count = 1,
-      .total_time = root.time,
+    .label_id = root.label_id,
+    .parent_index = root.parent_index,
+    .call_count = 1,
+    .total_time = root.time,
   };
 
   uint32_t src_index = 1;
@@ -94,10 +93,12 @@ static uint32_t process_samples(profiler_sample *samples, uint32_t samples_count
       // src_sample is the direct child of the current sample in the output.
       int32_t child_index = find_direct_child(output, final_count, dst_current_index, src_sample.label_id);
       if (child_index < 0) {
-        output[dst_free_slot] = (final_sample){.label_id = src_sample.label_id,
-                                               .parent_index = dst_current_index,
-                                               .total_time = src_sample.time,
-                                               .call_count = 1};
+        output[dst_free_slot] = (final_sample) {
+          .label_id = src_sample.label_id,
+          .parent_index = dst_current_index,
+          .total_time = src_sample.time,
+          .call_count = 1
+        };
 
         dst_current_index = dst_free_slot;
         dst_free_slot += 1;
@@ -141,8 +142,9 @@ static uint32_t process_samples(profiler_sample *samples, uint32_t samples_count
 
 void *csv_file_monitor_run(void *data) {
   FILE *f = fopen("bandura.prof.csv", "w");
-  if (!f)
+  if (!f) {
     return NULL;
+  }
 
   call_tree = calloc(CALL_TREE_CAPACITY, sizeof(final_sample));
 
@@ -160,8 +162,7 @@ void *csv_file_monitor_run(void *data) {
     profiler_monitor_wait_for_frame(&monitor);
 
     while (profiler_monitor_read_next_frame(&monitor)) {
-      uint32_t processed_count =
-          process_samples(monitor.framebuffer, monitor.samples_available, call_tree, CALL_TREE_CAPACITY);
+      uint32_t processed_count = process_samples(monitor.framebuffer, monitor.samples_available, call_tree, CALL_TREE_CAPACITY);
 
       for (uint32_t sample_index = 0; sample_index < processed_count; ++sample_index) {
         final_sample sample = call_tree[sample_index];
@@ -170,8 +171,7 @@ void *csv_file_monitor_run(void *data) {
         uint64_t time_ns = sample.total_time;
         double time_ms = time_ns / 1000000.0;
 
-        fprintf(f, "%d,%s,%d,%.5f,%d,%d\n", running_count, label, sample.call_count, time_ms,
-                monitor.frame_metadata.body_count, monitor.frame_metadata.contacts_count);
+        fprintf(f, "%d,%s,%d,%.5f,%d,%d\n", running_count, label, sample.call_count, time_ms, monitor.frame_metadata.body_count, monitor.frame_metadata.contacts_count);
       }
 
       running_count += 1;

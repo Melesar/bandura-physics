@@ -43,9 +43,10 @@ static v3 box_support(const shape_context *ctx, v3 direction) {
   quat inv_rotation = qinvert(rotation);
 
   v3 local_direction = normalize(rotate(direction, inv_rotation));
-  v3 v = vec3((local_direction.x > 0 ? 1 : -1) * ctx->shape.box.size.x * 0.5,
-      (local_direction.y > 0 ? 1 : -1) * ctx->shape.box.size.y * 0.5,
-      (local_direction.z > 0 ? 1 : -1) * ctx->shape.box.size.z * 0.5);
+  v3 v = vec3(
+    (local_direction.x > 0 ? 1 : -1) * ctx->shape.box.size.x * 0.5,
+    (local_direction.y > 0 ? 1 : -1) * ctx->shape.box.size.y * 0.5,
+    (local_direction.z > 0 ? 1 : -1) * ctx->shape.box.size.z * 0.5);
 
   v = rotate(v, rotation);
   v = add(center, v);
@@ -189,8 +190,9 @@ static count_t box_plane_collision(bnd_world *world, const collision_detection_c
   for (count_t i = 0; i < 8 && contact_count < max_contacts; ++i) {
     v3 corner = add(box_center, rotate(rotate(corners[i], shape_rotation), box_rotation));
     float distance = dot(sub(corner, plane_point), plane_normal);
-    if (distance > 0)
+    if (distance > 0) {
       continue;
+    }
 
     contact *c = new_contact(world, ctx);
     c->normal = plane_normal;
@@ -211,8 +213,9 @@ static count_t sphere_plane_collision(bnd_world *world, const collision_detectio
   v3 plane_normal = ctx->shape_b.plane.normal;
 
   float plane_sphere_distance = dot(sub(sphere_center, plane_point), plane_normal);
-  if (plane_sphere_distance > sphere_radius)
+  if (plane_sphere_distance > sphere_radius) {
     return 0;
+  }
 
   contact *contact = new_contact(world, ctx);
   contact->normal = plane_normal;
@@ -236,15 +239,16 @@ static count_t cylinder_plane_collision(bnd_world *world, const collision_detect
   v3 cylinder_axis = rotate(up(), qmul(global_rotation, shape_rotation));
   float axis_projection = dot(cylinder_axis, plane_normal);
   float radial_projection_sq = 1.0f - axis_projection * axis_projection;
-  if (radial_projection_sq < 0.0f)
+  if (radial_projection_sq < 0.0f) {
     radial_projection_sq = 0.0f;
+  }
 
   float radial_projection = sqrtf(radial_projection_sq);
   float center_distance = dot(sub(cylinder_center, plane_point), plane_normal);
-  float min_distance =
-      center_distance - cylinder_half_height * fabsf(axis_projection) - cylinder_radius * radial_projection;
-  if (min_distance > 0.0f)
+  float min_distance = center_distance - cylinder_half_height * fabsf(axis_projection) - cylinder_radius * radial_projection;
+  if (min_distance > 0.0f) {
     return 0;
+  }
 
   float cap_sign = axis_projection > 0.0f ? -1.0f : 1.0f;
   v3 cap_offset = scale(cylinder_axis, cap_sign * cylinder_half_height);
@@ -252,8 +256,9 @@ static count_t cylinder_plane_collision(bnd_world *world, const collision_detect
   v3 radial_axis = sub(plane_normal, scale(cylinder_axis, axis_projection));
   float radial_axis_len_sqr = lensq(radial_axis);
   v3 radial_offset = zero();
-  if (radial_axis_len_sqr > 0.000001f)
+  if (radial_axis_len_sqr > 0.000001f) {
     radial_offset = scale(normalize(radial_axis), -cylinder_radius);
+  }
 
   v3 deepest_point = add(cylinder_center, add(cap_offset, radial_offset));
 

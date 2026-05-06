@@ -10,13 +10,13 @@ static void update_desired_velocity_delta(bnd_world *world, count_t contact_inde
 
   v3 accelerations[2] = {0};
   for (count_t k = 0; k < body_count; k++) {
-    if (body_ids[k] < awake_count)
+    if (body_ids[k] < awake_count) {
       accelerations[k] = world->dynamics.accelerations[body_ids[k]];
+    }
   }
 
   float acceleration_velocity = dot(sub(accelerations[0], accelerations[1]), contact->normal) * dt;
-  float restitution =
-      fabsf(contact->local_velocity.y) >= world->config.collision_resolution.restitution_damping_limit ? contact->restitution : 0.0f;
+  float restitution = fabsf(contact->local_velocity.y) >= world->config.collision_resolution.restitution_damping_limit ? contact->restitution : 0.0f;
   float desired_delta = -contact->local_velocity.y - restitution * (contact->local_velocity.y - acceleration_velocity);
 
   contact->desired_delta_velocity = desired_delta;
@@ -167,8 +167,7 @@ static void resolve_interpenetration_contact(bnd_world *world, count_t contact_i
     quat dq = qscale(qmul(q_omega, rotation[k]), 0.5);
     world->dynamics.rotations[body_index] = qnormalize(qadd(rotation[k], dq));
 
-    world->dynamics.inv_intertias[body_index] =
-        matrix_inertia(world->dynamics.inv_inertia_tensors[body_index], world->dynamics.rotations[body_index]);
+    world->dynamics.inv_intertias[body_index] = matrix_inertia(world->dynamics.inv_inertia_tensors[body_index], world->dynamics.rotations[body_index]);
   }
 
   for (count_t k = 0; k < body_count; ++k) {
@@ -236,8 +235,7 @@ static void resolve_velocity_contact(bnd_world *world, count_t contact_index, v3
   m3 impulse_matrix = matrix_inverse(delta_velocity);
   v3 velocity_to_kill = {-contact->local_velocity.x, contact->desired_delta_velocity, -contact->local_velocity.z};
   v3 contact_space_impulse = matrix_rotate(velocity_to_kill, impulse_matrix);
-  float planar_impulse =
-      sqrtf(contact_space_impulse.x * contact_space_impulse.x + contact_space_impulse.z * contact_space_impulse.z);
+  float planar_impulse = sqrtf(contact_space_impulse.x * contact_space_impulse.x + contact_space_impulse.z * contact_space_impulse.z);
 
   if (planar_impulse > contact_space_impulse.y * contact->friction) {
     contact_space_impulse.x /= planar_impulse;
@@ -308,30 +306,35 @@ static bool find_worst_velocity(bnd_world *world, count_t *out_contact_index) {
     }
   }
 
-  if (best_contact == (count_t)-1)
+  if (best_contact == (count_t)-1) {
     return false;
+  }
 
   *out_contact_index = best_contact;
   return true;
 }
 
 static void update_awake_status_for_collision(bnd_world *world, count_t contact_index) {
-  if (contact_index >= world->contacts.dynamic_count)
+  if (contact_index >= world->contacts.dynamic_count) {
     return;
+  }
 
   contact *contact = &world->contacts.values[contact_index];
 
   bool body_a_awake = contact->index_a < world->dynamics.awake_count;
   bool body_b_awake = contact->index_b < world->dynamics.awake_count;
-  if (body_a_awake == body_b_awake)
+  if (body_a_awake == body_b_awake) {
     return;
+  }
 
   const float sleep_threshold = world->config.simulation.sleep_threshold;
-  if (!body_a_awake)
+  if (!body_a_awake) {
     world->dynamics.motion_avgs[contact->index_a] = 2.0 * sleep_threshold;
+  }
 
-  if (!body_b_awake)
+  if (!body_b_awake) {
     world->dynamics.motion_avgs[contact->index_b] = 2.0 * sleep_threshold;
+  }
 }
 
 static void resolve_interpenetrations(bnd_world *world) {
@@ -340,14 +343,16 @@ static void resolve_interpenetrations(bnd_world *world) {
   const count_t count = world->contacts.count;
   const count_t max_iterations = count * world->config.collision_resolution.resolution_attempts_factor;
 
-  if (count == 0)
+  if (count == 0) {
     return;
+  }
 
   count_t iterations = 0;
   count_t max_penetration_index = -1;
   while (iterations < max_iterations) {
-    if (!find_worst_penetration(world, &max_penetration_index))
+    if (!find_worst_penetration(world, &max_penetration_index)) {
       break;
+    }
 
     update_awake_status_for_collision(world, max_penetration_index);
 
@@ -397,14 +402,16 @@ static void resolve_velocities(bnd_world *world, float dt) {
 
   const count_t count = world->contacts.count;
   const count_t max_iterations = count * world->config.collision_resolution.resolution_attempts_factor;
-  if (count == 0)
+  if (count == 0) {
     return;
+  }
 
   count_t iterations = 0;
   count_t worst_contact_index = -1;
   while (iterations < max_iterations) {
-    if (!find_worst_velocity(world, &worst_contact_index))
+    if (!find_worst_velocity(world, &worst_contact_index)) {
       break;
+    }
 
     update_awake_status_for_collision(world, worst_contact_index);
 

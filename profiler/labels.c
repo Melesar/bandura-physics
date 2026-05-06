@@ -17,14 +17,18 @@ static inline uint32_t hash(label l) {
   return h;
 }
 
-static inline uint64_t slot_pack(uint32_t offset, uint32_t length) { return ((uint64_t)offset << 32) | length; }
+static inline uint64_t slot_pack(uint32_t offset, uint32_t length) {
+  return ((uint64_t)offset << 32) | length;
+}
 
 static inline void slot_unpack(uint64_t value, uint32_t *offset, uint32_t *length) {
   *offset = (uint32_t)(value >> 32);
   *length = (uint32_t)(value & 0xFFFFFFFF);
 }
 
-static inline bool slot_free(labels_slot slot) { return slot.value == (uint64_t)~0; }
+static inline bool slot_free(labels_slot slot) {
+  return slot.value == (uint64_t)~0;
+}
 
 static void slot_write(labels *labels, labels_slot *slot, label l) {
   uint64_t new_value = slot_pack(labels->storage_ptr, l.len);
@@ -46,9 +50,13 @@ static label slot_read(const labels *labels, labels_slot slot) {
   return (label){labels->storage + offset, (uint8_t)len};
 }
 
-bool label_is_valid(label l) { return l.s != NULL && l.len != 0; }
+bool label_is_valid(label l) {
+  return l.s != NULL && l.len != 0;
+}
 
-bool label_is_equal(label l, const char *string) { return strncmp(l.s, string, l.len) == 0; }
+bool label_is_equal(label l, const char *string) {
+  return strncmp(l.s, string, l.len) == 0;
+}
 
 labels labels_init(uint32_t storage_capacity, uint32_t slots_capacity) {
   labels self = {0};
@@ -82,14 +90,16 @@ uint32_t labels_store(labels *self, label l) {
   do {
     label stored_label = slot_read(self, self->slots[index]);
 
-    if (stored_label.len == l.len && strncmp(stored_label.s, l.s, l.len) == 0)
+    if (stored_label.len == l.len && strncmp(stored_label.s, l.s, l.len) == 0) {
       return index;
+    }
 
     index = (index + 1) & self->mask;
 
     if (index == initial_index) {
       return LABELS_STORAGE_FULL;
     }
+
   } while (!slot_free(self->slots[index]));
 
   slot_write(self, &self->slots[index], l);

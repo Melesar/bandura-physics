@@ -70,11 +70,12 @@ typedef struct {
 const float visibility_epsilon = 0.25;
 static polytope *pt;
 
-static uint32_t polytope_flags_size(uint16_t max_nodes) { return max_nodes + 1 + (max_nodes % 2 == 0); }
+static uint32_t polytope_flags_size(uint16_t max_nodes) {
+  return max_nodes + 1 + (max_nodes % 2 == 0);
+}
 
 static uint32_t polytope_memory_size(uint16_t max_nodes) {
-  return sizeof(polytope) + (max_nodes + 1) * sizeof(polytope_node) + polytope_flags_size(max_nodes) +
-         max_nodes * sizeof(uint16_t);
+  return sizeof(polytope) + (max_nodes + 1) * sizeof(polytope_node) + polytope_flags_size(max_nodes) + max_nodes * sizeof(uint16_t);
 }
 
 static polytope *polytope_init(uint8_t *memory, uint16_t max_nodes) {
@@ -231,8 +232,8 @@ static void polytope_get_face_verticies(const polytope *polytope, uint16_t face,
   *v2 = polytope->nodes[edge_verts_1[1]].vertex.v.v;
 
   *v3 = edge_verts_2[1] != edge_verts_1[1] && edge_verts_2[1] != edge_verts_1[0]
-            ? polytope->nodes[edge_verts_2[1]].vertex.v.v
-            : polytope->nodes[edge_verts_2[0]].vertex.v.v;
+    ? polytope->nodes[edge_verts_2[1]].vertex.v.v
+    : polytope->nodes[edge_verts_2[0]].vertex.v.v;
 }
 
 static uint16_t polytope_add_vertex(polytope *polytope, support_point p) {
@@ -336,7 +337,6 @@ static void polytope_remove_edge(polytope *polytope, uint16_t edge) {
 
   polytope_node *edge_node = &polytope->nodes[edge];
   if (edge_node->edge.attached_faces[0] != NIL || edge_node->edge.attached_faces[1] != NIL) {
-    // TraceLog(LOG_FATAL, "Removing face with attached face");
     return;
   }
 
@@ -357,7 +357,9 @@ static void polytope_remove_vertex(polytope *polytope, uint16_t vertex) {
   polytope_remove_node(polytope, vertex);
 }
 
-static void polytope_clear_flags(polytope *polytope) { memset(polytope->flags, 0, polytope->node_count); }
+static void polytope_clear_flags(polytope *polytope) {
+  memset(polytope->flags, 0, polytope->node_count);
+}
 
 static void polytope_update_nearest(polytope *polytope) {
   polytope->nearest_distance = FLT_MAX;
@@ -424,8 +426,8 @@ static void epa_calculate_contact(const polytope *polytope, contact *contact) {
   support_point v2 = polytope->nodes[edge_verts_1[1]].vertex.v;
 
   support_point vv3 = edge_verts_2[1] != edge_verts_1[1] && edge_verts_2[1] != edge_verts_1[0]
-                          ? polytope->nodes[edge_verts_2[1]].vertex.v
-                          : polytope->nodes[edge_verts_2[0]].vertex.v;
+    ? polytope->nodes[edge_verts_2[1]].vertex.v
+    : polytope->nodes[edge_verts_2[0]].vertex.v;
 
   v3 barycenter = barycentric(zero(), v1.v, v2.v, vv3.v);
   v3 p1 = add(scale(v1.v1, barycenter.x), add(scale(v2.v1, barycenter.y), scale(vv3.v1, barycenter.z)));

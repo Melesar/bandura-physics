@@ -217,8 +217,7 @@ void shapes_teardown(bnd_world *world);
 void shapes_reset(bnd_world *world);
 bool shapes_any_slot_available(const bnd_world *world, shape_dimension_bracket bracket);
 void shapes_expand_bracket(bnd_world *world, shape_dimension_bracket bracket);
-bool shapes_put_into_empty_slot(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes,
-                                count_t shapes_count, count_t *slot_number);
+bool shapes_put_into_empty_slot(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes, count_t shapes_count, count_t *slot_number);
 void shapes_clear_slot(bnd_world *world, shape_dimension_bracket bracket, count_t slot);
 body_shapes shapes_write(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes, count_t count);
 bnd_body_shape *shapes_get(const bnd_world *world, body_shapes shapes);

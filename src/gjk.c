@@ -15,7 +15,9 @@ inline static int sign(float x) {
   return x > 0 ? 1 : -1;
 }
 
-static inline bool is_zero(float x) { return fabsf(x) < TOLERANCE; }
+static inline bool is_zero(float x) {
+  return fabsf(x) < TOLERANCE;
+}
 
 static void simplex_add_point(simplex *s, support_point p) {
   s->points[3] = s->points[2];

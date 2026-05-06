@@ -2,54 +2,94 @@
 #include <float.h>
 #include <math.h>
 
-v3 cross(v3 x, v3 y) { return vec3(x.y * y.z - x.z * y.y, x.z * y.x - x.x * y.z, x.x * y.y - x.y * y.x); }
+v3 cross(v3 x, v3 y) {
+  return vec3(x.y * y.z - x.z * y.y, x.z * y.x - x.x * y.z, x.x * y.y - x.y * y.x);
+}
 
-float dot(v3 x, v3 y) { return x.x * y.x + x.y * y.y + x.z * y.z; }
+float dot(v3 x, v3 y) {
+  return x.x * y.x + x.y * y.y + x.z * y.z;
+}
 
-v3 add(v3 x, v3 y) { return vec3(x.x + y.x, x.y + y.y, x.z + y.z); }
+v3 add(v3 x, v3 y) {
+  return vec3(x.x + y.x, x.y + y.y, x.z + y.z);
+}
 
-v3 scale(v3 x, float y) { return vec3(x.x * y, x.y * y, x.z * y); }
+v3 scale(v3 x, float y) {
+  return vec3(x.x * y, x.y * y, x.z * y);
+}
 
 v3 normalize(v3 x) {
   float l = len(x);
   return l > EPSILON ? scale(x, 1.0 / l) : x;
 }
 
-v3 sub(v3 x, v3 y) { return vec3(x.x - y.x, x.y - y.y, x.z - y.z); }
+v3 sub(v3 x, v3 y) {
+  return vec3(x.x - y.x, x.y - y.y, x.z - y.z);
+}
 
-float len(v3 x) { return sqrtf(lensq(x)); }
+float len(v3 x) {
+  return sqrtf(lensq(x));
+}
 
-float lensq(v3 x) { return x.x * x.x + x.y * x.y + x.z * x.z; }
+float lensq(v3 x) {
+  return x.x * x.x + x.y * x.y + x.z * x.z;
+}
 
-float distance(v3 x, v3 y) { return len(sub(x, y)); }
+float distance(v3 x, v3 y) {
+  return len(sub(x, y));
+}
 
-float distancesqr(v3 x, v3 y) { return lensq(sub(x, y)); }
+float distancesqr(v3 x, v3 y) {
+  return lensq(sub(x, y));
+}
 
-v3 vec3(float x, float y, float z) { return (v3){ x, y, z }; }
+v3 vec3(float x, float y, float z) {
+  return (v3){ x, y, z };
+}
 
-v3 zero() { return vec3(0, 0, 0); }
+v3 zero() {
+  return vec3(0, 0, 0);
+}
 
-v3 one() { return vec3(1, 1, 1); }
+v3 one() {
+  return vec3(1, 1, 1);
+}
 
-v3 up() { return vec3(0, 1, 0); }
+v3 up() {
+  return vec3(0, 1, 0);
+}
 
-v3 right() { return vec3(1, 0, 0); }
+v3 right() {
+  return vec3(1, 0, 0);
+}
 
-v3 forward() { return vec3(0, 0, 1); }
+v3 forward() {
+  return vec3(0, 0, 1);
+}
 
 v3 rotate(v3 v, quat q) {
   v3 result;
-  result.x = v.x * (q.x * q.x + q.w * q.w - q.y * q.y - q.z * q.z) + v.y * (2 * q.x * q.y - 2 * q.w * q.z) +
-             v.z * (2 * q.x * q.z + 2 * q.w * q.y);
-  result.y = v.x * (2 * q.w * q.z + 2 * q.x * q.y) + v.y * (q.w * q.w - q.x * q.x + q.y * q.y - q.z * q.z) +
-             v.z * (-2 * q.w * q.x + 2 * q.y * q.z);
-  result.z = v.x * (-2 * q.w * q.y + 2 * q.x * q.z) + v.y * (2 * q.w * q.x + 2 * q.y * q.z) +
-             v.z * (q.w * q.w - q.x * q.x - q.y * q.y + q.z * q.z);
+  result.x =
+    v.x * (q.x * q.x + q.w * q.w - q.y * q.y - q.z * q.z) +
+    v.y * (2 * q.x * q.y - 2 * q.w * q.z) +
+    v.z * (2 * q.x * q.z + 2 * q.w * q.y);
+
+  result.y =
+    v.x * (2 * q.w * q.z + 2 * q.x * q.y) +
+    v.y * (q.w * q.w - q.x * q.x + q.y * q.y - q.z * q.z) +
+    v.z * (-2 * q.w * q.x + 2 * q.y * q.z);
+
+  result.z =
+    v.x * (-2 * q.w * q.y + 2 * q.x * q.z) +
+    v.y * (2 * q.w * q.x + 2 * q.y * q.z) +
+    v.z * (q.w * q.w - q.x * q.x - q.y * q.y + q.z * q.z);
 
   return result;
 }
 
-v3 negate(v3 x) { return vec3(-x.x, -x.y, -x.z); }
+v3 negate(v3 x) {
+  return vec3(-x.x, -x.y, -x.z);
+}
 
 v3 barycentric(v3 p, v3 a, v3 b, v3 c) {
   v3 v0 = sub(b, a);
@@ -71,9 +111,13 @@ v3 barycentric(v3 p, v3 a, v3 b, v3 c) {
   return vec3(x, y, z);
 }
 
-quat qadd(quat x, quat y) { return (quat){ x.x + y.x, x.y + y.y, x.z + y.z, x.w + y.w }; }
+quat qadd(quat x, quat y) {
+  return (quat){ x.x + y.x, x.y + y.y, x.z + y.z, x.w + y.w };
+}
 
-quat qscale(quat x, float y) { return (quat){ x.x * y, x.y * y, x.z * y, x.w * y }; }
+quat qscale(quat x, float y) {
+  return (quat){ x.x * y, x.y * y, x.z * y, x.w * y };
+}
 
 quat qmul(quat x, quat y) {
   float qax = x.x, qay = x.y, qaz = x.z, qaw = x.w;
@@ -90,8 +134,9 @@ quat qmul(quat x, quat y) {
 
 quat qnormalize(quat x) {
   float length = sqrtf(x.x * x.x + x.y * x.y + x.z * x.z + x.w * x.w);
-  if (length == 0.0f)
+  if (length == 0.0f) {
     length = 1.0f;
+  }
   float ilength = 1.0f / length;
 
   return qscale(x, ilength);
@@ -113,11 +158,17 @@ quat qinvert(quat x) {
   return result;
 }
 
-quat qidentity() { return (quat){ 0, 0, 0, 1 }; }
+quat qidentity() {
+  return (quat){ 0, 0, 0, 1 };
+}
 
-m3 matrix_identity() { return (m3){ { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } }; }
+m3 matrix_identity() {
+  return (m3){ { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } };
+}
 
-v3 matrix_rotate(v3 v, m3 m) { return (v3){ dot(*(v3 *)m.m0, v), dot(*(v3 *)m.m1, v), dot(*(v3 *)m.m2, v) }; }
+v3 matrix_rotate(v3 v, m3 m) {
+  return (v3){ dot(*(v3 *)m.m0, v), dot(*(v3 *)m.m1, v), dot(*(v3 *)m.m2, v) };
+}
 
 m3 matrix_transpose(m3 m) {
   return (m3){ { m.m0[0], m.m1[0], m.m2[0] }, { m.m0[1], m.m1[1], m.m2[1] }, { m.m0[2], m.m1[2], m.m2[2] } };
@@ -141,9 +192,13 @@ m3 matrix_multiply(m3 a, m3 b) {
   return result;
 }
 
-v3 matrix_rotate_inverse(v3 v, m3 m) { return matrix_rotate(v, matrix_transpose(m)); }
+v3 matrix_rotate_inverse(v3 v, m3 m) {
+  return matrix_rotate(v, matrix_transpose(m));
+}
 
-m3 matrix_from_basis(v3 x, v3 y, v3 z) { return (m3){ { x.x, y.x, z.x }, { x.y, y.y, z.y }, { x.z, y.z, z.z } }; }
+m3 matrix_from_basis(v3 x, v3 y, v3 z) {
+  return (m3){ { x.x, y.x, z.x }, { x.y, y.y, z.y }, { x.z, y.z, z.z } };
+}
 
 m3 matrix_negate(m3 m) {
   return (m3){ { -m.m0[0], -m.m0[1], -m.m0[2] }, { -m.m1[0], -m.m1[1], -m.m1[2] }, { -m.m2[0], -m.m2[1], -m.m2[2] } };
@@ -181,12 +236,16 @@ m3 matrix_inverse(m3 m) {
   return result;
 }
 
-m3 matrix_skew_symmetric(v3 v) { return (m3){ { 0, -v.z, v.y }, { v.z, 0, -v.x }, { -v.y, v.x, 0 } }; }
+m3 matrix_skew_symmetric(v3 v) {
+  return (m3){ { 0, -v.z, v.y }, { v.z, 0, -v.x }, { -v.y, v.x, 0 } };
+}
 
 m3 matrix_add(m3 a, m3 b) {
-  return (m3){ { a.m0[0] + b.m0[0], a.m0[1] + b.m0[1], a.m0[2] + b.m0[2] },
+  return (m3){
+    { a.m0[0] + b.m0[0], a.m0[1] + b.m0[1], a.m0[2] + b.m0[2] },
     { a.m1[0] + b.m1[0], a.m1[1] + b.m1[1], a.m1[2] + b.m1[2] },
-    { a.m2[0] + b.m2[0], a.m2[1] + b.m2[1], a.m2[2] + b.m2[2] } };
+    { a.m2[0] + b.m2[0], a.m2[1] + b.m2[1], a.m2[2] + b.m2[2] }
+  };
 }
 
 m3 matrix_scale(m3 m, float s) {
@@ -198,12 +257,16 @@ m3 matrix_scale(m3 m, float s) {
 }
 
 m3 matrix_sub(m3 a, m3 b) {
-  return (m3){ { a.m0[0] - b.m0[0], a.m0[1] - b.m0[1], a.m0[2] - b.m0[2] },
+  return (m3){
+    { a.m0[0] - b.m0[0], a.m0[1] - b.m0[1], a.m0[2] - b.m0[2] },
     { a.m1[0] - b.m1[0], a.m1[1] - b.m1[1], a.m1[2] - b.m1[2] },
-    { a.m2[0] - b.m2[0], a.m2[1] - b.m2[1], a.m2[2] - b.m2[2] } };
+    { a.m2[0] - b.m2[0], a.m2[1] - b.m2[1], a.m2[2] - b.m2[2] }
+  };
 }
 
-m3 matrix_initial_inertia(v3 inertia) { return (m3){ { inertia.x, 0, 0 }, { 0, inertia.y, 0 }, { 0, 0, inertia.z } }; }
+m3 matrix_initial_inertia(v3 inertia) {
+  return (m3){ { inertia.x, 0, 0 }, { 0, inertia.y, 0 }, { 0, 0, inertia.z } };
+}
 
 m3 matrix_inertia(m3 initial_inertia, quat q) {
   float a2 = q.x * q.x;

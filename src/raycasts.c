@@ -284,8 +284,7 @@ static bool raycast_mesh(ray r, const shape_context *ctx, bnd_raycast_hit *hit) 
   return true;
 }
 
-static count_t raycast_bodies(const bnd_world *world, bnd_body_type type, v3 origin, v3 direction, float max_distance,
-                              count_t hit_count, count_t max_hits, bnd_raycast_hit *hits) {
+static count_t raycast_bodies(const bnd_world *world, bnd_body_type type, v3 origin, v3 direction, float max_distance, count_t hit_count, count_t max_hits, bnd_raycast_hit *hits) {
   if (hit_count >= max_hits) {
     return 0;
   }
@@ -353,8 +352,7 @@ static count_t raycast_bodies(const bnd_world *world, bnd_body_type type, v3 ori
   return num_hits;
 }
 
-count_t bnd_raycast(const bnd_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits,
-                    bnd_raycast_hit *hits) {
+count_t bnd_raycast(const bnd_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits, bnd_raycast_hit *hits) {
   count_t hit_count = 0;
 
   hit_count += raycast_bodies(world, BND_DYNAMIC, origin, direction, max_distance, hit_count, max_hits, hits);

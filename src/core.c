@@ -11,7 +11,9 @@ const count_t max_body_index = (count_t)~0 >> 9;
 char error_message_buffer[MAX_MESSAGE_SIZE];
 bnd_error_callback error_callback = NULL;
 
-void bnd_register_error_callback(bnd_error_callback callback) { error_callback = callback; }
+void bnd_register_error_callback(bnd_error_callback callback) {
+  error_callback = callback;
+}
 
 static void init_commons(common_data *data, count_t capacity) {
   data->capacity = capacity;

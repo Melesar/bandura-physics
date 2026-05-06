@@ -53,9 +53,9 @@ static void notify_monitors() {
 
 static void update_header_atomic(uint32_t offset, uint16_t count) {
   profiler_frame_header updated_header = {
-      .offset = offset,
-      .count = count,
-      .mask = monitors.mask,
+    .offset = offset,
+    .count = count,
+    .mask = monitors.mask,
   };
 
   uint64_t new_header;
@@ -65,7 +65,9 @@ static void update_header_atomic(uint32_t offset, uint16_t count) {
   __atomic_store_n(current_header, new_header, __ATOMIC_RELEASE);
 }
 
-static label marker_label(profiler_marker marker) { return (label){marker.label, strlen(marker.label)}; }
+static label marker_label(profiler_marker marker) {
+  return (label){marker.label, strlen(marker.label)};
+}
 
 static uint64_t get_time() {
   struct timespec time;
@@ -83,16 +85,18 @@ static void end_block() {
   samples[frame_start + last_marker.sample_index].time = elapsed_ns;
 }
 
-void profiler_init_default() { profiler_init(profiler_default_config()); }
+void profiler_init_default() {
+  profiler_init(profiler_default_config());
+}
 
 profiler_config profiler_default_config() {
   return (profiler_config){
-      .samples_memory_size = 1 << 20, // 1 Mb
-      .labels_slots_capacity = 128,
-      .labels_storage_capacity = 1 << 16, // 32 Kb
-      .stack_capacity = 512,
-      .frame_headers_capacity = 64,
-      .auto_enable_monitors = true,
+    .samples_memory_size = 1 << 20, // 1 Mb
+    .labels_slots_capacity = 128,
+    .labels_storage_capacity = 1 << 16, // 32 Kb
+    .stack_capacity = 512,
+    .frame_headers_capacity = 64,
+    .auto_enable_monitors = true,
   };
 }
 
@@ -104,16 +108,19 @@ void profiler_init(profiler_config config) {
 
   uint32_t desired_samples_capacity = config.samples_memory_size / sizeof(profiler_sample);
   samples_capacity = 1;
-  while (samples_capacity < desired_samples_capacity)
+  while (samples_capacity < desired_samples_capacity) {
     samples_capacity <<= 1;
+  }
 
   samples = calloc(samples_capacity, sizeof(profiler_sample));
   frame_start = frame_offset = 0;
   max_frame_size = 0;
 
   frame_headers_capacity = 1;
-  while (frame_headers_capacity < config.frame_headers_capacity)
+  while (frame_headers_capacity < config.frame_headers_capacity) {
     frame_headers_capacity <<= 1;
+  }
+
   frame_headers_mask = frame_headers_capacity - 1;
   frame_headers = calloc(frame_headers_capacity, sizeof(profiler_frame_header));
   metadata = calloc(frame_headers_capacity, sizeof(profiler_frame_metadata));
@@ -175,13 +182,14 @@ profiler_marker profiler_start_block(const char *name) {
   assert(markers_count < markers_capacity);
 
   profiler_marker marker = {(char *)name, get_time(), frame_offset};
-  profiler_marker parent_marker =
-      markers_count > 0 ? markers_stack[markers_count - 1] : (profiler_marker){.sample_index = 0xFFFFFFFF};
+  profiler_marker parent_marker = markers_count > 0 ? markers_stack[markers_count - 1] : (profiler_marker){.sample_index = 0xFFFFFFFF};
 
   uint32_t sample_index = frame_start + frame_offset;
-  samples[sample_index] = (profiler_sample){.label_id = labels_store(&labels_storage, marker_label(marker)),
-                                            .parent_index = parent_marker.sample_index,
-                                            .time = 0};
+  samples[sample_index] = (profiler_sample) {
+    .label_id = labels_store(&labels_storage, marker_label(marker)),
+    .parent_index = parent_marker.sample_index,
+    .time = 0
+  };
 
   markers_stack[markers_count++] = marker;
   frame_offset += 1;
@@ -189,7 +197,9 @@ profiler_marker profiler_start_block(const char *name) {
   return marker;
 }
 
-void profiler_end_block(profiler_marker *marker) { end_block(); }
+void profiler_end_block(profiler_marker *marker) {
+  end_block();
+}
 
 bool profiler_get_label(uint32_t label_id, label *label) {
   *label = labels_get(&labels_storage, label_id);
@@ -197,8 +207,9 @@ bool profiler_get_label(uint32_t label_id, label *label) {
 }
 
 bool profiler_monitor_start(profiler_monitor *monitor) {
-  if (monitors.count >= MAX_MONITORS_COUNT)
+  if (monitors.count >= MAX_MONITORS_COUNT) {
     return false;
+  }
 
   /**
    *  With current implementation there might be a situation when:
@@ -260,8 +271,7 @@ bool profiler_monitor_read_next_frame(profiler_monitor *monitor) {
   uint8_t new_frame_mask;
   do {
     new_frame_mask = frame_mask & disable_mask;
-  } while (!__atomic_compare_exchange_n(&frame->mask, &frame_mask, new_frame_mask, true, __ATOMIC_RELEASE,
-                                        __ATOMIC_RELAXED));
+  } while (!__atomic_compare_exchange_n(&frame->mask, &frame_mask, new_frame_mask, true, __ATOMIC_RELEASE, __ATOMIC_RELAXED));
 
   return true;
 }
