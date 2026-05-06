@@ -98,6 +98,11 @@ typedef struct {
 } bnd_body_shape;
 
 typedef struct {
+  v3 center;
+  v3 half_extents;
+} aabb;
+
+typedef struct {
   count_t type : 1;
   count_t generation : 8;
   count_t index : 23;
@@ -221,6 +226,7 @@ BNDAPI bnd_world_stats bnd_stats(const bnd_world *world);
 BNDAPI v3 bnd_get_position(const bnd_world *world, bnd_body_handle handle);
 BNDAPI quat bnd_get_rotation(const bnd_world *world, bnd_body_handle handle);
 BNDAPI bnd_body_shape *bnd_get_shapes(const bnd_world *world, bnd_body_handle handle, count_t *count);
+BNDAPI aabb bnd_get_bounding_box(const bnd_world *world, bnd_body_handle);
 BNDAPI v3 bnd_get_velocity(const bnd_world *world, bnd_body_handle handle);
 BNDAPI v3 bnd_get_angular_velocity(const bnd_world *world, bnd_body_handle handle);
 BNDAPI v3 bnd_get_angular_momentum(const bnd_world *world, bnd_body_handle handle);

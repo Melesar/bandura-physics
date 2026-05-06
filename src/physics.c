@@ -76,16 +76,29 @@ static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
     bnd_body_shape shape = shapes[i];
     quat shape_rotation = qmul(rotation, shape.rotation);
     v3 shape_center = add(position, rotate(shape.offset, rotation));
+    m3 rotation_matrix = quat_as_matrix(rotation);
 
-    aabb shape_bounds;
-    shape_bounds.center = shape_center;
-
-    v3 shape_min;
-    v3 shape_max;
+    v3 shape_min, shape_max;
+    v3 half_extents;
     switch (shape.type) {
       case BND_BOX:
-        shape_min = add(shape_center, rotate(scale(shape.box.size, -0.5), shape_rotation));
-        shape_max = add(shape_center, rotate(scale(shape.box.size, 0.5), shape_rotation));
+        half_extents.x =
+          fabsf(rotation_matrix.m0[0]) * shape.box.size.x * 0.5 +
+          fabsf(rotation_matrix.m0[1]) * shape.box.size.y * 0.5 +
+          fabsf(rotation_matrix.m0[2]) * shape.box.size.z * 0.5;
+
+        half_extents.y =
+          fabsf(rotation_matrix.m1[0]) * shape.box.size.x * 0.5 +
+          fabsf(rotation_matrix.m1[1]) * shape.box.size.y * 0.5 +
+          fabsf(rotation_matrix.m1[2]) * shape.box.size.z * 0.5;
+
+        half_extents.z =
+          fabsf(rotation_matrix.m2[0]) * shape.box.size.x * 0.5 +
+          fabsf(rotation_matrix.m2[1]) * shape.box.size.y * 0.5 +
+          fabsf(rotation_matrix.m2[2]) * shape.box.size.z * 0.5;
+
+        shape_min = add(shape_center, negate(half_extents));
+        shape_max = add(shape_center, half_extents);
         break;
 
       case BND_SPHERE:
@@ -94,8 +107,8 @@ static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
         break;
 
       case BND_CYLINDER:
-        shape_min = add(shape_center, rotate(vec3(shape.cylinder.radius, -shape.cylinder.height, shape.cylinder.radius), shape_rotation));
-        shape_max = add(shape_center, rotate(vec3(shape.cylinder.radius, shape.cylinder.height, shape.cylinder.radius), shape_rotation));
+        shape_min = add(shape_center, rotate(vec3(-shape.cylinder.radius, -0.5 * shape.cylinder.height, -shape.cylinder.radius), shape_rotation));
+        shape_max = add(shape_center, rotate(vec3(shape.cylinder.radius, 0.5 * shape.cylinder.height, shape.cylinder.radius), shape_rotation));
         break;
 
       // case BND_MESH:
@@ -383,7 +396,7 @@ static count_t insert_new_dynamic_body(bnd_world *world) {
 }
 
 static bnd_body add_primitive_body_static(bnd_world *world, bnd_body_shape shape) {
-  static_bodies *data = &world->statics;
+  common_data *data = as_common(world, BND_STATIC);
   if (data->capacity < data->count + 1) {
     realloc_commons(data);
   }
@@ -396,6 +409,7 @@ static bnd_body add_primitive_body_static(bnd_world *world, bnd_body_shape shape
   data->inner_lookup[index] = outer_index;
 
   world->generation += 1;
+  world->statics.dirty = true;
 
   return (bnd_body){ .position = &data->positions[index],
     .rotation = &data->rotations[index],
@@ -459,7 +473,7 @@ bnd_body bnd_add_cylinder_dynamic(bnd_world *world, float mass, float radius, fl
 bnd_body bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, count_t shapes_count) {
   shape_dimension_bracket bracket = get_shapes_bracket(shapes_count);
 
-  static_bodies *data = &world->statics;
+  common_data *data = as_common(world, BND_STATIC);
   if (data->capacity < data->count + 1) {
     realloc_commons(data);
   }
@@ -472,6 +486,7 @@ bnd_body bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, 
   data->inner_lookup[index] = outer_index;
 
   world->generation += 1;
+  world->statics.dirty = true;
 
   return (bnd_body){ .position = &data->positions[index],
     .rotation = &data->rotations[index],
@@ -692,6 +707,18 @@ bnd_body_shape *bnd_get_shapes(const bnd_world *world, bnd_body_handle handle, c
   return shapes_get(world, shapes);
 }
 
+aabb bnd_get_bounding_box(const bnd_world *world, bnd_body_handle handle) {
+  const common_data *data = as_common_const(world, handle.type);
+
+  count_t index = handle_to_inner_index(world, handle);
+  if (data->generations[index] != handle.generation) {
+    notify_body_removed(handle);
+    return (aabb){ 0 };
+  }
+
+  return data->aabbs[index];
+}
+
 v3 bnd_get_velocity(const bnd_world *world, bnd_body_handle handle) {
   if (handle.type != BND_DYNAMIC) {
     return zero();
@@ -842,6 +869,17 @@ static void update_aabbs(bnd_world *world) {
   for (count_t i = 0; i < dynamics->awake_count; ++i) {
     calculate_aabb(world, (common_data *) dynamics, i);
   }
+
+  if (!world->statics.dirty) {
+    return;
+  }
+
+  common_data *statics = as_common(world, BND_STATIC);
+  for (count_t i = 0; i < statics->count; ++i) {
+    calculate_aabb(world, statics, i);
+  }
+
+  world->statics.dirty = false;
 }
 
 static void integrate_bodies(bnd_world *world, float dt) {

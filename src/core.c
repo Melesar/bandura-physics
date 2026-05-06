@@ -84,6 +84,8 @@ bnd_world *bnd_init(const bnd_config *config) {
   const count_t floats = sizeof(float) * config->memory.dynamics_capacity;
   const count_t matrices = sizeof(m3) * config->memory.dynamics_capacity;
 
+  world->statics.dirty = false;
+
   world->dynamics.forces = malloc(vectors);
   world->dynamics.torques = malloc(vectors);
   world->dynamics.impulses = malloc(vectors);

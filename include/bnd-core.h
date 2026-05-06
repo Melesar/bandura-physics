@@ -74,11 +74,6 @@ typedef struct {
   count_t mesh_capacity;
 } mesh_storage;
 
-typedef struct {
-  v3 center;
-  v3 half_extents;
-} aabb;
-
 #define COMMON_FIELDS                                                                                                  \
   count_t capacity;                                                                                                    \
   count_t count;                                                                                                       \
@@ -151,7 +146,11 @@ typedef struct {
   float *motion_avgs;
 } dynamic_bodies;
 
-typedef common_data static_bodies;
+typedef struct {
+  COMMON_FIELDS
+
+  bool dirty;
+}static_bodies;
 
 struct bnd_world_t {
   dynamic_bodies dynamics;
@@ -242,5 +241,7 @@ quat body_rotation(const shape_context *ctx);
 
 v3 v3_min(v3 a, v3 b);
 v3 v3_max(v3 a, v3 b);
+
+m3 quat_as_matrix(quat q);
 
 #endif

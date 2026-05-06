@@ -2,7 +2,6 @@
 #define CORE_H
 
 #include "raylib.h"
-#include "raymath.h"
 #include "bandura.h"
 #include "clay.h"
 
@@ -59,6 +58,7 @@ bool import_raylib_mesh(bnd_world *world, Mesh mesh, bnd_mesh_handle *handle);
 void register_mesh_for_rendering(bnd_mesh_handle handle, Mesh mesh);
 
 void draw_arrow(v3 start, v3 direction, Color color);
+void draw_bounding_boxes(const bnd_world *world);
 
 void draw_model_with_wireframe(Model model, Vector3 position, float scale, Color color);
 

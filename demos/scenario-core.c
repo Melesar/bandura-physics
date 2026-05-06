@@ -54,6 +54,28 @@ void draw_model_with_wireframe(Model model, Vector3 position, float scale, Color
   rlDisableWireMode();
 }
 
+static void draw_bounding_boxes_typed(const bnd_world *world, bnd_body_type type, Color color) {
+  bnd_body_enumerator_typed enumerator;
+  bnd_enumerate_bodies_typed(world, type, &enumerator);
+
+  while (bnd_body_next_typed(world, &enumerator)) {
+    aabb bounding_box = bnd_get_bounding_box(world, enumerator.handle);
+
+    DrawCubeWires(
+      vec_ray(bounding_box.center),
+      2 * bounding_box.half_extents.x,
+      2 * bounding_box.half_extents.y,
+      2 * bounding_box.half_extents.z,
+      color
+    );
+  }
+}
+
+void draw_bounding_boxes(const bnd_world *world) {
+  draw_bounding_boxes_typed(world, BND_DYNAMIC, ORANGE);
+  draw_bounding_boxes_typed(world, BND_STATIC, GREEN);
+}
+
 static v3 joint_attachment_point(const bnd_world *world, bnd_joint j, count_t index) {
   v3 position = bnd_get_position(world, j.bodies[index]);
   quat rotation = bnd_get_rotation(world, j.bodies[index]);
