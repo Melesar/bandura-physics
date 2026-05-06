@@ -98,8 +98,8 @@ static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
         shape_max = add(shape_center, rotate(vec3(shape.cylinder.radius, shape.cylinder.height, shape.cylinder.radius), shape_rotation));
         break;
 
-      case BND_MESH:
-        break;
+      // case BND_MESH:
+      //   break;
 
       default:
         shape_max = vec3(FLT_MAX, FLT_MAX, FLT_MAX);
