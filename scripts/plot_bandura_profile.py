@@ -13,7 +13,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 PLOT_LABELS = [
-    "physics_step",
+    "bnd_simulate",
     "integrate_bodies",
     "contacts_generate",
     "contacts_resolve",
