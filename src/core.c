@@ -147,3 +147,18 @@ void raise_error(bnd_error type, void *data, const char *template, ...) {
 
   error_callback(type, error_message_buffer, data);
 }
+
+void raise_error_debug(bnd_error type, void *data, const char *template, ...) {
+#if defined(BND_DEBUG)
+  if (error_callback == NULL) {
+    return;
+  }
+
+  va_list list;
+  va_start(list, template);
+  vsnprintf(error_message_buffer, MAX_MESSAGE_SIZE, template, list);
+  va_end(list);
+
+  error_callback(type, error_message_buffer, data);
+#endif
+}

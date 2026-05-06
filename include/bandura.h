@@ -29,9 +29,12 @@ typedef struct {
 typedef uint32_t count_t;
 
 typedef enum {
-  BND_ERROR_INVALID_POLYTOPE,
   BND_ERROR_MESH_INVALID,
   BND_ERROR_MESH_IS_CONCAVE,
+
+  // Debug mode errors
+  BND_ERROR_INVALID_POLYTOPE,
+  BND_ERROR_BODY_REMOVED,
 } bnd_error;
 
 typedef void (*bnd_error_callback)(bnd_error error_type, char *error_message, void *error_data);

@@ -184,6 +184,7 @@ typedef struct {
 typedef v3 (*support_func)(const shape_context *, v3);
 
 void raise_error(bnd_error type, void *data, const char *template, ...);
+void raise_error_debug(bnd_error type, void *data, const char *template, ...);
 
 bnd_body_handle make_body_handle(const bnd_world *world, bnd_body_type type, count_t index);
 count_t handle_to_inner_index(const bnd_world *world, bnd_body_handle handle);
