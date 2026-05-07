@@ -74,14 +74,18 @@ static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
   v3 max = negate(min);
   for (count_t i = 0; i < shapes_data.count; ++i) {
     bnd_body_shape shape = shapes[i];
+
     quat shape_rotation = qmul(rotation, shape.rotation);
     v3 shape_center = add(position, rotate(shape.offset, rotation));
-    m3 rotation_matrix = quat_as_matrix(rotation);
 
+    m3 rotation_matrix;
     v3 shape_min, shape_max;
-    v3 half_extents;
+    v3 half_extents, axis;
+    float half_height, radius;
     switch (shape.type) {
       case BND_BOX:
+        rotation_matrix = quat_as_matrix(rotation);
+
         half_extents.x =
           fabsf(rotation_matrix.m0[0]) * shape.box.size.x * 0.5 +
           fabsf(rotation_matrix.m0[1]) * shape.box.size.y * 0.5 +
@@ -96,29 +100,38 @@ static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
           fabsf(rotation_matrix.m2[0]) * shape.box.size.x * 0.5 +
           fabsf(rotation_matrix.m2[1]) * shape.box.size.y * 0.5 +
           fabsf(rotation_matrix.m2[2]) * shape.box.size.z * 0.5;
-
-        shape_min = add(shape_center, negate(half_extents));
-        shape_max = add(shape_center, half_extents);
         break;
 
       case BND_SPHERE:
-        shape_min = add(shape_center, scale(one(), -shape.sphere.radius));
-        shape_max = add(shape_center, scale(one(), shape.sphere.radius));
+        half_extents = scale(one(), shape.sphere.radius);
         break;
 
       case BND_CYLINDER:
-        shape_min = add(shape_center, rotate(vec3(-shape.cylinder.radius, -0.5 * shape.cylinder.height, -shape.cylinder.radius), shape_rotation));
-        shape_max = add(shape_center, rotate(vec3(shape.cylinder.radius, 0.5 * shape.cylinder.height, shape.cylinder.radius), shape_rotation));
+        half_height = shape.cylinder.height * 0.5;
+        axis = rotate(up(), shape_rotation);
+        radius = shape.cylinder.radius;
+
+        float ax = fabsf(axis.x) * half_height;
+        float ay = fabsf(axis.y) * half_height;
+        float az = fabsf(axis.z) * half_height;
+
+        float rx = radius * sqrtf(1.0f - axis.x * axis.x);
+        float ry = radius * sqrtf(1.0f - axis.y * axis.y);
+        float rz = radius * sqrtf(1.0f - axis.z * axis.z);
+
+        half_extents = vec3(ax + rx, ay + ry, az + rz);
         break;
 
       // case BND_MESH:
       //   break;
 
       default:
-        shape_max = vec3(FLT_MAX, FLT_MAX, FLT_MAX);
-        shape_min = negate(shape_max);
+        half_extents = vec3(FLT_MAX, FLT_MAX, FLT_MAX);
         break;
     }
+
+    shape_min = add(shape_center, negate(half_extents));
+    shape_max = add(shape_center, half_extents);
 
     min = v3_min(min, shape_min);
     max = v3_max(max, shape_max);
