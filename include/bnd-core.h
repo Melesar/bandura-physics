@@ -63,6 +63,7 @@ typedef struct {
 
   m3 *inertias;
   float *volumes;
+  aabb *aabbs;
 
   count_t vertex_count;
   count_t vertex_capacity;

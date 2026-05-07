@@ -63,6 +63,26 @@ static m3 inertia_matrix(const bnd_world *world, bnd_body_shape shape, float mas
   }
 }
 
+static v3 rotated_box_half_extents(m3 rotation_matrix, v3 local_half_extends) {
+  v3 half_extents;
+  half_extents.x =
+    fabsf(rotation_matrix.m0[0]) * local_half_extends.x +
+    fabsf(rotation_matrix.m0[1]) * local_half_extends.y +
+    fabsf(rotation_matrix.m0[2]) * local_half_extends.z;
+
+  half_extents.y =
+    fabsf(rotation_matrix.m1[0]) * local_half_extends.x +
+    fabsf(rotation_matrix.m1[1]) * local_half_extends.y +
+    fabsf(rotation_matrix.m1[2]) * local_half_extends.z;
+
+  half_extents.z =
+    fabsf(rotation_matrix.m2[0]) * local_half_extends.x +
+    fabsf(rotation_matrix.m2[1]) * local_half_extends.y +
+    fabsf(rotation_matrix.m2[2]) * local_half_extends.z;
+
+  return half_extents;
+}
+
 static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
   v3 position = data->positions[index];
   quat rotation = data->rotations[index];
@@ -85,21 +105,7 @@ static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
     switch (shape.type) {
       case BND_BOX:
         rotation_matrix = quat_as_matrix(rotation);
-
-        half_extents.x =
-          fabsf(rotation_matrix.m0[0]) * shape.box.size.x * 0.5 +
-          fabsf(rotation_matrix.m0[1]) * shape.box.size.y * 0.5 +
-          fabsf(rotation_matrix.m0[2]) * shape.box.size.z * 0.5;
-
-        half_extents.y =
-          fabsf(rotation_matrix.m1[0]) * shape.box.size.x * 0.5 +
-          fabsf(rotation_matrix.m1[1]) * shape.box.size.y * 0.5 +
-          fabsf(rotation_matrix.m1[2]) * shape.box.size.z * 0.5;
-
-        half_extents.z =
-          fabsf(rotation_matrix.m2[0]) * shape.box.size.x * 0.5 +
-          fabsf(rotation_matrix.m2[1]) * shape.box.size.y * 0.5 +
-          fabsf(rotation_matrix.m2[2]) * shape.box.size.z * 0.5;
+        half_extents = rotated_box_half_extents(rotation_matrix, scale(shape.box.size, 0.5));
         break;
 
       case BND_SPHERE:
@@ -122,8 +128,11 @@ static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
         half_extents = vec3(ax + rx, ay + ry, az + rz);
         break;
 
-      // case BND_MESH:
-      //   break;
+      case BND_MESH:
+        rotation_matrix = quat_as_matrix(rotation);
+        aabb local_aabb = world->meshes.aabbs[shape.mesh];
+        half_extents = rotated_box_half_extents(rotation_matrix, local_aabb.half_extents);
+        break;
 
       default:
         half_extents = vec3(FLT_MAX, FLT_MAX, FLT_MAX);
@@ -1018,6 +1027,7 @@ static void swap_bodies(bnd_world *world, bnd_body_type type, count_t index_a, c
   SWAP_COMMON(v3, positions)
   SWAP_COMMON(quat, rotations)
   SWAP_COMMON(body_shapes, shapes)
+  SWAP_COMMON(aabb, aabbs)
   SWAP_COMMON(uint8_t, generations);
   SWAP_COMMON(count_t, inner_lookup)
 
@@ -1051,6 +1061,7 @@ static void move_body(bnd_world *world, count_t src_index, count_t dst_index) {
   data->positions[dst_index] = data->positions[src_index];
   data->rotations[dst_index] = data->rotations[src_index];
   data->shapes[dst_index] = data->shapes[src_index];
+  data->aabbs[dst_index] = data->aabbs[src_index];
   data->generations[dst_index] = data->generations[src_index];
   data->inv_masses[dst_index] = data->inv_masses[src_index];
   data->velocities[dst_index] = data->velocities[src_index];
