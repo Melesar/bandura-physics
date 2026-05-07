@@ -78,6 +78,7 @@ struct {
   bool show_physics_world_stats;
   bool show_physics_config_widget;
   bool draw_collisions;
+  bool draw_bounding_boxes;
 } master_widget_state;
 
 static Model groundModel;
@@ -276,6 +277,9 @@ static void draw_scene(program_config program_config, Camera camera, Shader shad
     draw_gizmos();
   if (master_widget_state.draw_collisions)
     physics_draw_collisions(world);
+  if (master_widget_state.draw_bounding_boxes) {
+    draw_bounding_boxes(world);
+  }
 
   EndShaderMode();
 
@@ -396,6 +400,7 @@ static void build_ui() {
       ui_checkbox("Physics config", &master_widget_state.show_physics_config_widget);
       ui_checkbox("World stats", &master_widget_state.show_physics_world_stats);
       ui_checkbox("Draw collisions", &master_widget_state.draw_collisions);
+      ui_checkbox("Draw bounding boxes", &master_widget_state.draw_bounding_boxes);
     }
 
     ui_end_area();

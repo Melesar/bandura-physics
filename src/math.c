@@ -421,3 +421,39 @@ float distance_to_triangle(v3 from, v3 a, v3 b, v3 c, v3 *closest) {
 
   return distance;
 }
+
+v3 v3_min(v3 a, v3 b) {
+  return vec3(fminf(a.x, b.x), fminf(a.y, b.y), fminf(a.z, b.z));
+}
+
+v3 v3_max(v3 a, v3 b) {
+  return vec3(fmaxf(a.x, b.x), fmaxf(a.y, b.y), fmaxf(a.z, b.z));
+}
+
+m3 quat_as_matrix(quat q) {
+  m3 result;
+
+  float a2 = q.x*q.x;
+  float b2 = q.y*q.y;
+  float c2 = q.z*q.z;
+  float ac = q.x*q.z;
+  float ab = q.x*q.y;
+  float bc = q.y*q.z;
+  float ad = q.w*q.x;
+  float bd = q.w*q.y;
+  float cd = q.w*q.z;
+
+  result.m0[0] = 1 - 2*(b2 + c2);
+  result.m1[0] = 2*(ab + cd);
+  result.m2[0] = 2*(ac - bd);
+
+  result.m0[1] = 2*(ab - cd);
+  result.m1[1] = 1 - 2*(a2 + c2);
+  result.m2[1] = 2*(bc + ad);
+
+  result.m0[2] = 2*(ac + bd);
+  result.m1[2] = 2*(bc - ad);
+  result.m2[2] = 1 - 2*(a2 + b2);
+
+  return result;
+}

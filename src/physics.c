@@ -2,6 +2,7 @@
 #include "bnd-core.h"
 #include "profiler.h"
 
+#include <float.h>
 #include <math.h>
 #include <assert.h>
 #include <stdlib.h>
@@ -60,6 +61,95 @@ static m3 inertia_matrix(const bnd_world *world, bnd_body_shape shape, float mas
     default:
       return matrix_initial_inertia(one());
   }
+}
+
+static v3 rotated_box_half_extents(m3 rotation_matrix, v3 local_half_extends) {
+  v3 half_extents;
+  half_extents.x =
+    fabsf(rotation_matrix.m0[0]) * local_half_extends.x +
+    fabsf(rotation_matrix.m0[1]) * local_half_extends.y +
+    fabsf(rotation_matrix.m0[2]) * local_half_extends.z;
+
+  half_extents.y =
+    fabsf(rotation_matrix.m1[0]) * local_half_extends.x +
+    fabsf(rotation_matrix.m1[1]) * local_half_extends.y +
+    fabsf(rotation_matrix.m1[2]) * local_half_extends.z;
+
+  half_extents.z =
+    fabsf(rotation_matrix.m2[0]) * local_half_extends.x +
+    fabsf(rotation_matrix.m2[1]) * local_half_extends.y +
+    fabsf(rotation_matrix.m2[2]) * local_half_extends.z;
+
+  return half_extents;
+}
+
+static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
+  v3 position = data->positions[index];
+  quat rotation = data->rotations[index];
+  body_shapes shapes_data = data->shapes[index];
+
+  const bnd_body_shape *shapes = shapes_get(world, shapes_data);
+
+  v3 min = { FLT_MAX, FLT_MAX, FLT_MAX };
+  v3 max = negate(min);
+  for (count_t i = 0; i < shapes_data.count; ++i) {
+    bnd_body_shape shape = shapes[i];
+
+    quat shape_rotation = qmul(rotation, shape.rotation);
+    v3 shape_center = add(position, rotate(shape.offset, rotation));
+
+    m3 rotation_matrix;
+    v3 shape_min, shape_max;
+    v3 half_extents, axis;
+    float half_height, radius;
+    switch (shape.type) {
+      case BND_BOX:
+        rotation_matrix = quat_as_matrix(rotation);
+        half_extents = rotated_box_half_extents(rotation_matrix, scale(shape.box.size, 0.5));
+        break;
+
+      case BND_SPHERE:
+        half_extents = scale(one(), shape.sphere.radius);
+        break;
+
+      case BND_CYLINDER:
+        half_height = shape.cylinder.height * 0.5;
+        axis = rotate(up(), shape_rotation);
+        radius = shape.cylinder.radius;
+
+        float ax = fabsf(axis.x) * half_height;
+        float ay = fabsf(axis.y) * half_height;
+        float az = fabsf(axis.z) * half_height;
+
+        float rx = radius * sqrtf(1.0f - axis.x * axis.x);
+        float ry = radius * sqrtf(1.0f - axis.y * axis.y);
+        float rz = radius * sqrtf(1.0f - axis.z * axis.z);
+
+        half_extents = vec3(ax + rx, ay + ry, az + rz);
+        break;
+
+      case BND_MESH:
+        rotation_matrix = quat_as_matrix(rotation);
+        aabb local_aabb = world->meshes.aabbs[shape.mesh];
+        half_extents = rotated_box_half_extents(rotation_matrix, local_aabb.half_extents);
+        break;
+
+      default:
+        half_extents = vec3(FLT_MAX, FLT_MAX, FLT_MAX);
+        break;
+    }
+
+    shape_min = add(shape_center, negate(half_extents));
+    shape_max = add(shape_center, half_extents);
+
+    min = v3_min(min, shape_min);
+    max = v3_max(max, shape_max);
+  }
+
+  data->aabbs[index] = (aabb) {
+    .center = scale(add(min, max), 0.5),
+    .half_extents = scale(sub(max, min), 0.5),
+  };
 }
 
 static void clear_forces(bnd_world *world) {
@@ -241,6 +331,7 @@ static void realloc_commons(common_data *data) {
   data->positions = realloc(data->positions, sizeof(v3) * data->capacity);
   data->rotations = realloc(data->rotations, sizeof(quat) * data->capacity);
   data->shapes = realloc(data->shapes, sizeof(body_shapes) * data->capacity);
+  data->aabbs = realloc(data->aabbs, sizeof(aabb) * data->capacity);
   data->free_list = realloc(data->free_list, sizeof(count_t) * data->capacity);
   data->generations = realloc(data->generations, sizeof(uint8_t) * data->capacity);
   data->outer_lookup = realloc(data->outer_lookup, sizeof(outer_lookup_node) * data->capacity);
@@ -279,6 +370,8 @@ static void init_body_common(bnd_world *world, common_data *data, shape_dimensio
   data->positions[index] = zero();
   data->rotations[index] = qidentity();
   data->shapes[index] = shapes_write(world, bracket, shapes, shapes_count);
+
+  calculate_aabb(world, data, index);
 }
 
 static void init_body_dynamic(bnd_world *world, float mass, m3 inertia_tensor, count_t index) {
@@ -325,7 +418,7 @@ static count_t insert_new_dynamic_body(bnd_world *world) {
 }
 
 static bnd_body add_primitive_body_static(bnd_world *world, bnd_body_shape shape) {
-  static_bodies *data = &world->statics;
+  common_data *data = as_common(world, BND_STATIC);
   if (data->capacity < data->count + 1) {
     realloc_commons(data);
   }
@@ -338,6 +431,7 @@ static bnd_body add_primitive_body_static(bnd_world *world, bnd_body_shape shape
   data->inner_lookup[index] = outer_index;
 
   world->generation += 1;
+  world->statics.dirty = true;
 
   return (bnd_body){ .position = &data->positions[index],
     .rotation = &data->rotations[index],
@@ -401,7 +495,7 @@ bnd_body bnd_add_cylinder_dynamic(bnd_world *world, float mass, float radius, fl
 bnd_body bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, count_t shapes_count) {
   shape_dimension_bracket bracket = get_shapes_bracket(shapes_count);
 
-  static_bodies *data = &world->statics;
+  common_data *data = as_common(world, BND_STATIC);
   if (data->capacity < data->count + 1) {
     realloc_commons(data);
   }
@@ -414,6 +508,7 @@ bnd_body bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, 
   data->inner_lookup[index] = outer_index;
 
   world->generation += 1;
+  world->statics.dirty = true;
 
   return (bnd_body){ .position = &data->positions[index],
     .rotation = &data->rotations[index],
@@ -634,6 +729,18 @@ bnd_body_shape *bnd_get_shapes(const bnd_world *world, bnd_body_handle handle, c
   return shapes_get(world, shapes);
 }
 
+aabb bnd_get_bounding_box(const bnd_world *world, bnd_body_handle handle) {
+  const common_data *data = as_common_const(world, handle.type);
+
+  count_t index = handle_to_inner_index(world, handle);
+  if (data->generations[index] != handle.generation) {
+    notify_body_removed(handle);
+    return (aabb){ 0 };
+  }
+
+  return data->aabbs[index];
+}
+
 v3 bnd_get_velocity(const bnd_world *world, bnd_body_handle handle) {
   if (handle.type != BND_DYNAMIC) {
     return zero();
@@ -779,7 +886,25 @@ bool bnd_body_next_typed(const bnd_world *world, bnd_body_enumerator_typed *enum
   return true;
 }
 
-void integrate_bodies(bnd_world *world, float dt) {
+static void update_aabbs(bnd_world *world) {
+  dynamic_bodies *dynamics = &world->dynamics;
+  for (count_t i = 0; i < dynamics->awake_count; ++i) {
+    calculate_aabb(world, (common_data *) dynamics, i);
+  }
+
+  if (!world->statics.dirty) {
+    return;
+  }
+
+  common_data *statics = as_common(world, BND_STATIC);
+  for (count_t i = 0; i < statics->count; ++i) {
+    calculate_aabb(world, statics, i);
+  }
+
+  world->statics.dirty = false;
+}
+
+static void integrate_bodies(bnd_world *world, float dt) {
   PROFILE_FUNCTION
 
   v3 gravity_acc = world->config.simulation.gravity;
@@ -829,6 +954,7 @@ void bnd_simulate(bnd_world *world, float dt) {
     world->stats.body_count = world->dynamics.count + world->statics.count;
 
     integrate_bodies(world, dt);
+    update_aabbs(world);
     contacts_reset(world);
     contacts_generate(world);
     contacts_resolve(world, dt);
@@ -901,6 +1027,7 @@ static void swap_bodies(bnd_world *world, bnd_body_type type, count_t index_a, c
   SWAP_COMMON(v3, positions)
   SWAP_COMMON(quat, rotations)
   SWAP_COMMON(body_shapes, shapes)
+  SWAP_COMMON(aabb, aabbs)
   SWAP_COMMON(uint8_t, generations);
   SWAP_COMMON(count_t, inner_lookup)
 
@@ -934,6 +1061,7 @@ static void move_body(bnd_world *world, count_t src_index, count_t dst_index) {
   data->positions[dst_index] = data->positions[src_index];
   data->rotations[dst_index] = data->rotations[src_index];
   data->shapes[dst_index] = data->shapes[src_index];
+  data->aabbs[dst_index] = data->aabbs[src_index];
   data->generations[dst_index] = data->generations[src_index];
   data->inv_masses[dst_index] = data->inv_masses[src_index];
   data->velocities[dst_index] = data->velocities[src_index];

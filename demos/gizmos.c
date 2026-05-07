@@ -1,4 +1,5 @@
 #include "scenario-core.h"
+#include "raymath.h"
 #include "raylib.h"
 
 #include "stdbool.h"

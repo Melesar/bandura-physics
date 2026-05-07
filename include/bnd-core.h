@@ -63,6 +63,7 @@ typedef struct {
 
   m3 *inertias;
   float *volumes;
+  aabb *aabbs;
 
   count_t vertex_count;
   count_t vertex_capacity;
@@ -82,6 +83,7 @@ typedef struct {
   v3 *positions;                                                                                                       \
   quat *rotations;                                                                                                     \
   body_shapes *shapes;                                                                                                 \
+  aabb *aabbs;                                                                                                         \
   uint8_t *generations;                                                                                                \
   count_t *free_list;                                                                                                  \
   outer_lookup_node *outer_lookup;                                                                                     \
@@ -145,7 +147,11 @@ typedef struct {
   float *motion_avgs;
 } dynamic_bodies;
 
-typedef common_data static_bodies;
+typedef struct {
+  COMMON_FIELDS
+
+  bool dirty;
+}static_bodies;
 
 struct bnd_world_t {
   dynamic_bodies dynamics;
@@ -233,5 +239,10 @@ float distance_to_line_segment(v3 from, v3 a, v3 b, v3 *closest);
 
 v3 body_center(const shape_context *ctx);
 quat body_rotation(const shape_context *ctx);
+
+v3 v3_min(v3 a, v3 b);
+v3 v3_max(v3 a, v3 b);
+
+m3 quat_as_matrix(quat q);
 
 #endif

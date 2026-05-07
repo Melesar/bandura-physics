@@ -23,6 +23,7 @@ static void init_commons(common_data *data, count_t capacity) {
   data->positions = malloc(sizeof(v3) * capacity);
   data->rotations = malloc(sizeof(quat) * capacity);
   data->shapes = malloc(sizeof(body_shapes) * capacity);
+  data->aabbs = malloc(sizeof(aabb) * capacity);
   data->free_list = malloc(sizeof(count_t) * capacity);
   data->generations = malloc(sizeof(uint8_t) * capacity);
   data->outer_lookup = malloc(sizeof(outer_lookup_node) * capacity);
@@ -33,6 +34,7 @@ static void teardown_commons(common_data *data) {
   free(data->positions);
   free(data->rotations);
   free(data->shapes);
+  free(data->aabbs);
   free(data->free_list);
   free(data->generations);
   free(data->outer_lookup);
@@ -81,6 +83,8 @@ bnd_world *bnd_init(const bnd_config *config) {
   const count_t vectors = sizeof(v3) * config->memory.dynamics_capacity;
   const count_t floats = sizeof(float) * config->memory.dynamics_capacity;
   const count_t matrices = sizeof(m3) * config->memory.dynamics_capacity;
+
+  world->statics.dirty = false;
 
   world->dynamics.forces = malloc(vectors);
   world->dynamics.torques = malloc(vectors);
