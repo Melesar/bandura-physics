@@ -82,6 +82,7 @@ def build_plot_figure(
     axis_time.set_title(label)
     axis_time.set_xlabel("Frame")
     axis_time.set_ylabel("Milliseconds")
+    axis_time.set_ylim(bottom=0)
     axis_counts.set_ylabel("Count")
     axis_time.grid(True, linestyle="--", linewidth=0.5, alpha=0.6)
     axis_time.legend(
