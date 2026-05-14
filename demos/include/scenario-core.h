@@ -49,6 +49,11 @@ typedef enum {
   BONE_COUNT
 } bone;
 
+typedef struct {
+  bool success;
+  bnd_mesh_handle mesh;
+} imported_mesh;
+
 typedef bnd_body_handle *ragdoll;
 
 int register_gizmo(Vector3 *pos, Quaternion *rot);

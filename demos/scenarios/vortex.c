@@ -29,6 +29,7 @@ typedef struct {
   float pull_force;
 } vortex;
 
+imported_mesh cone_mesh;
 vortex vorticies[VORTEX_COUNT];
 
 static void on_error(bnd_error error, char *message, void *data) {
@@ -126,22 +127,27 @@ static bool is_grounded(bnd_body_handle handle) {
   return (grounded_bodies_lookup[element_index] & bit_mask) != 0;
 }
 
-void scenario_initialize(program_config *config, bnd_config *physics_config) {
+void scenario_configure(program_config *config, bnd_config *physics_config) {
   config->window_title = "Vortex";
   config->camera_position = (v3){ 22.542, 11.645, 20.752 };
   config->camera_target = (v3){ 0, 0, 0 };
 
   physics_config->simulation.friction = 0.3;
 
+}
+
+void scenario_initialize(bnd_world *world) {
   bnd_register_error_callback(on_error);
+  SetRandomSeed(33);
+
+  cone_mesh.success = import_raylib_mesh(world, GenMeshCone(1, 3, 16), &cone_mesh.mesh);
 }
 
 void scenario_setup_scene(bnd_world *world) {
-  SetRandomSeed(33);
+  bnd_add_plane(world, zero(), up());
 
-  bnd_mesh_handle cone_mesh;
-  if (import_raylib_mesh(world, GenMeshCone(1, 3, 16), &cone_mesh)) {
-    bnd_body cone = bnd_add_mesh_dynamic(world, 5, cone_mesh);
+  if (cone_mesh.success) {
+    bnd_body cone = bnd_add_mesh_dynamic(world, 5, cone_mesh.mesh);
     scatter_dynamic_body(world, cone, 2, 7);
   }
 

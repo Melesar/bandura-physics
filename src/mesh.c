@@ -2,6 +2,7 @@
 #include "bnd-core.h"
 
 #include <float.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -33,7 +34,7 @@ static void ensure_meshes_capacity(mesh_storage *meshes) {
   meshes->meshes = realloc(meshes->meshes, meshes->mesh_capacity * sizeof(bnd_mesh));
   meshes->inertias = realloc(meshes->inertias, meshes->mesh_capacity * sizeof(m3));
   meshes->volumes = realloc(meshes->volumes, meshes->mesh_capacity * sizeof(float));
-  meshes->aabbs = realloc(meshes->aabbs, meshes->mesh_capacity * sizeof(aabb));
+  meshes->aabbs = realloc(meshes->aabbs, meshes->mesh_capacity * sizeof(bnd_aabb));
 }
 
 static v3 read_vertex(const bnd_mesh_buffer *buffer, count_t i) {
@@ -264,7 +265,7 @@ static void calculate_mass_properties(const bnd_mesh_data *data, m3 *inertia, v3
   inertia->m1[2] = inertia->m2[1] = -iap;
 }
 
-static aabb calculate_aabb(const mesh_storage *meshes, submesh submesh) {
+static bnd_aabb calculate_aabb(const mesh_storage *meshes, submesh submesh) {
   count_t vertex_start = submesh.vertex_offset;
   count_t vertex_end = vertex_start + submesh.vertex_count;
 
@@ -277,7 +278,7 @@ static aabb calculate_aabb(const mesh_storage *meshes, submesh submesh) {
     max = v3_max(max, v);
   }
 
-  return (aabb) {
+  return (bnd_aabb) {
     .center = scale(add(min, max), 0.5),
     .half_extents = scale(sub(max, min), 0.5),
   };
@@ -305,7 +306,7 @@ void meshes_init(bnd_world *world) {
 
   meshes->inertias = malloc(num_meshes * sizeof(m3));
   meshes->volumes = malloc(num_meshes * sizeof(float));
-  meshes->aabbs = malloc(num_meshes * sizeof(aabb));
+  meshes->aabbs = malloc(num_meshes * sizeof(bnd_aabb));
 }
 
 void meshes_teardown(bnd_world *world) {

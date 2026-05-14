@@ -15,6 +15,8 @@ Bandura is a traditional Ukrainian [musical instrument](https://en.wikipedia.org
   * [Referencing bodies](#referencing-bodies)
   * [Bounding the bodies together](#bounding-the-bodies-together)
   * [Using meshes as body shapes](#using-meshes-as-body-shapes)
+  * [Querying the physics world](#querying-the-physics-world)
+  * [Reacting to collisions](#reacting-to-collisions)
   * [Handling errors](#handling-errors)
 * [License](#license)
 * [Third-party code](#third-party-code)
@@ -92,11 +94,13 @@ int main() {
 ```
 ### Spawning bodies
 
-Rigidbodies in Bandura can be of two types: **dynamic** and **static**. As the naming suggests, the former can move and respond to collisions, while the latter serve as static environment. Many functions for spawning bodies have two variants, for example:
+Rigidbodies in Bandura can be of two types: **dynamic** and **static**. As the naming suggests, the former can move and respond to collisions, while the latter serve as static environment. Primitive shapes expose both variants, for example:
 
 ```c
 bnd_body bnd_add_box_dynamic(bnd_world *world, float mass, v3 size);
 bnd_body bnd_add_box_static(bnd_world *world, v3 size);
+bnd_body bnd_add_sphere_dynamic(bnd_world *world, float mass, float radius);
+bnd_body bnd_add_sphere_static(bnd_world *world, float radius);
 ```
 
 Note that the static version doesn't require to specify mass, since static objects a treated as having _infinite_ mass.
@@ -328,6 +332,54 @@ bool bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, bnd_mesh_handl
 // `mesh_handle` is received from `bnd_import_mesh`
 bnd_body mesh_body = bnd_add_mesh_dynamic(world, 5, mesh_handle);
 // At this point it's just a regular body. You can change it's position or rotation, store its handle, apply forces, etc.
+```
+
+### Querying the physics world
+
+Bandura currently supports the following queries:
+- Raycasts (via `bnd_raycast_closest` and `bnd_raycast_multiple`)
+- Overlaps (via `bnd_overlap`)
+
+Here is an example of simulating an "explosion" using an overlap:
+
+```c
+  bnd_body_handle overlaps[5];
+  count_t overlap_count = bnd_overlap(world, pos, explosion_radius, overlaps, 5); // Last parameter specifies the maximum overlap count.
+
+  for (count_t i = 0; i < overlap_count; ++i) {
+    v3 body_pos = bnd_get_position(world, overlaps[i]);
+    bnd_apply_impulse(world, overlaps[i], scale(normalize(sub(body_pos, pos)), explosion_impulse));
+  }
+```
+
+**NOTE:** `bnd_raycast_multiple` and `bnd_overlap` will only return at most as many results as you specify in the parameter. Do not make any assumptions about their proximity
+to the origin. They are not guaranteed to be the closest.
+
+### Reacting to collisions
+
+It's possible to subscribe to collision events for the particular body and react to them in your code:
+
+```c
+bnd_body b = bnd_add_sphere_dynamic(world, 5, 0.5);
+*b.position = vec3(0, 5, 0);
+
+// Makes the engine report collision events for this body during the simulation.
+bnd_event_subscribe(world, b.handle, BND_EVEN_COLLISION);
+
+bnd_simulate(world, dt);
+
+bnd_event_enumerator enumerator;
+bnd_event_enumerate(world, b.handle, &enumerator);
+
+while (bnd_event_next(world, &enumerator)) {
+  bnd_event e = enumerator.event;
+  bnd_contact contact = e.collision.contact;
+
+  // Process the collision
+}
+
+// To stop receiving collision events:
+bnd_event_unsubscribe(world, b.handle, BND_EVENT_COLLISION);
 ```
 
 ### Handling errors

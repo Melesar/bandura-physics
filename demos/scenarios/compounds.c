@@ -1,7 +1,7 @@
 #include "scenario-core.h"
 #include "raymath.h"
 
-void scenario_initialize(program_config *config, bnd_config *physics_config) {
+void scenario_configure(program_config *config, bnd_config *physics_config) {
   config->window_title = "Compounds";
   config->camera_position = (v3){ 0, 5, -10 };
   config->camera_target = (v3){ 0, 5, 10 };
@@ -11,7 +11,11 @@ void scenario_initialize(program_config *config, bnd_config *physics_config) {
   physics_config->simulation.sleep_base_bias = 1;
 }
 
+void scenario_initialize(bnd_world *world) { }
+
 void scenario_setup_scene(bnd_world *world) {
+  bnd_add_plane(world, zero(), up());
+
   bnd_body_shape shapes[] = {
     (bnd_body_shape){ .type = BND_BOX,
       .box = { .size = (v3){ .x = 0.3, .y = 3, .z = 0.3 } },
@@ -28,8 +32,6 @@ void scenario_setup_scene(bnd_world *world) {
   bnd_body b = bnd_add_compound_body_dynamic(world, shapes, masses, 2);
   *b.position = (v3){ 0, 10, 0 };
   *b.angular_momentum = (v3){ 0, 0, 36 };
-
-  bnd_awaken_body(world, b.handle);
 
   shapes[0] = (bnd_body_shape){ .type = BND_CYLINDER,
     .cylinder = { .radius = 0.3, .height = 3 },
@@ -50,8 +52,6 @@ void scenario_setup_scene(bnd_world *world) {
   b = bnd_add_compound_body_dynamic(world, shapes, masses, 3);
   *b.position = (v3){ 15, 10, 0 };
   *b.angular_momentum = (v3){ 0, 50, 0 };
-
-  bnd_awaken_body(world, b.handle);
 }
 
 void scenario_handle_input(bnd_world *world, Camera *camera) {

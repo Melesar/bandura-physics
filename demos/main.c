@@ -4,8 +4,10 @@
 #include "raymath.h"
 #include "rlgl.h"
 #include "string.h"
+
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 #define RLIGHTS_IMPLEMENTATION
 #include "rcamera.h"
@@ -46,7 +48,8 @@ static void draw_physics_bodies();
 static void process_inputs(Camera *camera);
 static void reset();
 
-extern void scenario_initialize(program_config *config, bnd_config *bandura_config);
+extern void scenario_configure(program_config *config, bnd_config *bandura_config);
+extern void scenario_initialize(bnd_world *world);
 extern void scenario_setup_scene(bnd_world *world);
 extern void scenario_handle_input(bnd_world *world, Camera *camera);
 extern void scenario_simulate(bnd_world *world, float dt);
@@ -77,6 +80,7 @@ struct {
   bool show_ui_debug;
   bool show_physics_world_stats;
   bool show_physics_config_widget;
+  bool draw_bodies;
   bool draw_collisions;
   bool draw_bounding_boxes;
 } master_widget_state;
@@ -88,10 +92,11 @@ static bnd_config config;
 int main(int argc, char **argv) {
   program_config program_config = { 0 };
   program_config.draw_ground = true;
+  master_widget_state.draw_bodies = true;
 
   config = bnd_default_config();
 
-  scenario_initialize(&program_config, &config);
+  scenario_configure(&program_config, &config);
 
   InitWindow(screen_width, screen_height, program_config.window_title);
   SetWindowState(FLAG_WINDOW_RESIZABLE);
@@ -106,7 +111,9 @@ int main(int argc, char **argv) {
   init_debugging();
   init_gizmos();
   init_physics();
+
   setup_scene(shader);
+  scenario_initialize(world);
   scenario_setup_scene(world);
 
   if (argc > 1 && !strncmp(argv[1], "-p", 2)) {
@@ -123,7 +130,7 @@ int main(int argc, char **argv) {
     int sim_count = 0;
     if (!edit_mode) {
       accum += deltaTime;
-      sim_count = (int)(accum / simulation_step);
+      sim_count = (int)(fminf(accum / simulation_step, 10));
 
       for (int i = 0; i < sim_count; i++) {
         if (!simulation_running && !step_forward)
@@ -251,8 +258,10 @@ void register_mesh_for_rendering(bnd_mesh_handle handle, Mesh mesh) {
 }
 
 static void draw_physics_bodies() {
-  draw_physics_bodies_typed(BND_DYNAMIC);
-  draw_physics_bodies_typed(BND_STATIC);
+  if (master_widget_state.draw_bodies) {
+    draw_physics_bodies_typed(BND_DYNAMIC);
+    draw_physics_bodies_typed(BND_STATIC);
+  }
 }
 
 static void draw_scene(program_config program_config, Camera camera, Shader shader, float dt) {
@@ -270,8 +279,8 @@ static void draw_scene(program_config program_config, Camera camera, Shader shad
   // Draw ground plane
   if (program_config.draw_ground) {
     DrawModel(groundModel, (Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, WHITE);
+    draw_custom_grid(32, 1.0f);
   }
-  draw_custom_grid(32, 1.0f);
 
   if (edit_mode)
     draw_gizmos();
@@ -379,26 +388,26 @@ static void setup_scene(Shader shader) {
 
 static void reset() {
   bnd_reset_world(world);
-  bnd_add_plane(world, zero(), up());
   scenario_setup_scene(world);
 }
 
 static void init_physics() {
   world = bnd_init(&config);
-  bnd_add_plane(world, zero(), up());
 }
 
 static void build_ui() {
-  CLAY(CLAY_ID("Container"), { .layout = {
-                                 .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                                 .padding = CLAY_PADDING_ALL(15),
-                                 .childGap = 15,
-                               } }) {
+  CLAY(CLAY_ID("Container"), {
+    .layout = {
+      .layoutDirection = CLAY_TOP_TO_BOTTOM,
+      .padding = CLAY_PADDING_ALL(15),
+      .childGap = 15,
+  }}) {
     bool ui_debug = master_widget_state.show_ui_debug;
     if (ui_begin_area("Debug widget", &master_widget_state.is_collapsed)) {
       ui_checkbox("UI debug", &master_widget_state.show_ui_debug);
       ui_checkbox("Physics config", &master_widget_state.show_physics_config_widget);
       ui_checkbox("World stats", &master_widget_state.show_physics_world_stats);
+      ui_checkbox("Draw bodies", &master_widget_state.draw_bodies);
       ui_checkbox("Draw collisions", &master_widget_state.draw_collisions);
       ui_checkbox("Draw bounding boxes", &master_widget_state.draw_bounding_boxes);
     }
@@ -418,14 +427,12 @@ static void build_ui() {
         ui_value_float("Friction", &physics_config->simulation.friction, 0, 1);
         ui_value_int("Max GJK iterations", (int *)&physics_config->collision_detection.max_gjk_iterations, 1, 1000);
         ui_value_float("EPA tolerance", &physics_config->collision_detection.epa_tolerance, 0, 1);
-        ui_value_int(
-            "Iterations factor", (int *)&physics_config->collision_resolution.resolution_attempts_factor, 1, 20);
+        ui_value_int("Iterations factor", (int *)&physics_config->collision_resolution.resolution_attempts_factor, 1, 20);
         ui_value_float("Penetration epsilon", &physics_config->collision_resolution.penetration_epsilon, 0.001, 0.5);
         ui_value_float("Velocity epsilon", &physics_config->collision_resolution.velocity_epsilon, 0.001, 0.5);
         ui_value_float("Sleep base bias", &physics_config->simulation.sleep_base_bias, 0, 1);
         ui_value_float("Sleep threshold", &physics_config->simulation.sleep_threshold, 0, 10);
-        ui_value_float(
-            "Restitution damping epsilon", &physics_config->collision_resolution.restitution_damping_limit, 0, 1);
+        ui_value_float("Restitution damping epsilon", &physics_config->collision_resolution.restitution_damping_limit, 0, 1);
       }
 
       ui_end_area();
@@ -435,11 +442,12 @@ static void build_ui() {
   }
 
   if (master_widget_state.show_physics_world_stats) {
-    CLAY(CLAY_ID("Stats"), { .layout = {
-                               .layoutDirection = CLAY_LEFT_TO_RIGHT,
-                               .childGap = 10,
-                               .padding = CLAY_PADDING_ALL(3),
-                             } }) {
+    CLAY(CLAY_ID("Stats"), {
+      .layout = {
+        .layoutDirection = CLAY_LEFT_TO_RIGHT,
+        .childGap = 10,
+        .padding = CLAY_PADDING_ALL(3),
+      }}) {
       bnd_world_stats stats = bnd_stats(world);
 
       ui_label_stat("Body count", stats.body_count);

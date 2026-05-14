@@ -161,7 +161,7 @@ static bool simplex_update(simplex *s, v3 *direction) {
   return false;
 }
 
-bool gjk_check_intersection(bnd_world *world, const collision_detection_context *ctx, simplex *simplex) {
+bool gjk_check_intersection(const bnd_world *world, const collision_detection_context *ctx, simplex *simplex) {
   PROFILE_FUNCTION
 
   v3 direction = initial_direction;
@@ -192,8 +192,6 @@ bool gjk_check_intersection(bnd_world *world, const collision_detection_context 
 
     direction = normalize(direction);
   }
-
-  world->stats.incomplete_collision_detections += 1;
 
   return false;
 }

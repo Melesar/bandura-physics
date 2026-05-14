@@ -1,3 +1,4 @@
+#include "bandura.h"
 #include "bnd-core.h"
 #include "profiler.h"
 
@@ -30,9 +31,9 @@ quat body_rotation(const shape_context *ctx) {
   return qmul(ctx->data->rotations[ctx->index], ctx->shape.rotation);
 }
 
-static inline bool aabb_intersect(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b) {
-  const aabb *a = &data_a->aabbs[index_a];
-  const aabb *b = &data_b->aabbs[index_b];
+bool aabb_intersect(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b) {
+  const bnd_aabb *a = &data_a->aabbs[index_a];
+  const bnd_aabb *b = &data_b->aabbs[index_b];
 
   if (fabsf(a->center.x - b->center.x) > a->half_extents.x + b->half_extents.x) {
     return false;
@@ -170,7 +171,7 @@ static count_t sphere_sphere_collision(bnd_world *world, const collision_detecti
     return 0;
   }
 
-  v3 normal = scale(offset, 1 / distance);
+  v3 normal = distance > EPSILON ? scale(offset, 1 / distance) : up();
 
   contact *c = new_contact(world, ctx);
   c->point = add(center_b, scale(normal, radius_b + penetration));
@@ -430,36 +431,29 @@ void collisions_detect_static(bnd_world *world) {
 
           if (shape_a.type == BND_SPHERE && shape_b.type == BND_SPHERE) {
             sphere_sphere_collision(world, &ctx);
-            continue;
-          }
+          } else  if (shape_b.type == BND_PLANE) {
+            switch (shape_a.type) {
+              case BND_BOX:
+                box_plane_collision(world, &ctx);
+                break;
 
-          switch (shape_b.type) {
-            case BND_PLANE:
-              switch (shape_a.type) {
-                case BND_BOX:
-                  box_plane_collision(world, &ctx);
-                  break;
+              case BND_SPHERE:
+                sphere_plane_collision(world, &ctx);
+                break;
 
-                case BND_SPHERE:
-                  sphere_plane_collision(world, &ctx);
-                  break;
+              case BND_CYLINDER:
+                cylinder_plane_collision(world, &ctx);
+                break;
 
-                case BND_CYLINDER:
-                  cylinder_plane_collision(world, &ctx);
-                  break;
+              case BND_MESH:
+                mesh_plane_collision(world, &ctx);
+                break;
 
-                case BND_MESH:
-                  mesh_plane_collision(world, &ctx);
-                  break;
-
-                default:
-                  break;
-              }
-              break;
-
-            default:
-              detect_collisions(world, &ctx);
-              break;
+              default:
+                break;
+            }
+          } else {
+            detect_collisions(world, &ctx);
           }
         }
       }

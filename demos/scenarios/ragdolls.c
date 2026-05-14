@@ -8,13 +8,17 @@ ragdoll normal_doll;
 
 bool widget_collapsed;
 
-void scenario_initialize(program_config *config, bnd_config *physics_config) {
+void scenario_configure(program_config *config, bnd_config *physics_config) {
   config->window_title = "Ragdolls";
   config->camera_position = vec3(0, 5, -10);
   config->camera_target = vec3(0, 2, 10);
 }
 
+void scenario_initialize(bnd_world *world) { }
+
 void scenario_setup_scene(bnd_world *world) {
+  bnd_add_plane(world, zero(), up());
+
   normal_doll = ragdoll_create(world, scale(up(), 3));
 
   bnd_body_shape ramp_shapes[] = {

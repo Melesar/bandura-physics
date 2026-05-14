@@ -1,17 +1,48 @@
+#include "bandura.h"
 #include "bnd-core.h"
 #include "profiler.h"
 #include <stdlib.h>
+
+static bnd_event make_collision_event(const bnd_world *world, bnd_body_type type, const contact *c) {
+  return (bnd_event) { .type = BND_EVENT_COLLISION, .collision = { .contact = (bnd_contact) {
+    .point = c->point,
+    .normal = c->normal,
+    .depth = c->depth,
+    .body_a = make_body_handle(world, BND_DYNAMIC, c->index_a),
+    .body_b = make_body_handle(world, type, c->index_b),
+  }}};
+}
+
+static void emit_collision_events(bnd_world *world, bnd_body_type type, count_t start, count_t end) {
+  for (count_t i = start; i < end; ++i) {
+    const contact *c = &world->contacts.values[i];
+    common_data *data_a = (common_data *)&world->dynamics;
+    common_data *data_b = as_common(world, type);
+
+    if (events_subscribed(data_a, c->index_a, BND_EVENT_COLLISION)) {
+      events_push(world, data_a, c->index_a, make_collision_event(world, type, c));
+    }
+
+    if (events_subscribed(data_b, c->index_b, BND_EVENT_COLLISION)) {
+      events_push(world, data_b, c->index_b, make_collision_event(world, type, c));
+    }
+  }
+}
 
 void contacts_generate(bnd_world *world) {
   PROFILE_FUNCTION
 
   count_t dynamic_count = 0;
   dynamic_count += collisions_detect_dynamic(world);
+  emit_collision_events(world, BND_DYNAMIC, 0, dynamic_count);
+
   dynamic_count += joints_generate_dynamic(world);
 
   world->contacts.dynamic_count = dynamic_count;
 
   collisions_detect_static(world);
+  emit_collision_events(world, BND_STATIC, world->contacts.dynamic_count, world->contacts.count);
+
   joints_generate_static(world);
 
   world->stats.contacts_count = world->contacts.count;

@@ -13,10 +13,6 @@ extern count_t max_body_index;
 static void swap_bodies(bnd_world *world, bnd_body_type type, count_t index_a, count_t index_b);
 static void move_body(bnd_world *world, count_t src_index, count_t dst_index);
 
-static void notify_body_removed(bnd_body_handle handle) {
-  raise_error_debug(BND_ERROR_BODY_REMOVED, NULL, "Body %d (%s) has been removed", handle.index, handle.type == BND_DYNAMIC ? "dynamic" : "static");
-}
-
 static v3 cylinder_inertia(float radius, float height, float mass) {
   float principal = mass * (3 * radius * radius + height * height) / 12.0;
   return (v3){ principal, mass * radius * radius / 2.0, principal };
@@ -130,7 +126,7 @@ static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
 
       case BND_MESH:
         rotation_matrix = quat_as_matrix(rotation);
-        aabb local_aabb = world->meshes.aabbs[shape.mesh];
+        bnd_aabb local_aabb = world->meshes.aabbs[shape.mesh];
         half_extents = rotated_box_half_extents(rotation_matrix, local_aabb.half_extents);
         break;
 
@@ -146,7 +142,7 @@ static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
     max = v3_max(max, shape_max);
   }
 
-  data->aabbs[index] = (aabb) {
+  data->aabbs[index] = (bnd_aabb) {
     .center = scale(add(min, max), 0.5),
     .half_extents = scale(sub(max, min), 0.5),
   };
@@ -161,6 +157,18 @@ static void clear_forces(bnd_world *world) {
   memset(dynamics->impulses, 0, size);
   memset(dynamics->angular_impulses, 0, size);
   memset(dynamics->accelerations, 0, size);
+}
+
+static void awaken_body(bnd_world *world, count_t index) {
+  dynamic_bodies *dynamics = &world->dynamics;
+  if (index < dynamics->awake_count) {
+    return;
+  }
+
+  dynamics->motion_avgs[index] = 2.0 * world->config.simulation.sleep_threshold;
+
+  swap_bodies(world, BND_DYNAMIC, index, dynamics->awake_count);
+  dynamics->awake_count += 1;
 }
 
 static void update_awake_statuses(bnd_world *world, float dt) {
@@ -280,10 +288,12 @@ const common_data *as_common_const(const bnd_world *world, bnd_body_type type) {
 
 bnd_body_handle make_body_handle(const bnd_world *world, bnd_body_type type, count_t index) {
   const common_data *data = as_common_const(world, type);
+  count_t outer_index = data->inner_lookup[index];
+
   return (bnd_body_handle){
     .type = type,
-    .generation = data->generations[index],
-    .index = data->inner_lookup[index],
+    .index = outer_index,
+    .generation = data->generations[outer_index],
   };
 }
 
@@ -327,30 +337,37 @@ void new_outer_lookup(common_data *data, outer_lookup_node *target_node, count_t
 }
 
 static void realloc_commons(common_data *data) {
-  data->capacity = data->capacity << 1;
-  data->positions = realloc(data->positions, sizeof(v3) * data->capacity);
-  data->rotations = realloc(data->rotations, sizeof(quat) * data->capacity);
-  data->shapes = realloc(data->shapes, sizeof(body_shapes) * data->capacity);
-  data->aabbs = realloc(data->aabbs, sizeof(aabb) * data->capacity);
-  data->free_list = realloc(data->free_list, sizeof(count_t) * data->capacity);
-  data->generations = realloc(data->generations, sizeof(uint8_t) * data->capacity);
-  data->outer_lookup = realloc(data->outer_lookup, sizeof(outer_lookup_node) * data->capacity);
-  data->inner_lookup = realloc(data->inner_lookup, sizeof(count_t) * data->capacity);
+  while (data->count >= data->capacity) {
+    data->capacity = data->capacity << 1;
+  }
+
+  count_t total_capacity = data->capacity + EPHEMERAL_BODIES_COUNT;
+  data->positions = realloc(data->positions, sizeof(v3) * total_capacity);
+  data->rotations = realloc(data->rotations, sizeof(quat) * total_capacity);
+  data->shapes = realloc(data->shapes, sizeof(body_shapes) * total_capacity);
+  data->aabbs = realloc(data->aabbs, sizeof(bnd_aabb) * total_capacity);
+  data->event_masks = realloc(data->event_masks, sizeof(bnd_event_type) * total_capacity);
+  data->event_links = realloc(data->event_links, sizeof(event_link) * total_capacity);
+  data->free_list = realloc(data->free_list, sizeof(count_t) * total_capacity);
+  data->generations = realloc(data->generations, sizeof(uint8_t) * total_capacity);
+  data->outer_lookup = realloc(data->outer_lookup, sizeof(outer_lookup_node) * total_capacity);
+  data->inner_lookup = realloc(data->inner_lookup, sizeof(count_t) * total_capacity);
 }
 
 static void realloc_dynamics(dynamic_bodies *data) {
-  data->forces = realloc(data->forces, sizeof(v3) * data->capacity);
-  data->torques = realloc(data->torques, sizeof(v3) * data->capacity);
-  data->impulses = realloc(data->impulses, sizeof(v3) * data->capacity);
-  data->angular_impulses = realloc(data->angular_impulses, sizeof(v3) * data->capacity);
-  data->accelerations = realloc(data->accelerations, sizeof(v3) * data->capacity);
+  count_t total_capacity = data->capacity + EPHEMERAL_BODIES_COUNT;
+  data->forces = realloc(data->forces, sizeof(v3) * total_capacity);
+  data->torques = realloc(data->torques, sizeof(v3) * total_capacity);
+  data->impulses = realloc(data->impulses, sizeof(v3) * total_capacity);
+  data->angular_impulses = realloc(data->angular_impulses, sizeof(v3) * total_capacity);
+  data->accelerations = realloc(data->accelerations, sizeof(v3) * total_capacity);
 
-  data->inv_masses = realloc(data->inv_masses, sizeof(float) * data->capacity);
-  data->velocities = realloc(data->velocities, sizeof(v3) * data->capacity);
-  data->angular_momenta = realloc(data->angular_momenta, sizeof(v3) * data->capacity);
-  data->inv_inertia_tensors = realloc(data->inv_inertia_tensors, sizeof(m3) * data->capacity);
-  data->inv_intertias = realloc(data->inv_intertias, sizeof(m3) * data->capacity);
-  data->motion_avgs = realloc(data->motion_avgs, sizeof(float) * data->capacity);
+  data->inv_masses = realloc(data->inv_masses, sizeof(float) * total_capacity);
+  data->velocities = realloc(data->velocities, sizeof(v3) * total_capacity);
+  data->angular_momenta = realloc(data->angular_momenta, sizeof(v3) * total_capacity);
+  data->inv_inertia_tensors = realloc(data->inv_inertia_tensors, sizeof(m3) * total_capacity);
+  data->inv_intertias = realloc(data->inv_intertias, sizeof(m3) * total_capacity);
+  data->motion_avgs = realloc(data->motion_avgs, sizeof(float) * total_capacity);
 }
 
 static shape_dimension_bracket get_shapes_bracket(count_t shapes_count) {
@@ -370,6 +387,8 @@ static void init_body_common(bnd_world *world, common_data *data, shape_dimensio
   data->positions[index] = zero();
   data->rotations[index] = qidentity();
   data->shapes[index] = shapes_write(world, bracket, shapes, shapes_count);
+  data->event_masks[index] = 0;
+  data->event_links[index] = (event_link) { 0 };
 
   calculate_aabb(world, data, index);
 }
@@ -484,6 +503,10 @@ bnd_body bnd_add_sphere_dynamic(bnd_world *world, float mass, float radius) {
   return add_primitive_body_dynamic(world, (bnd_body_shape){ .type = BND_SPHERE, .sphere = { .radius = radius }, .offset = zero(), .rotation = qidentity() }, mass);
 }
 
+bnd_body bnd_add_sphere_static(bnd_world *world, float radius) {
+  return add_primitive_body_static(world, (bnd_body_shape) { .type = BND_SPHERE, .sphere = { .radius = radius }, .offset = zero(), .rotation = qidentity() });
+}
+
 bnd_body bnd_add_cylinder_static(bnd_world *world, float radius, float height) {
   return add_primitive_body_static(world, (bnd_body_shape){ .type = BND_CYLINDER, .cylinder = { .radius = radius, .height = height }, .offset = zero(), .rotation = qidentity() });
 }
@@ -557,15 +580,14 @@ bnd_body bnd_add_mesh_static(bnd_world *world, bnd_mesh_handle mesh) {
 
 void bnd_remove_body(bnd_world *world, bnd_body_handle handle) {
   common_data *data = as_common(world, handle.type);
-  count_t index = handle_to_inner_index(world, handle);
-
-  if (handle.generation != data->generations[index]) {
+  if (handle.generation != data->generations[handle.index]) {
     return;
   }
 
-  data->generations[index] += 1;
+  data->generations[handle.index] += 1;
   data->free_list[data->free_count++] = handle.index; // We keep the outer index in the free list
 
+  count_t index = handle_to_inner_index(world, handle);
   body_shapes shapes = data->shapes[index];
   shapes_clear_slot(world, shapes.bracket, shapes.offset);
 
@@ -612,26 +634,28 @@ void bnd_apply_force(bnd_world *world, bnd_body_handle handle, v3 force) {
     return;
   }
 
-  count_t index = handle_to_inner_index(world, handle);
-  if (handle.generation != world->dynamics.generations[index]) {
+  if (handle.generation != world->dynamics.generations[handle.index]) {
     notify_body_removed(handle);
     return;
   }
 
+  count_t index = handle_to_inner_index(world, handle);
   v3 prev_force = world->dynamics.forces[index];
   world->dynamics.forces[index] = add(prev_force, force);
+
+  awaken_body(world, index);
 }
 
 void bnd_apply_force_at(bnd_world *world, bnd_body_handle handle, v3 force, v3 position) {
   if (handle.type != BND_DYNAMIC)
     return;
 
-  count_t index = handle_to_inner_index(world, handle);
-  if (handle.generation != world->dynamics.generations[index]) {
+  if (handle.generation != world->dynamics.generations[handle.index]) {
     notify_body_removed(handle);
     return;
   }
 
+  count_t index = handle_to_inner_index(world, handle);
   v3 prev_force = world->dynamics.forces[index];
   v3 prev_torque = world->dynamics.torques[index];
 
@@ -640,25 +664,34 @@ void bnd_apply_force_at(bnd_world *world, bnd_body_handle handle, v3 force, v3 p
 
   world->dynamics.forces[index] = add(prev_force, force);
   world->dynamics.torques[index] = add(prev_torque, torque);
+
+  awaken_body(world, index);
 }
 
 void bnd_apply_impulse(bnd_world *world, bnd_body_handle handle, v3 impulse) {
   if (handle.type != BND_DYNAMIC)
     return;
 
-  count_t index = handle_to_inner_index(world, handle);
-  if (handle.generation != world->dynamics.generations[index]) {
+  if (handle.generation != world->dynamics.generations[handle.index]) {
     notify_body_removed(handle);
     return;
   }
 
+  count_t index = handle_to_inner_index(world, handle);
   v3 prev_impulse = world->dynamics.impulses[index];
   world->dynamics.impulses[index] = add(prev_impulse, impulse);
+
+  awaken_body(world, index);
 }
 
 void bnd_apply_impulse_at(bnd_world *world, bnd_body_handle handle, v3 impulse, v3 position) {
   if (handle.type != BND_DYNAMIC)
     return;
+
+  if (handle.generation != world->dynamics.generations[handle.index]) {
+    notify_body_removed(handle);
+    return;
+  }
 
   count_t index = handle_to_inner_index(world, handle);
   v3 prev_force = world->dynamics.impulses[index];
@@ -669,6 +702,8 @@ void bnd_apply_impulse_at(bnd_world *world, bnd_body_handle handle, v3 impulse, 
 
   world->dynamics.impulses[index] = add(prev_force, impulse);
   world->dynamics.angular_impulses[index] = add(prev_angular_impulse, angular_impulse);
+
+  awaken_body(world, index);
 }
 
 bnd_config *bnd_edit_config(bnd_world *world) {
@@ -693,51 +728,48 @@ count_t bnd_collisions_count(const bnd_world *world) {
 
 v3 bnd_get_position(const bnd_world *world, bnd_body_handle handle) {
   const common_data *data = as_common_const(world, handle.type);
-
-  count_t index = handle_to_inner_index(world, handle);
-  if (handle.generation != data->generations[index]) {
+  if (handle.generation != data->generations[handle.index]) {
     notify_body_removed(handle);
     return zero();
   }
 
+  count_t index = handle_to_inner_index(world, handle);
   return data->positions[index];
 }
 
 quat bnd_get_rotation(const bnd_world *world, bnd_body_handle handle) {
   const common_data *data = as_common_const(world, handle.type);
-
-  count_t index = handle_to_inner_index(world, handle);
-  if (handle.generation != data->generations[index]) {
+  if (handle.generation != data->generations[handle.index]) {
     notify_body_removed(handle);
     return qidentity();
   }
 
+  count_t index = handle_to_inner_index(world, handle);
   return data->rotations[index];
 }
 
 bnd_body_shape *bnd_get_shapes(const bnd_world *world, bnd_body_handle handle, count_t *count) {
   const common_data *data = as_common_const(world, handle.type);
-
-  count_t index = handle_to_inner_index(world, handle);
-  if (handle.generation != data->generations[index]) {
+  if (handle.generation != data->generations[handle.index]) {
     notify_body_removed(handle);
     return NULL;
   }
 
+  count_t index = handle_to_inner_index(world, handle);
   body_shapes shapes = data->shapes[index];
   *count = shapes.count;
   return shapes_get(world, shapes);
 }
 
-aabb bnd_get_bounding_box(const bnd_world *world, bnd_body_handle handle) {
+bnd_aabb bnd_get_bounding_box(const bnd_world *world, bnd_body_handle handle) {
   const common_data *data = as_common_const(world, handle.type);
 
-  count_t index = handle_to_inner_index(world, handle);
-  if (data->generations[index] != handle.generation) {
+  if (data->generations[handle.index] != handle.generation) {
     notify_body_removed(handle);
-    return (aabb){ 0 };
+    return (bnd_aabb){ 0 };
   }
 
+  count_t index = handle_to_inner_index(world, handle);
   return data->aabbs[index];
 }
 
@@ -746,12 +778,12 @@ v3 bnd_get_velocity(const bnd_world *world, bnd_body_handle handle) {
     return zero();
   }
 
-  count_t index = handle_to_inner_index(world, handle);
-  if (handle.generation != world->dynamics.generations[index]) {
+  if (handle.generation != world->dynamics.generations[handle.index]) {
     notify_body_removed(handle);
     return zero();
   }
 
+  count_t index = handle_to_inner_index(world, handle);
   return world->dynamics.velocities[index];
 }
 
@@ -761,12 +793,12 @@ v3 bnd_get_angular_velocity(const bnd_world *world, bnd_body_handle handle) {
   }
 
   const dynamic_bodies *dynamics = &world->dynamics;
-  count_t index = handle_to_inner_index(world, handle);
-  if (handle.generation != dynamics->generations[index]) {
+  if (handle.generation != dynamics->generations[handle.index]) {
     notify_body_removed(handle);
     return zero();
   }
 
+  count_t index = handle_to_inner_index(world, handle);
   v3 momentum = dynamics->angular_momenta[index];
   quat rotation = dynamics->rotations[index];
   m3 inv_inertia = dynamics->inv_inertia_tensors[index];
@@ -779,12 +811,12 @@ v3 bnd_get_angular_momentum(const bnd_world *world, bnd_body_handle handle) {
     return zero();
   }
 
-  count_t index = handle_to_inner_index(world, handle);
-  if (handle.generation != world->dynamics.generations[index]) {
+  if (handle.generation != world->dynamics.generations[handle.index]) {
     notify_body_removed(handle);
     return zero();
   }
 
+  count_t index = handle_to_inner_index(world, handle);
   return world->dynamics.angular_momenta[index];
 }
 
@@ -794,12 +826,12 @@ m3 bnd_get_inertia(const bnd_world *world, bnd_body_handle handle) {
   }
 
   const dynamic_bodies *dynamics = &world->dynamics;
-  count_t index = handle_to_inner_index(world, handle);
-  if (handle.generation != dynamics->generations[index]) {
+  if (handle.generation != dynamics->generations[handle.index]) {
     notify_body_removed(handle);
     return (m3){ 0 };
   }
 
+  count_t index = handle_to_inner_index(world, handle);
   quat rotation = dynamics->rotations[index];
   m3 inv_inertia = dynamics->inv_inertia_tensors[index];
 
@@ -812,12 +844,12 @@ m3 bnd_get_base_inertia(const bnd_world *world, bnd_body_handle handle) {
   }
 
   const dynamic_bodies *dynamics = &world->dynamics;
-  count_t index = handle_to_inner_index(world, handle);
-  if (handle.generation != dynamics->generations[index]) {
+  if (handle.generation != dynamics->generations[handle.index]) {
     notify_body_removed(handle);
     return (m3){ 0 };
   }
 
+  count_t index = handle_to_inner_index(world, handle);
   m3 inv_inertia = dynamics->inv_inertia_tensors[index];
 
   return matrix_inverse(inv_inertia);
@@ -828,12 +860,12 @@ float bnd_get_motion_avg(const bnd_world *world, bnd_body_handle handle) {
     return 0;
   }
 
-  count_t index = handle_to_inner_index(world, handle);
-  if (handle.generation != world->dynamics.generations[index]) {
+  if (handle.generation != world->dynamics.generations[handle.index]) {
     notify_body_removed(handle);
     return 0;
   }
 
+  count_t index = handle_to_inner_index(world, handle);
   return world->dynamics.motion_avgs[index];
 }
 
@@ -855,6 +887,7 @@ count_t bnd_get_contacts(const bnd_world *world, bnd_contact *contacts, count_t 
   return count;
 }
 
+
 void bnd_enumerate_bodies_typed(const bnd_world *world, bnd_body_type type, bnd_body_enumerator *enumerator) {
   enumerator->handle = (bnd_body_handle){ .type = type, .index = max_body_index & 0x7FFFFF };
   enumerator->generation = world->generation;
@@ -872,7 +905,7 @@ bool bnd_body_next_typed(const bnd_world *world, bnd_body_enumerator_typed *enum
     }
 
     enumerator->handle.index = data->first_outer_node;
-    enumerator->handle.generation = data->generations[data->outer_lookup[enumerator->handle.index].index];
+    enumerator->handle.generation = data->generations[enumerator->handle.index];
     return true;
   }
 
@@ -882,7 +915,7 @@ bool bnd_body_next_typed(const bnd_world *world, bnd_body_enumerator_typed *enum
   }
 
   enumerator->handle.index = node.next;
-  enumerator->handle.generation = data->generations[data->outer_lookup[enumerator->handle.index].index];
+  enumerator->handle.generation = data->generations[enumerator->handle.index];
   return true;
 }
 
@@ -953,9 +986,12 @@ void bnd_simulate(bnd_world *world, float dt) {
 
     world->stats.body_count = world->dynamics.count + world->statics.count;
 
+    // TODO before changing the order of integration and collision detection,
+    // revisit aabb generation.
     integrate_bodies(world, dt);
     update_aabbs(world);
     contacts_reset(world);
+    events_reset(world);
     contacts_generate(world);
     contacts_resolve(world, dt);
     update_awake_statuses(world, dt);
@@ -968,6 +1004,33 @@ void bnd_simulate(bnd_world *world, float dt) {
   };
 
   profiler_end_frame(metadata);
+}
+
+void bnd_put_to_sleep(bnd_world *world, bnd_body_handle handle) {
+  if (handle.type != BND_DYNAMIC) {
+    return;
+  }
+
+  dynamic_bodies *dynamics = &world->dynamics;
+  if (handle.generation != dynamics->generations[handle.index]) {
+    notify_body_removed(handle);
+    return;
+  }
+
+  count_t index = handle_to_inner_index(world, handle);
+  if (index >= dynamics->awake_count) {
+    return;
+  }
+
+  count_t target_index = dynamics->awake_count > 0 ? dynamics->awake_count - 1 : 0;
+  if (index != target_index) {
+    swap_bodies(world, BND_DYNAMIC, index, target_index);
+  }
+
+  dynamics->awake_count -= 1;
+  dynamics->motion_avgs[target_index] = 0;
+  dynamics->velocities[target_index] = zero();
+  dynamics->angular_momenta[target_index] = zero();
 }
 
 void bnd_awaken_body(bnd_world *world, bnd_body_handle handle) {
@@ -1027,8 +1090,9 @@ static void swap_bodies(bnd_world *world, bnd_body_type type, count_t index_a, c
   SWAP_COMMON(v3, positions)
   SWAP_COMMON(quat, rotations)
   SWAP_COMMON(body_shapes, shapes)
-  SWAP_COMMON(aabb, aabbs)
-  SWAP_COMMON(uint8_t, generations);
+  SWAP_COMMON(bnd_aabb, aabbs)
+  SWAP_COMMON(bnd_event_type, event_masks)
+  SWAP_COMMON(event_link, event_links)
   SWAP_COMMON(count_t, inner_lookup)
 
   if (type == BND_DYNAMIC) {
@@ -1062,7 +1126,8 @@ static void move_body(bnd_world *world, count_t src_index, count_t dst_index) {
   data->rotations[dst_index] = data->rotations[src_index];
   data->shapes[dst_index] = data->shapes[src_index];
   data->aabbs[dst_index] = data->aabbs[src_index];
-  data->generations[dst_index] = data->generations[src_index];
+  data->event_masks[dst_index] = data->event_masks[src_index];
+  data->event_links[dst_index] = data->event_links[src_index];
   data->inv_masses[dst_index] = data->inv_masses[src_index];
   data->velocities[dst_index] = data->velocities[src_index];
   data->angular_momenta[dst_index] = data->angular_momenta[src_index];

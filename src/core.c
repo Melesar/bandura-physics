@@ -20,14 +20,18 @@ static void init_commons(common_data *data, count_t capacity) {
   data->count = 0;
   data->free_count = 0;
   data->first_outer_node = max_body_index;
-  data->positions = malloc(sizeof(v3) * capacity);
-  data->rotations = malloc(sizeof(quat) * capacity);
-  data->shapes = malloc(sizeof(body_shapes) * capacity);
-  data->aabbs = malloc(sizeof(aabb) * capacity);
-  data->free_list = malloc(sizeof(count_t) * capacity);
-  data->generations = malloc(sizeof(uint8_t) * capacity);
-  data->outer_lookup = malloc(sizeof(outer_lookup_node) * capacity);
-  data->inner_lookup = malloc(sizeof(count_t) * capacity);
+
+  count_t total_capacity = capacity + EPHEMERAL_BODIES_COUNT;
+  data->positions = malloc(sizeof(v3) * total_capacity);
+  data->rotations = malloc(sizeof(quat) * total_capacity);
+  data->shapes = malloc(sizeof(body_shapes) * total_capacity);
+  data->aabbs = malloc(sizeof(bnd_aabb) * total_capacity);
+  data->event_masks = malloc(sizeof(bnd_event_type) * total_capacity);
+  data->event_links = malloc(sizeof(event_link) * total_capacity);
+  data->free_list = malloc(sizeof(count_t) * total_capacity);
+  data->generations = malloc(sizeof(uint8_t) * total_capacity);
+  data->outer_lookup = malloc(sizeof(outer_lookup_node) * total_capacity);
+  data->inner_lookup = malloc(sizeof(count_t) * total_capacity);
 }
 
 static void teardown_commons(common_data *data) {
@@ -35,6 +39,8 @@ static void teardown_commons(common_data *data) {
   free(data->rotations);
   free(data->shapes);
   free(data->aabbs);
+  free(data->event_masks);
+  free(data->event_links);
   free(data->free_list);
   free(data->generations);
   free(data->outer_lookup);
@@ -59,6 +65,7 @@ bnd_config bnd_default_config() {
       .joints_capacity = 64,
       .epa_max_nodes = 512,
       .meshes_capacity = 32,
+      .events_capacity = 128,
       .shapes_brackets_capacity = {64, 1, 1, 1, 1},
     },
     .collision_detection = {
@@ -107,6 +114,7 @@ bnd_world *bnd_init(const bnd_config *config) {
   joints_init(world);
   shapes_init(world);
   meshes_init(world);
+  events_init(world);
   epa_init(config);
 
   profiler_init_default();
@@ -135,10 +143,15 @@ void bnd_teardown(bnd_world *world) {
   joints_teardown(world);
   contacts_teardown(world);
   meshes_teardown(world);
+  events_teardown(world);
 
   free(world);
 
   profiler_teardown();
+}
+
+count_t ephemeral_body_index(const common_data *data) {
+  return data->capacity;
 }
 
 void raise_error(bnd_error type, void *data, const char *template, ...) {
@@ -167,4 +180,8 @@ void raise_error_debug(bnd_error type, void *data, const char *template, ...) {
 
   error_callback(type, error_message_buffer, data);
 #endif
+}
+
+void notify_body_removed(bnd_body_handle handle) {
+  raise_error_debug(BND_ERROR_BODY_REMOVED, NULL, "Body %d (%s) has been removed", handle.index, handle.type == BND_DYNAMIC ? "dynamic" : "static");
 }

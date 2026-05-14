@@ -3,6 +3,8 @@
 
 #include "bandura.h"
 
+#define EPHEMERAL_BODIES_COUNT 4
+
 typedef struct {
   v3 point;
   v3 normal;
@@ -63,7 +65,7 @@ typedef struct {
 
   m3 *inertias;
   float *volumes;
-  aabb *aabbs;
+  bnd_aabb *aabbs;
 
   count_t vertex_count;
   count_t vertex_capacity;
@@ -75,6 +77,19 @@ typedef struct {
   count_t mesh_capacity;
 } mesh_storage;
 
+typedef struct {
+  bnd_event *events;
+  count_t *links;
+  count_t capacity;
+  count_t count;
+} events_storage;
+
+typedef struct {
+  count_t first;
+  count_t last;
+  uint8_t count;
+} event_link;
+
 #define COMMON_FIELDS                                                                                                  \
   count_t capacity;                                                                                                    \
   count_t count;                                                                                                       \
@@ -83,7 +98,9 @@ typedef struct {
   v3 *positions;                                                                                                       \
   quat *rotations;                                                                                                     \
   body_shapes *shapes;                                                                                                 \
-  aabb *aabbs;                                                                                                         \
+  bnd_aabb *aabbs;                                                                                                     \
+  bnd_event_type *event_masks;                                                                                         \
+  event_link *event_links;                                                                                             \
   uint8_t *generations;                                                                                                \
   count_t *free_list;                                                                                                  \
   outer_lookup_node *outer_lookup;                                                                                     \
@@ -160,6 +177,7 @@ struct bnd_world_t {
   contacts contacts;
   joints joints;
   mesh_storage meshes;
+  events_storage events;
 
   shapes_bracket shape_brackets[BRACKET_COUNT];
 
@@ -191,6 +209,7 @@ typedef v3 (*support_func)(const shape_context *, v3);
 
 void raise_error(bnd_error type, void *data, const char *template, ...);
 void raise_error_debug(bnd_error type, void *data, const char *template, ...);
+void notify_body_removed(bnd_body_handle handle);
 
 bnd_body_handle make_body_handle(const bnd_world *world, bnd_body_type type, count_t index);
 count_t handle_to_inner_index(const bnd_world *world, bnd_body_handle handle);
@@ -228,14 +247,23 @@ void shapes_clear_slot(bnd_world *world, shape_dimension_bracket bracket, count_
 body_shapes shapes_write(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes, count_t count);
 bnd_body_shape *shapes_get(const bnd_world *world, body_shapes shapes);
 
+count_t ephemeral_body_index(const common_data *data);
+
+void events_init(bnd_world *world);
+void events_teardown(bnd_world *world);
+void events_reset(bnd_world *world);
+bool events_subscribed(const common_data *data, count_t index, bnd_event_type event_type);
+void events_push(bnd_world *world, common_data *data, count_t index, bnd_event event);
+
 quat integrate_rotation_midpoint(quat rotation, v3 angular_momentum, m3 base_inv_inertia, float dt);
-bool gjk_check_intersection(bnd_world *world, const collision_detection_context *ctx, simplex *simplex);
+bool gjk_check_intersection(const bnd_world *world, const collision_detection_context *ctx, simplex *simplex);
 void epa_init(const bnd_config *config);
 void epa_get_contact(const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact);
 support_point support(const collision_detection_context *ctx, v3 direction);
 
 float distance_to_triangle(v3 from, v3 a, v3 b, v3 c, v3 *closest);
 float distance_to_line_segment(v3 from, v3 a, v3 b, v3 *closest);
+bool aabb_intersect(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b);
 
 v3 body_center(const shape_context *ctx);
 quat body_rotation(const shape_context *ctx);

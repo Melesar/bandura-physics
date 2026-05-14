@@ -59,7 +59,7 @@ static void draw_bounding_boxes_typed(const bnd_world *world, bnd_body_type type
   bnd_enumerate_bodies_typed(world, type, &enumerator);
 
   while (bnd_body_next_typed(world, &enumerator)) {
-    aabb bounding_box = bnd_get_bounding_box(world, enumerator.handle);
+    bnd_aabb bounding_box = bnd_get_bounding_box(world, enumerator.handle);
 
     DrawCubeWires(
       vec_ray(bounding_box.center),
@@ -226,8 +226,7 @@ bool import_raylib_mesh(bnd_world *world, Mesh mesh, bnd_mesh_handle *handle) {
     mesh.vertices[3 * i + 2] = mesh.vertices[3 * i + 2] - com.z;
   }
 
-  UpdateMeshBuffer(
-      mesh, RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION, mesh.vertices, mesh.vertexCount * 3 * sizeof(float), 0);
+  UpdateMeshBuffer(mesh, RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION, mesh.vertices, mesh.vertexCount * 3 * sizeof(float), 0);
 
   register_mesh_for_rendering(*handle, mesh);
 

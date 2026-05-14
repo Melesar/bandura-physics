@@ -1,3 +1,4 @@
+#include "bandura.h"
 #include "scenario-core.h"
 #include "raylib.h"
 
@@ -12,14 +13,18 @@ void handle_error(bnd_error error_type, char *error_message, void *error_data) {
   }
 }
 
-void scenario_initialize(program_config *config, bnd_config *physics) {
+void scenario_configure(program_config *config, bnd_config *physics) {
   config->window_title = "Rigidbodies";
   config->camera_position = (v3){ 22.542, 11.645, 20.752 };
   config->camera_target = (v3){ 0, 0, 0 };
 }
 
-void scenario_setup_scene(bnd_world *world) {
+void scenario_initialize(bnd_world *world) {
   bnd_register_error_callback(handle_error);
+}
+
+void scenario_setup_scene(bnd_world *world) {
+  bnd_add_plane(world, zero(), up());
 
   bnd_body big_box = bnd_add_box_static(world, (v3){ 10, 3, 1 });
   *big_box.position = (v3){ 0, 1.5, -5 };
@@ -55,19 +60,20 @@ void scenario_handle_input(bnd_world *world, Camera *cam) {
   if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
     Ray r = GetScreenToWorldRay(GetMousePosition(), *cam);
 
-    bnd_raycast_hit raycast_hits[3];
-    count_t hit_count = bnd_raycast(world, ray_vec(r.position), ray_vec(r.direction), 100.0, 3, raycast_hits);
+    bnd_ray ray = {
+      .origin = ray_vec(r.position),
+      .direction = ray_vec(r.direction),
+      .max_distance = 100.0,
+    };
 
-    for (count_t i = 0; i < hit_count; ++i) {
+    bnd_raycast_hit raycast_hit;
+    if (bnd_raycast_closest(world, ray, &raycast_hit)) {
       count_t num_shapes;
-      bnd_body_shape *shapes = bnd_get_shapes(world, raycast_hits[i].body, &num_shapes);
+      bnd_body_shape *shapes = bnd_get_shapes(world, raycast_hit.body, &num_shapes);
 
-      if (num_shapes > 0 && shapes[0].type == BND_PLANE) {
-        continue;
+      if (num_shapes > 0 && shapes[0].type != BND_PLANE) {
+        bnd_remove_body(world, raycast_hit.body);
       }
-
-      bnd_remove_body(world, raycast_hits[i].body);
-      break;
     }
   }
 }

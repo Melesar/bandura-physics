@@ -530,8 +530,8 @@ void ui_value_float(const char *label, float *value, float min_value, float max_
   custom_element *element = arena_alloc(sizeof(custom_element));
   element->type = ELEMENT_INPUT_FLOAT;
   element->input_float.value = value;
-  element->input_float.min_value = 0.0;
-  element->input_float.max_value = 1.0;
+  element->input_float.min_value = min_value;
+  element->input_float.max_value = max_value;
 
   CLAY(CLAY_SID(clay_string_concat(label, "container")),
        {

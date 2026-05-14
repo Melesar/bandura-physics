@@ -37,13 +37,13 @@
     "adapter": "CodeLLDB",
   },
   {
-    "label": "Debug ragdolls",
+    "label": "Debug sandbox",
     "build": {
       "command": "zig",
       "args": ["build"],
       "cwd": "$ZED_WORKTREE_ROOT",
     },
-    "program": "$ZED_WORKTREE_ROOT/zig-out/bin/ragdolls",
+    "program": "$ZED_WORKTREE_ROOT/zig-out/bin/sandbox",
     "request": "launch",
     "adapter": "CodeLLDB",
   },
