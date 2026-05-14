@@ -142,6 +142,7 @@ fn build_bandura(b: *std.Build, options: Options, withTests: bool) !*std.Build.S
 
     banduraLib.installHeader(b.path("include/bandura.h"), "bandura.h");
     banduraLib.installHeader(b.path("include/bnd-math.h"), "bnd-math.h");
+    banduraLib.installHeader(b.path("include/bnd-core.h"), "bnd-core.h");
 
     return banduraLib;
 }
@@ -261,9 +262,9 @@ fn libraryFlags(b: *std.Build, options: Options, withTests: bool) ![]const []con
       try flags.append(b.allocator, "-DBND_TESTS");
     }
 
-    if (!withTests) {
-      try flags.append(b.allocator, "-fvisibility=hidden");
-    }
+    // if (!withTests) {
+    //   try flags.append(b.allocator, "-fvisibility=hidden");
+    // }
 
     return flags.toOwnedSlice(b.allocator);
 }
