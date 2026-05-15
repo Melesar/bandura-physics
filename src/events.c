@@ -1,5 +1,4 @@
 #include "bnd-core.h"
-#include <stdlib.h>
 #include <string.h>
 
 static count_t new_event_index(bnd_world *world) {

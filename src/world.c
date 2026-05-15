@@ -1,3 +1,4 @@
+#include "bandura.h"
 #include "bnd-core.h"
 #include "bnd-math.h"
 #include "profiler.h"
@@ -7,6 +8,8 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define INVALID_HANDLE (bnd_body_handle) { 0, 0, ~(uint32_t)0 }
 
 extern count_t max_body_index;
 
@@ -336,7 +339,7 @@ void new_outer_lookup(common_data *data, outer_lookup_node *target_node, count_t
   target_node->next = next;
 }
 
-static void realloc_commons(common_data *data) {
+static void realloc_commons(common_data *data, bnd_allocator allocator) {
   while (data->count >= data->capacity) {
     data->capacity = data->capacity << 1;
   }
@@ -354,7 +357,11 @@ static void realloc_commons(common_data *data) {
   data->inner_lookup = realloc(data->inner_lookup, sizeof(count_t) * total_capacity);
 }
 
-static void realloc_dynamics(dynamic_bodies *data) {
+static void realloc_dynamics(dynamic_bodies *data, bnd_allocator allocator) {
+  if (allocator.realloc == NULL) {
+    return;
+  }
+
   count_t total_capacity = data->capacity + EPHEMERAL_BODIES_COUNT;
   data->forces = realloc(data->forces, sizeof(bnd_v3) * total_capacity);
   data->torques = realloc(data->torques, sizeof(bnd_v3) * total_capacity);
@@ -439,7 +446,7 @@ static count_t insert_new_dynamic_body(bnd_world *world) {
 static bnd_body add_primitive_body_static(bnd_world *world, bnd_body_shape shape) {
   common_data *data = as_common(world, BND_STATIC);
   if (data->capacity < data->count + 1) {
-    realloc_commons(data);
+    realloc_commons(data, world->allocator);
   }
 
   count_t index = data->count++;
@@ -462,8 +469,8 @@ static bnd_body add_primitive_body_static(bnd_world *world, bnd_body_shape shape
 static bnd_body add_primitive_body_dynamic(bnd_world *world, bnd_body_shape shape, float mass) {
   dynamic_bodies *data = &world->dynamics;
   if (data->capacity < data->count + 1) {
-    realloc_commons((common_data *)data);
-    realloc_dynamics(data);
+    realloc_commons((common_data *)data, world->allocator);
+    realloc_dynamics(data, world->allocator);
   }
 
   count_t index = insert_new_dynamic_body(world);
@@ -520,7 +527,7 @@ bnd_body bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, 
 
   common_data *data = as_common(world, BND_STATIC);
   if (data->capacity < data->count + 1) {
-    realloc_commons(data);
+    realloc_commons(data, world->allocator);
   }
 
   count_t index = data->count++;
@@ -545,8 +552,8 @@ bnd_body bnd_add_compound_body_dynamic(bnd_world *world, bnd_body_shape *shapes,
 
   dynamic_bodies *data = &world->dynamics;
   if (data->capacity < data->count + 1) {
-    realloc_commons((common_data *)data);
-    realloc_dynamics(data);
+    realloc_commons((common_data *)data, world->allocator);
+    realloc_dynamics(data, world->allocator);
   }
 
   count_t index = insert_new_dynamic_body(world);
@@ -704,6 +711,11 @@ void bnd_apply_impulse_at(bnd_world *world, bnd_body_handle handle, bnd_v3 impul
   world->dynamics.angular_impulses[index] = bnd_v3_add(prev_angular_impulse, angular_impulse);
 
   awaken_body(world, index);
+}
+
+bool bnd_handle_valid(const bnd_world *world, bnd_body_handle handle) {
+  const common_data *data = as_common_const(world, handle.type);
+  return handle.generation == data->generations[handle.index];
 }
 
 bnd_config *bnd_edit_config(bnd_world *world) {

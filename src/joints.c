@@ -1,8 +1,6 @@
 #include "bnd-core.h"
 #include "bnd-math.h"
 
-#include <stdlib.h>
-
 static inline void resize_if_needed(joints *joints) {
   if (joints->count < joints->capacity) {
     return;

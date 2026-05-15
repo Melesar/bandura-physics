@@ -5,6 +5,20 @@
 
 #define EPHEMERAL_BODIES_COUNT 4
 
+#define OK (bnd_error){BND_OK, NULL}
+#define OOM_ERROR (bnd_error){BND_ERROR_OUT_OF_MEMORY, "Allocator.malloc failed to allocate memory"}
+
+#define ALLOC_BUFFER(buffer, capacity) \
+  buffer = allocator.malloc(capacity); \
+  if (buffer == NULL) { \
+    return OOM_ERROR; \
+  } \
+
+#define ENSURE_REALLOC(allocator) \
+  if (allocator.realloc == NULL) { \
+    return OOM_ERROR; \
+  } \
+
 typedef struct {
   bnd_v3 point;
   bnd_v3 normal;
@@ -183,6 +197,7 @@ struct bnd_world_t {
 
   bnd_config config;
   bnd_world_stats stats;
+  bnd_allocator allocator;
 
   count_t generation;
 };
@@ -207,8 +222,8 @@ typedef struct {
 
 typedef bnd_v3 (*support_func)(const shape_context *, bnd_v3);
 
-void raise_error(bnd_error type, void *data, const char *template, ...);
-void raise_error_debug(bnd_error type, void *data, const char *template, ...);
+void raise_error(bnd_error_type type, void *data, const char *template, ...);
+void raise_error_debug(bnd_error_type type, void *data, const char *template, ...);
 void notify_body_removed(bnd_body_handle handle);
 
 bnd_body_handle make_body_handle(const bnd_world *world, bnd_body_type type, count_t index);
@@ -257,7 +272,7 @@ void events_push(bnd_world *world, common_data *data, count_t index, bnd_event e
 
 bnd_quat integrate_rotation_midpoint(bnd_quat rotation, bnd_v3 angular_momentum, bnd_m3 base_inv_inertia, float dt);
 bool gjk_check_intersection(const bnd_world *world, const collision_detection_context *ctx, simplex *simplex);
-void epa_init(const bnd_config *config);
+void epa_init(bnd_config config);
 void epa_get_contact(const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact);
 support_point support(const collision_detection_context *ctx, bnd_v3 direction);
 

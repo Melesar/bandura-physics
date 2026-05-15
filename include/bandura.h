@@ -33,15 +33,23 @@ typedef struct {
 typedef uint32_t count_t;
 
 typedef enum {
+  BND_OK,
+  BND_ERROR_NO_SPACE_AVAILABLE,
+  BND_ERROR_OUT_OF_MEMORY,
+  BND_ERROR_INVALID_ALLOCATOR,
   BND_ERROR_MESH_INVALID,
   BND_ERROR_MESH_IS_CONCAVE,
 
   // Debug mode errors
   BND_ERROR_INVALID_POLYTOPE,
   BND_ERROR_BODY_REMOVED,
-} bnd_error;
+} bnd_error_type;
 
-typedef void (*bnd_error_callback)(bnd_error error_type, char *error_message, void *error_data);
+typedef void (*bnd_error_callback)(bnd_error_type error_type, char *error_message, void *error_data);
+
+typedef void* (*bnd_malloc_fn)(uint64_t size);
+typedef void* (*bnd_realloc_fn)(void *ptr, uint64_t old_size, uint64_t new_size);
+typedef void  (*bnd_free_fn)(void *ptr, uint64_t size);
 
 typedef enum {
   BND_DYNAMIC,
@@ -63,6 +71,16 @@ typedef enum {
   BND_EVENT_COLLISION = 1,
 } bnd_event_type;
 
+typedef struct {
+  bnd_malloc_fn malloc;
+  bnd_realloc_fn realloc;
+  bnd_free_fn free;
+} bnd_allocator;
+
+typedef struct {
+  bnd_error_type type;
+  char *message;
+} bnd_error;
 
 typedef struct {
   void *buffer;
@@ -220,7 +238,8 @@ typedef struct {
 
 BNDAPI bnd_config bnd_default_config();
 
-BNDAPI bnd_world *bnd_init(const bnd_config *config);
+BNDAPI bnd_world *bnd_init(bnd_config config);
+BNDAPI bnd_world *bnd_init_with_allocator(bnd_config config, bnd_allocator allocator, bnd_error *error);
 
 BNDAPI void bnd_register_error_callback(bnd_error_callback callback);
 
@@ -247,6 +266,8 @@ BNDAPI void bnd_apply_force(bnd_world *world, bnd_body_handle handle, bnd_v3 for
 BNDAPI void bnd_apply_force_at(bnd_world *world, bnd_body_handle handle, bnd_v3 force, bnd_v3 position);
 BNDAPI void bnd_apply_impulse(bnd_world *world, bnd_body_handle handle, bnd_v3 impulse);
 BNDAPI void bnd_apply_impulse_at(bnd_world *world, bnd_body_handle handle, bnd_v3 impulse, bnd_v3 position);
+
+BNDAPI bool bnd_handle_valid(const bnd_world *world, bnd_body_handle handle);
 
 BNDAPI count_t bnd_body_count(const bnd_world *world, bnd_body_type type);
 BNDAPI count_t bnd_awake_count(const bnd_world *world);

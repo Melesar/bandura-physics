@@ -1,7 +1,6 @@
 #include "bnd-core.h"
 #include <assert.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <string.h>
 
 #define SHAPE_BRACKET_BLOCK_CAPACITY 64
@@ -10,9 +9,9 @@ static count_t bracket_block_count(const bnd_world *world, shape_dimension_brack
   return world->shape_brackets[bracket].capacity / SHAPE_BRACKET_BLOCK_CAPACITY;
 }
 
-static shapes_bracket allocate_bracket(count_t capacity, count_t block_count, count_t shapes_count) {
-  uint64_t *slots = malloc(block_count * sizeof(uint64_t));
-  bnd_body_shape *shapes = malloc(shapes_count * sizeof(bnd_body_shape));
+static shapes_bracket allocate_bracket(bnd_allocator allocator, count_t capacity, count_t block_count, count_t shapes_count) {
+  uint64_t *slots = allocator.malloc(block_count * sizeof(uint64_t));
+  bnd_body_shape *shapes = allocator.malloc(shapes_count * sizeof(bnd_body_shape));
 
   memset(slots, 0, block_count * sizeof(uint64_t));
 
@@ -30,14 +29,14 @@ void shapes_init(bnd_world *world) {
     count_t bracket_dimension = 1 << i;
     count_t shapes_count = bracket_capacity * bracket_dimension;
 
-    world->shape_brackets[i] = allocate_bracket(bracket_capacity, blocks_count, shapes_count);
+    world->shape_brackets[i] = allocate_bracket(world->allocator, bracket_capacity, blocks_count, shapes_count);
   }
 }
 
 void shapes_teardown(bnd_world *world) {
   for (count_t i = 0; i < BRACKET_COUNT; ++i) {
-    free(world->shape_brackets[i].slots);
-    free(world->shape_brackets[i].shapes);
+    world->allocator.free(world->shape_brackets[i].slots);
+    world->allocator.free(world->shape_brackets[i].shapes);
   }
 }
 
@@ -76,14 +75,16 @@ void shapes_expand_bracket(bnd_world *world, shape_dimension_bracket bracket) {
   count_t new_block_count = current_block_count + 1;
   count_t shapes_count = bracket_capacity * new_block_count * SHAPE_BRACKET_BLOCK_CAPACITY;
 
-  shapes_bracket new_bracket = allocate_bracket(new_capacity, new_block_count, shapes_count);
+  shapes_bracket new_bracket = allocate_bracket(world->allocator, new_capacity, new_block_count, shapes_count);
   memcpy(new_bracket.slots, current_slots, current_block_count * sizeof(uint64_t));
   memcpy(new_bracket.shapes, current_shapes, current_capacity * bracket_capacity * sizeof(bnd_body_shape));
 
   world->shape_brackets[bracket] = new_bracket;
 
-  free(current_shapes);
-  free(current_slots);
+  if (world->allocator.free) {
+    world->allocator.free(current_shapes);
+    world->allocator.free(current_slots);
+  }
 }
 
 bool shapes_put_into_empty_slot(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes, count_t shapes_count, count_t *slot_number) {

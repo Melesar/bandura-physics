@@ -31,7 +31,7 @@ typedef struct {
 imported_mesh cone_mesh;
 vortex vorticies[VORTEX_COUNT];
 
-static void on_error(bnd_error error, char *message, void *data) {
+static void on_error(bnd_error_type error, char *message, void *data) {
   TraceLog(LOG_ERROR, message);
 }
 

@@ -1,4 +1,3 @@
-#include "raylib.h"
 #include "scenario-core.h"
 #include "raygui.h"
 #include "raymath.h"
@@ -392,7 +391,7 @@ static void reset() {
 }
 
 static void init_physics() {
-  world = bnd_init(&config);
+  world = bnd_init(config);
 }
 
 static void build_ui() {

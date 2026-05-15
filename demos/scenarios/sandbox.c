@@ -1,6 +1,5 @@
 #include "scenario-core.h"
 #include "bnd-math.h"
-#include <math.h>
 
 bool collapsed;
 float sphere_radius;

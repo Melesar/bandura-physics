@@ -6,7 +6,7 @@
 bool is_collision;
 bnd_raycast_hit hit;
 
-void handle_error(bnd_error error_type, char *error_message, void *error_data) {
+void handle_error(bnd_error_type error_type, char *error_message, void *error_data) {
   if (error_type == BND_ERROR_INVALID_POLYTOPE) {
     TraceLog(LOG_FATAL, error_message);
   }
