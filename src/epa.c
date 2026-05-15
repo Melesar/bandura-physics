@@ -1,7 +1,7 @@
 #include "bnd-core.h"
+#include "bnd-math.h"
 #include "profiler.h"
 
-#include <math.h>
 #include <string.h>
 #include <float.h>
 #include <stdlib.h>
@@ -45,7 +45,7 @@ typedef struct {
 
     struct {
       uint16_t edges[3];
-      v3 normal;
+      bnd_v3 normal;
       float distance;
     } face;
   };
@@ -221,7 +221,7 @@ static void polytope_detach_edge(polytope *polytope, uint16_t edge, uint16_t ver
   current_node->edge.next_attached_edges[current_i] = next_edge_node->edge.next_attached_edges[i];
 }
 
-static void polytope_get_face_verticies(const polytope *polytope, uint16_t face, v3 *v1, v3 *v2, v3 *v3) {
+static void polytope_get_face_verticies(const polytope *polytope, uint16_t face, bnd_v3 *v1, bnd_v3 *v2, bnd_v3 *v3) {
   polytope_node node = polytope->nodes[face];
   uint16_t e1 = node.face.edges[0];
   uint16_t e2 = node.face.edges[1];
@@ -294,15 +294,15 @@ static uint16_t polytope_add_face(polytope *polytope, uint16_t e1, uint16_t e2, 
   node->face.edges[1] = e2;
   node->face.edges[2] = e3;
 
-  v3 v1, v2, v3;
+  bnd_v3 v1, v2, v3;
   polytope_get_face_verticies(polytope, index, &v1, &v2, &v3);
 
-  if (distancesqr(v1, v2) < EPSILON || distancesqr(v2, v3) < EPSILON || distancesqr(v3, v1) < EPSILON) {
+  if (bnd_v3_distancesqr(v1, v2) < EPSILON || bnd_v3_distancesqr(v2, v3) < EPSILON || bnd_v3_distancesqr(v3, v1) < EPSILON) {
     polytope->free_list[polytope->free_count++] = index;
     return NIL;
   }
 
-  node->face.distance = distance_to_triangle(zero(), v1, v2, v3, &node->face.normal);
+  node->face.distance = distance_to_triangle(bnd_v3_zero(), v1, v2, v3, &node->face.normal);
 
   polytope_attach_face(polytope, index, e1);
   polytope_attach_face(polytope, index, e2);
@@ -375,8 +375,8 @@ static void polytope_update_nearest(polytope *polytope) {
   }
 }
 
-static bool polytope_is_face_visible(const polytope_node *face, v3 support_point) {
-  return dot(normalize(face->face.normal), normalize(support_point)) > visibility_epsilon;
+static bool polytope_is_face_visible(const polytope_node *face, bnd_v3 support_point) {
+  return bnd_v3_dot(bnd_v3_normalize(face->face.normal), bnd_v3_normalize(support_point)) > visibility_epsilon;
 }
 
 static bool polytope_from_simplex(polytope *polytope, const simplex *s) {
@@ -410,8 +410,8 @@ static bool polytope_from_simplex(polytope *polytope, const simplex *s) {
 }
 
 static void epa_invalid_contact(support_point p, contact *contact) {
-  contact->point = scale(add(p.v1, p.v2), 0.5);
-  contact->normal = up();
+  contact->point = bnd_v3_scale(bnd_v3_add(p.v1, p.v2), 0.5);
+  contact->normal = bnd_v3_up();
   contact->depth = 0.1;
 }
 
@@ -429,18 +429,18 @@ static void epa_calculate_contact(const polytope *polytope, contact *contact) {
     ? polytope->nodes[edge_verts_2[1]].vertex.v
     : polytope->nodes[edge_verts_2[0]].vertex.v;
 
-  v3 barycenter = barycentric(zero(), v1.v, v2.v, vv3.v);
-  v3 p1 = add(scale(v1.v1, barycenter.x), add(scale(v2.v1, barycenter.y), scale(vv3.v1, barycenter.z)));
-  v3 p2 = add(scale(v1.v2, barycenter.x), add(scale(v2.v2, barycenter.y), scale(vv3.v2, barycenter.z)));
+  bnd_v3 barycenter = bnd_v3_barycentric(bnd_v3_zero(), v1.v, v2.v, vv3.v);
+  bnd_v3 p1 = bnd_v3_add(bnd_v3_scale(v1.v1, barycenter.x), bnd_v3_add(bnd_v3_scale(v2.v1, barycenter.y), bnd_v3_scale(vv3.v1, barycenter.z)));
+  bnd_v3 p2 = bnd_v3_add(bnd_v3_scale(v1.v2, barycenter.x), bnd_v3_add(bnd_v3_scale(v2.v2, barycenter.y), bnd_v3_scale(vv3.v2, barycenter.z)));
 
-  contact->point = scale(add(p1, p2), 0.5);
+  contact->point = bnd_v3_scale(bnd_v3_add(p1, p2), 0.5);
   contact->depth = sqrt(node.face.distance);
 
-  float length = len(node.face.normal);
+  float length = bnd_v3_len(node.face.normal);
   if (length > EPSILON) {
-    contact->normal = scale(node.face.normal, -1.0 / length);
+    contact->normal = bnd_v3_scale(node.face.normal, -1.0 / length);
   } else {
-    contact->normal = up();
+    contact->normal = bnd_v3_up();
   }
 }
 
@@ -583,16 +583,16 @@ void epa_get_contact(const collision_detection_context *ctx, const simplex *simp
   support_point support_point;
   while (attempts++ < EPA_MAX_ATTEMPTS) {
     polytope_node closest_face = pt->nodes[pt->nearest];
-    v3 direction = closest_face.face.normal;
+    bnd_v3 direction = closest_face.face.normal;
 
-    support_point = support(ctx, normalize(direction));
-    float distance = dot(direction, support_point.v);
+    support_point = support(ctx, bnd_v3_normalize(direction));
+    float distance = bnd_v3_dot(direction, support_point.v);
     if (distance - closest_face.face.distance < tolerance) {
       epa_calculate_contact(pt, contact);
       return;
     }
 
-    v3 a, b, c, closest;
+    bnd_v3 a, b, c, closest;
     polytope_get_face_verticies(pt, pt->nearest, &a, &b, &c);
     distance = distance_to_triangle(support_point.v, a, b, c, &closest);
 

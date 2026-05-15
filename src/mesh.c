@@ -1,5 +1,5 @@
-#include "bandura.h"
 #include "bnd-core.h"
+#include "bnd-math.h"
 
 #include <float.h>
 #include <stdio.h>
@@ -32,13 +32,13 @@ static void ensure_meshes_capacity(mesh_storage *meshes) {
   }
 
   meshes->meshes = realloc(meshes->meshes, meshes->mesh_capacity * sizeof(bnd_mesh));
-  meshes->inertias = realloc(meshes->inertias, meshes->mesh_capacity * sizeof(m3));
+  meshes->inertias = realloc(meshes->inertias, meshes->mesh_capacity * sizeof(bnd_m3));
   meshes->volumes = realloc(meshes->volumes, meshes->mesh_capacity * sizeof(float));
   meshes->aabbs = realloc(meshes->aabbs, meshes->mesh_capacity * sizeof(bnd_aabb));
 }
 
-static v3 read_vertex(const bnd_mesh_buffer *buffer, count_t i) {
-  v3 vertex = zero();
+static bnd_v3 read_vertex(const bnd_mesh_buffer *buffer, count_t i) {
+  bnd_v3 vertex = bnd_v3_zero();
   uint8_t *verticies = buffer->buffer;
   uint32_t step = buffer->element_size + buffer->stride;
 
@@ -72,14 +72,14 @@ static uint32_t read_index(const bnd_mesh_buffer *buffer, count_t i) {
   }
 }
 
-static void import_verticies(const bnd_mesh_buffer *buffer, mesh_storage *meshes, v3 com) {
+static void import_verticies(const bnd_mesh_buffer *buffer, mesh_storage *meshes, bnd_v3 com) {
   count_t new_count = buffer->elements_count + meshes->vertex_count;
-  resize_buffer((void **)&meshes->verticies, new_count, &meshes->vertex_capacity, sizeof(v3));
+  resize_buffer((void **)&meshes->verticies, new_count, &meshes->vertex_capacity, sizeof(bnd_v3));
 
-  v3 *dest = &meshes->verticies[meshes->vertex_count];
+  bnd_v3 *dest = &meshes->verticies[meshes->vertex_count];
   for (count_t i = 0; i < buffer->elements_count; ++i) {
-    v3 v = read_vertex(buffer, i);
-    dest[i] = sub(v, com);
+    bnd_v3 v = read_vertex(buffer, i);
+    dest[i] = bnd_v3_sub(v, com);
   }
 
   meshes->vertex_count = new_count;
@@ -98,11 +98,11 @@ static void import_indicies(const bnd_mesh_buffer *buffer, mesh_storage *meshes)
   meshes->index_count = new_count;
 }
 
-static float tetr_inertia_moment(m3 m, count_t i) {
+static float tetr_inertia_moment(bnd_m3 m, count_t i) {
   return m.m0[i] * m.m0[i] + m.m1[i] * m.m2[i] + m.m1[i] * m.m1[i] + m.m0[i] * m.m2[i] + m.m2[i] * m.m2[i] + m.m0[i] * m.m1[i];
 }
 
-static float tetr_inertia_product(m3 m, count_t i, count_t j) {
+static float tetr_inertia_product(bnd_m3 m, count_t i, count_t j) {
   return 2.0 * m.m0[i] * m.m0[j] + m.m1[i] * m.m2[j] + m.m2[i] * m.m1[j] +
     2.0 * m.m1[i] * m.m1[j] + m.m0[i] * m.m2[j] + m.m2[i] * m.m0[j] +
     2.0 * m.m2[i] * m.m2[j] + m.m0[i] * m.m1[j] + m.m1[i] * m.m0[j];
@@ -114,12 +114,12 @@ static bool is_mesh_convex(const bnd_mesh_data *data) {
     count_t i1 = read_index(&data->index_buffer, i + 1);
     count_t i2 = read_index(&data->index_buffer, i + 2);
 
-    v3 v0 = read_vertex(&data->vertex_buffer, i0);
-    v3 v1 = read_vertex(&data->vertex_buffer, i1);
-    v3 v2 = read_vertex(&data->vertex_buffer, i2);
+    bnd_v3 v0 = read_vertex(&data->vertex_buffer, i0);
+    bnd_v3 v1 = read_vertex(&data->vertex_buffer, i1);
+    bnd_v3 v2 = read_vertex(&data->vertex_buffer, i2);
 
-    v3 n = cross(sub(v2, v0), sub(v1, v0));
-    float d = -dot(n, v2);
+    bnd_v3 n = bnd_v3_cross(bnd_v3_sub(v2, v0), bnd_v3_sub(v1, v0));
+    float d = -bnd_v3_dot(n, v2);
 
     bool has_sign = false;
     float s = 0;
@@ -128,8 +128,8 @@ static bool is_mesh_convex(const bnd_mesh_data *data) {
         continue;
       }
 
-      v3 v = read_vertex(&data->vertex_buffer, j);
-      float sv = dot(n, v) + d;
+      bnd_v3 v = read_vertex(&data->vertex_buffer, j);
+      float sv = bnd_v3_dot(n, v) + d;
       if (fabsf(sv) < EPSILON) {
         continue;
       }
@@ -206,7 +206,7 @@ static bool validate_mesh(const bnd_mesh_data *data) {
   return true;
 }
 
-static void calculate_mass_properties(const bnd_mesh_data *data, m3 *inertia, v3 *com, float *volume) {
+static void calculate_mass_properties(const bnd_mesh_data *data, bnd_m3 *inertia, bnd_v3 *com, float *volume) {
   /**
    * This function is a rewrite of SkComputeInertia3x3 from
    *
@@ -216,22 +216,22 @@ static void calculate_mass_properties(const bnd_mesh_data *data, m3 *inertia, v3
   float ia = 0, ib = 0, ic = 0, iap = 0, ibp = 0, icp = 0;
 
   *volume = 0;
-  *com = zero();
-  *inertia = (m3){ 0 };
+  *com = bnd_v3_zero();
+  *inertia = (bnd_m3){ 0 };
   for (count_t i = 0; i + 2 < data->index_buffer.elements_count; i += 3) {
-    v3 v0 = read_vertex(&data->vertex_buffer, read_index(&data->index_buffer, i + 0));
-    v3 v1 = read_vertex(&data->vertex_buffer, read_index(&data->index_buffer, i + 1));
-    v3 v2 = read_vertex(&data->vertex_buffer, read_index(&data->index_buffer, i + 2));
+    bnd_v3 v0 = read_vertex(&data->vertex_buffer, read_index(&data->index_buffer, i + 0));
+    bnd_v3 v1 = read_vertex(&data->vertex_buffer, read_index(&data->index_buffer, i + 1));
+    bnd_v3 v2 = read_vertex(&data->vertex_buffer, read_index(&data->index_buffer, i + 2));
 
-    m3 m = { { v0.x, v0.y, v0.z }, { v1.x, v1.y, v1.z }, { v2.x, v2.y, v2.z } };
+    bnd_m3 m = { { v0.x, v0.y, v0.z }, { v1.x, v1.y, v1.z }, { v2.x, v2.y, v2.z } };
 
-    float det = dot(v0, cross(v1, v2));
+    float det = bnd_v3_dot(v0, bnd_v3_cross(v1, v2));
     float tetr_volume = det / 6.0;
 
-    v3 tetr_com = v0;
-    tetr_com = add(tetr_com, v1);
-    tetr_com = add(tetr_com, v2);
-    tetr_com = scale(tetr_com, 0.25);
+    bnd_v3 tetr_com = v0;
+    tetr_com = bnd_v3_add(tetr_com, v1);
+    tetr_com = bnd_v3_add(tetr_com, v2);
+    tetr_com = bnd_v3_scale(tetr_com, 0.25);
 
     float v100 = tetr_inertia_moment(m, 0);
     float v010 = tetr_inertia_moment(m, 1);
@@ -244,12 +244,12 @@ static void calculate_mass_properties(const bnd_mesh_data *data, m3 *inertia, v3
     ibp += det * tetr_inertia_product(m, 0, 1);
     icp += det * tetr_inertia_product(m, 0, 2);
 
-    tetr_com = scale(tetr_com, tetr_volume);
-    *com = add(*com, tetr_com);
+    tetr_com = bnd_v3_scale(tetr_com, tetr_volume);
+    *com = bnd_v3_add(*com, tetr_com);
     *volume += tetr_volume;
   }
 
-  *com = scale(*com, 1.0 / *volume);
+  *com = bnd_v3_scale(*com, 1.0 / *volume);
   ia = ia / 60.0 - *volume * (com->y * com->y + com->z * com->z);
   ib = ib / 60.0 - *volume * (com->x * com->x + com->z * com->z);
   ic = ic / 60.0 - *volume * (com->x * com->x + com->y * com->y);
@@ -269,18 +269,18 @@ static bnd_aabb calculate_aabb(const mesh_storage *meshes, submesh submesh) {
   count_t vertex_start = submesh.vertex_offset;
   count_t vertex_end = vertex_start + submesh.vertex_count;
 
-  v3 min = vec3(FLT_MAX, FLT_MAX, FLT_MAX);
-  v3 max = negate(min);
+  bnd_v3 min = (bnd_v3){FLT_MAX, FLT_MAX, FLT_MAX};
+  bnd_v3 max = bnd_v3_negate(min);
   for (count_t i = vertex_start; i < vertex_end; ++i) {
-    v3 v = meshes->verticies[i];
+    bnd_v3 v = meshes->verticies[i];
 
-    min = v3_min(min, v);
-    max = v3_max(max, v);
+    min = bnd_v3_min(min, v);
+    max = bnd_v3_max(max, v);
   }
 
   return (bnd_aabb) {
-    .center = scale(add(min, max), 0.5),
-    .half_extents = scale(sub(max, min), 0.5),
+    .center = bnd_v3_scale(bnd_v3_add(min, max), 0.5),
+    .half_extents = bnd_v3_scale(bnd_v3_sub(max, min), 0.5),
   };
 }
 
@@ -296,7 +296,7 @@ void meshes_init(bnd_world *world) {
   meshes->mesh_capacity = num_meshes;
   meshes->mesh_count = 0;
 
-  meshes->verticies = malloc(num_meshes * DEFAULT_VERTEX_PER_MESH * sizeof(v3));
+  meshes->verticies = malloc(num_meshes * DEFAULT_VERTEX_PER_MESH * sizeof(bnd_v3));
   meshes->vertex_capacity = num_meshes * DEFAULT_VERTEX_PER_MESH;
   meshes->vertex_count = 0;
 
@@ -304,7 +304,7 @@ void meshes_init(bnd_world *world) {
   meshes->index_capacity = num_meshes * DEFAULT_FACE_PER_MESH * 3;
   meshes->index_count = 0;
 
-  meshes->inertias = malloc(num_meshes * sizeof(m3));
+  meshes->inertias = malloc(num_meshes * sizeof(bnd_m3));
   meshes->volumes = malloc(num_meshes * sizeof(float));
   meshes->aabbs = malloc(num_meshes * sizeof(bnd_aabb));
 }
@@ -321,7 +321,7 @@ void meshes_teardown(bnd_world *world) {
   free(meshes.aabbs);
 }
 
-bool bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, bnd_mesh_handle *handle, v3 *center_of_mass) {
+bool bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, bnd_mesh_handle *handle, bnd_v3 *center_of_mass) {
   if (!validate_mesh(data)) {
     return false;
   }
@@ -331,7 +331,7 @@ bool bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, bnd_mesh_handl
     return false;
   }
 
-  m3 inertia;
+  bnd_m3 inertia;
   float volume;
   calculate_mass_properties(data, &inertia, center_of_mass, &volume);
 

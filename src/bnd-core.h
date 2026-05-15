@@ -6,15 +6,15 @@
 #define EPHEMERAL_BODIES_COUNT 4
 
 typedef struct {
-  v3 point;
-  v3 normal;
+  bnd_v3 point;
+  bnd_v3 normal;
   float depth;
   count_t index_a, index_b;
   float friction, restitution;
 
-  m3 basis;
-  v3 relative_position[2];
-  v3 local_velocity;
+  bnd_m3 basis;
+  bnd_v3 relative_position[2];
+  bnd_v3 local_velocity;
   float desired_delta_velocity;
 } contact;
 
@@ -57,13 +57,13 @@ typedef struct {
 } bnd_mesh;
 
 typedef struct {
-  v3 *verticies;
+  bnd_v3 *verticies;
   uint32_t *indicies;
 
   submesh *submeshes;
   bnd_mesh *meshes;
 
-  m3 *inertias;
+  bnd_m3 *inertias;
   float *volumes;
   bnd_aabb *aabbs;
 
@@ -95,8 +95,8 @@ typedef struct {
   count_t count;                                                                                                       \
   count_t free_count;                                                                                                  \
   count_t first_outer_node;                                                                                            \
-  v3 *positions;                                                                                                       \
-  quat *rotations;                                                                                                     \
+  bnd_v3 *positions;                                                                                                       \
+  bnd_quat *rotations;                                                                                                     \
   body_shapes *shapes;                                                                                                 \
   bnd_aabb *aabbs;                                                                                                     \
   bnd_event_type *event_masks;                                                                                         \
@@ -144,20 +144,20 @@ typedef struct {
   COMMON_FIELDS
 
   // Forces
-  v3 *forces;
-  v3 *torques;
-  v3 *impulses;
-  v3 *angular_impulses;
+  bnd_v3 *forces;
+  bnd_v3 *torques;
+  bnd_v3 *impulses;
+  bnd_v3 *angular_impulses;
 
   // Dynamics
   float *inv_masses;
-  v3 *velocities;
-  v3 *angular_momenta;
-  m3 *inv_inertia_tensors;
+  bnd_v3 *velocities;
+  bnd_v3 *angular_momenta;
+  bnd_m3 *inv_inertia_tensors;
 
   // Derived values.
-  v3 *accelerations;
-  m3 *inv_intertias;
+  bnd_v3 *accelerations;
+  bnd_m3 *inv_intertias;
 
   // Sleeping
   count_t awake_count;
@@ -188,9 +188,9 @@ struct bnd_world_t {
 };
 
 typedef struct {
-  v3 v;
-  v3 v1;
-  v3 v2;
+  bnd_v3 v;
+  bnd_v3 v1;
+  bnd_v3 v2;
 } support_point;
 
 typedef struct {
@@ -205,7 +205,7 @@ typedef struct {
   count_t index;
 } shape_context;
 
-typedef v3 (*support_func)(const shape_context *, v3);
+typedef bnd_v3 (*support_func)(const shape_context *, bnd_v3);
 
 void raise_error(bnd_error type, void *data, const char *template, ...);
 void raise_error_debug(bnd_error type, void *data, const char *template, ...);
@@ -255,22 +255,25 @@ void events_reset(bnd_world *world);
 bool events_subscribed(const common_data *data, count_t index, bnd_event_type event_type);
 void events_push(bnd_world *world, common_data *data, count_t index, bnd_event event);
 
-quat integrate_rotation_midpoint(quat rotation, v3 angular_momentum, m3 base_inv_inertia, float dt);
+bnd_quat integrate_rotation_midpoint(bnd_quat rotation, bnd_v3 angular_momentum, bnd_m3 base_inv_inertia, float dt);
 bool gjk_check_intersection(const bnd_world *world, const collision_detection_context *ctx, simplex *simplex);
 void epa_init(const bnd_config *config);
 void epa_get_contact(const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact);
-support_point support(const collision_detection_context *ctx, v3 direction);
+support_point support(const collision_detection_context *ctx, bnd_v3 direction);
 
-float distance_to_triangle(v3 from, v3 a, v3 b, v3 c, v3 *closest);
-float distance_to_line_segment(v3 from, v3 a, v3 b, v3 *closest);
+float distance_to_triangle(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_v3 *closest);
+float distance_to_line_segment(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 *closest);
 bool aabb_intersect(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b);
 
-v3 body_center(const shape_context *ctx);
-quat body_rotation(const shape_context *ctx);
+bnd_v3 body_center(const shape_context *ctx);
+bnd_quat body_rotation(const shape_context *ctx);
 
-v3 v3_min(v3 a, v3 b);
-v3 v3_max(v3 a, v3 b);
+bnd_m3 quat_as_matrix(bnd_quat q);
 
-m3 quat_as_matrix(quat q);
-
+bnd_v3 bnd_m3_rotate_inverse(bnd_v3 v, bnd_m3 m);
+bnd_m3 bnd_m3_from_basis(bnd_v3 x, bnd_v3 y, bnd_v3 z);
+bnd_m3 bnd_m3_skew_symmetric(bnd_v3 v);
+bnd_m3 bnd_m3_initial_inertia(bnd_v3 inertia);
+bnd_m3 bnd_m3_inertia(bnd_m3 initial_inertia, bnd_quat rotation);
+bnd_m3 bnd_m3_displacement_inertia(bnd_m3 i0, bnd_v3 offset, float mass);
 #endif

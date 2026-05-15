@@ -22,8 +22,8 @@ static void init_commons(common_data *data, count_t capacity) {
   data->first_outer_node = max_body_index;
 
   count_t total_capacity = capacity + EPHEMERAL_BODIES_COUNT;
-  data->positions = malloc(sizeof(v3) * total_capacity);
-  data->rotations = malloc(sizeof(quat) * total_capacity);
+  data->positions = malloc(sizeof(bnd_v3) * total_capacity);
+  data->rotations = malloc(sizeof(bnd_quat) * total_capacity);
   data->shapes = malloc(sizeof(body_shapes) * total_capacity);
   data->aabbs = malloc(sizeof(bnd_aabb) * total_capacity);
   data->event_masks = malloc(sizeof(bnd_event_type) * total_capacity);
@@ -50,7 +50,7 @@ static void teardown_commons(common_data *data) {
 bnd_config bnd_default_config() {
   return (bnd_config){
     .simulation = {
-      .gravity = (v3){0, -9.81f, 0},
+      .gravity = (bnd_v3){0, -9.81f, 0},
       .linear_damping = 0.95,
       .angular_damping = 0.8,
       .restitution = 0.2,
@@ -87,9 +87,9 @@ bnd_world *bnd_init(const bnd_config *config) {
   init_commons((common_data *)&world->dynamics, config->memory.dynamics_capacity);
   init_commons((common_data *)&world->statics, config->memory.statics_capacity);
 
-  const count_t vectors = sizeof(v3) * config->memory.dynamics_capacity;
+  const count_t vectors = sizeof(bnd_v3) * config->memory.dynamics_capacity;
   const count_t floats = sizeof(float) * config->memory.dynamics_capacity;
-  const count_t matrices = sizeof(m3) * config->memory.dynamics_capacity;
+  const count_t matrices = sizeof(bnd_m3) * config->memory.dynamics_capacity;
 
   world->statics.dirty = false;
 

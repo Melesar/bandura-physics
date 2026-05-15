@@ -190,20 +190,20 @@ static void draw_physics_bodies_typed(bnd_body_type type) {
   bnd_enumerate_bodies_typed(world, type, &enumerator);
 
   while (bnd_body_next_typed(world, &enumerator)) {
-    v3 position = bnd_get_position(world, enumerator.handle);
-    quat rotation = bnd_get_rotation(world, enumerator.handle);
+    bnd_v3 position = bnd_get_position(world, enumerator.handle);
+    bnd_quat rotation = bnd_get_rotation(world, enumerator.handle);
 
     count_t shapes_count;
     bnd_body_shape *shapes = bnd_get_shapes(world, enumerator.handle, &shapes_count);
 
     Matrix scale;
     Matrix transform =
-        MatrixMultiply(QuaternionToMatrix(quat_ray(rotation)), MatrixTranslate(position.x, position.y, position.z));
+        MatrixMultiply(QuaternionToMatrix(rotation), MatrixTranslate(position.x, position.y, position.z));
     Material material = materials[enumerator.handle.index % 20];
 
     for (count_t k = 0; k < shapes_count; ++k) {
       bnd_body_shape shape = shapes[k];
-      Matrix shape_transform = MatrixMultiply(QuaternionToMatrix(quat_ray(shape.rotation)),
+      Matrix shape_transform = MatrixMultiply(QuaternionToMatrix(shape.rotation),
           MatrixTranslate(shape.offset.x, shape.offset.y, shape.offset.z));
       Matrix full_transform = MatrixMultiply(shape_transform, transform);
 
@@ -333,8 +333,8 @@ static void update_camera(Camera *camera, float deltaTime) {
 
 static Camera setup_camera(program_config program_config) {
   Camera3D camera = { 0 };
-  camera.position = vec_ray(program_config.camera_position);
-  camera.target = vec_ray(program_config.camera_target);
+  camera.position = program_config.camera_position;
+  camera.target = program_config.camera_target;
   camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
   camera.fovy = 45.0f;
   camera.projection = CAMERA_PERSPECTIVE;

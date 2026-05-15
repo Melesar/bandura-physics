@@ -1,4 +1,3 @@
-#include "bandura.h"
 #include "bnd-core.h"
 #include <stdlib.h>
 #include <string.h>

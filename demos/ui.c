@@ -346,7 +346,7 @@ static void ui_prefix_label(const char *label) {
   };
 }
 
-void ui_label_v3(const char *label, v3 value) {
+void ui_label_v3(const char *label, bnd_v3 value) {
   char *v = arena_alloc(80); // Allocate more to keep the arena 8-bytes aligned
   snprintf(v, 80, "(%.2f, %.2f, %.2f)", value.x, value.y, value.z);
   Clay_String vs = {.chars = v, .length = strlen(v), .isStaticallyAllocated = false};
@@ -377,7 +377,7 @@ void ui_label_int(const char *label, count_t value) {
   ui_value_label(label, vs);
 }
 
-void ui_label_matrix(const char *label, m3 value) {
+void ui_label_matrix(const char *label, bnd_m3 value) {
   CLAY(CLAY_SID(clay_string_concat(label, "container")), {.layout = {.sizing = clay_container_sizing()}}) {
     CLAY(CLAY_SID(clay_string_concat(label, "label")), {.layout = {.sizing = {.width = CLAY_SIZING_GROW()}}}) {
       CLAY_TEXT(clay_from_string(label), {.textColor = clay_element_color(LABEL, TEXT, STATE_NORMAL)});

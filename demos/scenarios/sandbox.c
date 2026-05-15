@@ -1,11 +1,10 @@
-#include "bandura.h"
-#include "raylib.h"
 #include "scenario-core.h"
+#include "bnd-math.h"
 #include <math.h>
 
 bool collapsed;
 float sphere_radius;
-v3 arena_size;
+bnd_v3 arena_size;
 float projectile_interval;
 
 float max_inclination;
@@ -40,10 +39,10 @@ static bnd_body_handle shoot_projectile(bnd_world *world) {
   float incline = random_next_float() * max_inclination;
   float azimuth = random_next_float() * 2 * PI;
 
-  v3 direction = vec3(sinf(incline) * cosf(azimuth), cosf(incline), sinf(incline) * sinf(azimuth));
+  bnd_v3 direction = vec3(sinf(incline) * cosf(azimuth), cosf(incline), sinf(incline) * sinf(azimuth));
   float impulse = min_impulse + (max_impulse - min_impulse) * random_next_float();
 
-  bnd_apply_impulse(world, projectile.handle, scale(direction, impulse));
+  bnd_apply_impulse(world, projectile.handle, bnd_v3_scale(direction, impulse));
   bnd_event_subscribe(world, projectile.handle, BND_EVENT_COLLISION);
 
   projectiles[active_projectile_count++] = projectile.handle;
@@ -51,16 +50,16 @@ static bnd_body_handle shoot_projectile(bnd_world *world) {
   return projectile.handle;
 }
 
-static void add_ground_tile(bnd_world *world, v3 anchor, v3 direction, v3 size) {
-  v3 center = add(anchor, vec3(direction.x * size.x * 0.5, direction.y * size.y * 0.5, direction.z * size.z * 0.5));
+static void add_ground_tile(bnd_world *world, bnd_v3 anchor, bnd_v3 direction, bnd_v3 size) {
+  bnd_v3 center = bnd_v3_add(anchor, vec3(direction.x * size.x * 0.5, direction.y * size.y * 0.5, direction.z * size.z * 0.5));
   bnd_body b = bnd_add_box_static(world, size);
   *b.position = center;
 }
 
 void scenario_configure(program_config *config, bnd_config *physics_config) {
   config->window_title = "Sandbox";
-  config->camera_position = (v3){ 22.542, 11.645, 20.752 };
-  config->camera_target = (v3){ 0, 0, 0 };
+  config->camera_position = (bnd_v3){ 22.542, 11.645, 20.752 };
+  config->camera_target = (bnd_v3){ 0, 0, 0 };
   config->draw_ground = false;
 
   physics_config->memory.contacts_capacity = 512;
@@ -95,7 +94,7 @@ void scenario_setup_scene(bnd_world *world) {
   add_ground_tile(world, vec3(0, 0, -sphere_radius), vec3(0, 0, -1), vec3(2 * sphere_radius, arena_size.y, arena_size.z * 0.5 - sphere_radius));
 
   for (count_t i = 0; i < 6; i++) {
-    bnd_body box = bnd_add_box_dynamic(world, 5, one());
+    bnd_body box = bnd_add_box_dynamic(world, 5, bnd_v3_one());
     *box.position = vec3(-sphere_radius - 15, 0.5 + i, sphere_radius + 7);
 
     bnd_put_to_sleep(world, box.handle);
@@ -129,8 +128,8 @@ void scenario_handle_input(bnd_world *world, Camera *camera) {
   bnd_raycast_hit hit;
 
   bnd_ray ray = {
-    .origin = ray_vec(r.position),
-    .direction = ray_vec(r.direction),
+    .origin = r.position,
+    .direction = r.direction,
     .max_distance = 100,
   };
   has_tracked = bnd_raycast_closest(world, ray, &hit);
@@ -142,7 +141,7 @@ void scenario_simulate(bnd_world *world, float dt) {
 
   for (int i = active_projectile_count - 1; i >= 0; --i) {
     bnd_event_enumerator enumerator;
-    v3 pos = bnd_get_position(world, projectiles[i]);
+    bnd_v3 pos = bnd_get_position(world, projectiles[i]);
 
     bool any_collisions = bnd_event_enumerate(world, projectiles[i], &enumerator);
     bool fallen = pos.y < -2;
@@ -153,8 +152,8 @@ void scenario_simulate(bnd_world *world, float dt) {
       count_t overlap_count = bnd_overlap(world, pos, explosion_radius, overlaps, 5);
 
       for (count_t j = 0; j < overlap_count; ++j) {
-        v3 body_pos = bnd_get_position(world, overlaps[j]);
-        bnd_apply_impulse(world, overlaps[j], scale(normalize(sub(body_pos, pos)), explosion_impulse));
+        bnd_v3 body_pos = bnd_get_position(world, overlaps[j]);
+        bnd_apply_impulse(world, overlaps[j], bnd_v3_scale(bnd_v3_normalize(bnd_v3_sub(body_pos, pos)), explosion_impulse));
       }
 
       if (active_projectile_count > 0) {

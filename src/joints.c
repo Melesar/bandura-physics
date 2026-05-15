@@ -1,4 +1,6 @@
 #include "bnd-core.h"
+#include "bnd-math.h"
+
 #include <stdlib.h>
 
 static inline void resize_if_needed(joints *joints) {
@@ -14,7 +16,7 @@ static inline void resize_if_needed(joints *joints) {
   joints->ids = realloc(joints->ids, joints->capacity * sizeof(count_t));
 }
 
-count_t bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, v3 contact_offset_a, v3 contact_offset_b, float max_distance) {
+count_t bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_v3 contact_offset_a, bnd_v3 contact_offset_b, float max_distance) {
   // Two static bodies shouldn't be bound together.
   if (body_a.type == BND_STATIC && body_b.type == BND_STATIC) {
     return ~0;
@@ -26,7 +28,7 @@ count_t bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle 
     body_b = body_a;
     body_a = tmp_body;
 
-    v3 tmp_pos = contact_offset_b;
+    bnd_v3 tmp_pos = contact_offset_b;
     contact_offset_b = contact_offset_a;
     contact_offset_a = tmp_pos;
   }
@@ -99,24 +101,24 @@ static count_t generate_contacts(bnd_world *world, count_t start, count_t end, b
     data[0] = (common_data *)dynamics;
     data[1] = is_dynamic ? (common_data *)dynamics : statics;
 
-    v3 world_points[2];
+    bnd_v3 world_points[2];
     count_t indices[2];
     for (count_t k = 0; k < 2; ++k) {
       count_t index = handle_to_inner_index(world, j.bodies[k]);
-      world_points[k] = rotate(j.relative_contact_positions[k], data[k]->rotations[index]);
-      world_points[k] = add(world_points[k], data[k]->positions[index]);
+      world_points[k] = bnd_v3_rotate(j.relative_contact_positions[k], data[k]->rotations[index]);
+      world_points[k] = bnd_v3_add(world_points[k], data[k]->positions[index]);
       indices[k] = index;
     }
 
-    v3 offset = sub(world_points[1], world_points[0]);
-    float distance = len(offset);
+    bnd_v3 offset = bnd_v3_sub(world_points[1], world_points[0]);
+    float distance = bnd_v3_len(offset);
     if (distance <= j.max_error) {
       continue;
     }
 
     contact *contact = contacts_new_default(world, indices[0], indices[1]);
-    contact->point = scale(add(world_points[0], world_points[1]), 0.5);
-    contact->normal = scale(offset, 1.0 / distance);
+    contact->point = bnd_v3_scale(bnd_v3_add(world_points[0], world_points[1]), 0.5);
+    contact->normal = bnd_v3_scale(offset, 1.0 / distance);
     contact->depth = distance - j.max_error;
     contact->friction = 1.0;
     contact->restitution = 0;

@@ -1,4 +1,5 @@
 #include "scenario-core.h"
+#include "bnd-math.h"
 #include "raygui.h"
 #include "raylib.h"
 #include <stdlib.h>
@@ -17,15 +18,15 @@ void scenario_configure(program_config *config, bnd_config *physics_config) {
 void scenario_initialize(bnd_world *world) { }
 
 void scenario_setup_scene(bnd_world *world) {
-  bnd_add_plane(world, zero(), up());
+  bnd_add_plane(world, bnd_v3_zero(), bnd_v3_up());
 
-  normal_doll = ragdoll_create(world, scale(up(), 3));
+  normal_doll = ragdoll_create(world, bnd_v3_scale(bnd_v3_up(), 3));
 
   bnd_body_shape ramp_shapes[] = {
       (bnd_body_shape){
-          .type = BND_BOX, .box = {.size = vec3(1, 10, 1)}, .offset = vec3(0, 5, 0), .rotation = qidentity()},
+          .type = BND_BOX, .box = {.size = vec3(1, 10, 1)}, .offset = vec3(0, 5, 0), .rotation = bnd_qidentity()},
       (bnd_body_shape){
-          .type = BND_BOX, .box = {.size = vec3(3, 1, 1)}, .offset = vec3(1, 10, 0), .rotation = qidentity()},
+          .type = BND_BOX, .box = {.size = vec3(3, 1, 1)}, .offset = vec3(1, 10, 0), .rotation = bnd_qidentity()},
   };
 
   bnd_body ramp = bnd_add_compound_body_static(world, ramp_shapes, 2);
@@ -37,7 +38,7 @@ void scenario_setup_scene(bnd_world *world) {
 
 void scenario_handle_input(bnd_world *world, Camera *camera) {
   if (IsKeyPressed(KEY_J)) {
-    bnd_apply_impulse(world, normal_doll[PELVIS], scale(up(), 12));
+    bnd_apply_impulse(world, normal_doll[PELVIS], bnd_v3_scale(bnd_v3_up(), 12));
   }
 }
 
@@ -49,9 +50,9 @@ void scenario_build_ui(bnd_world *world) {
   if (ui_begin_area("Ragdolls", &widget_collapsed)) {
     for (bone b = HEAD; b < BONE_COUNT; ++b) {
       bnd_body_handle body = hanging_doll[b];
-      float velocity = len(bnd_get_velocity(world, body));
-      float angular_velocity = len(bnd_get_angular_velocity(world, body));
-      float angular_momentum = len(bnd_get_angular_momentum(world, body));
+      float velocity = bnd_v3_len(bnd_get_velocity(world, body));
+      float angular_velocity = bnd_v3_len(bnd_get_angular_velocity(world, body));
+      float angular_momentum = bnd_v3_len(bnd_get_angular_momentum(world, body));
 
       char *bone_name;
       switch (b) {

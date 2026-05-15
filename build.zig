@@ -103,6 +103,7 @@ fn build_bandura(b: *std.Build, options: Options, target: std.Build.ResolvedTarg
     });
 
     banduraModule.addIncludePath(b.path("include"));
+    banduraModule.addIncludePath(b.path("src"));
 
     const libFlags = try libraryFlags(b, options, target.result, optimize);
     defer b.allocator.free(libFlags);
@@ -122,6 +123,7 @@ fn build_bandura(b: *std.Build, options: Options, target: std.Build.ResolvedTarg
     });
 
     banduraLib.installHeader(b.path("include/bandura.h"), "bandura.h");
+    banduraLib.installHeader(b.path("include/bnd-math.h"), "bnd-math.h");
 
     return banduraLib;
 }

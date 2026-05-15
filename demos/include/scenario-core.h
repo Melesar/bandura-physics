@@ -2,6 +2,13 @@
 #define CORE_H
 
 #include "raylib.h"
+
+#define BND_CUSTOM_VEC3
+typedef Vector3 bnd_v3;
+
+#define BND_CUSTOM_QUAT
+typedef Quaternion bnd_quat;
+
 #include "bandura.h"
 #include "clay.h"
 
@@ -29,8 +36,8 @@
 typedef struct {
   char *window_title;
   bool draw_ground;
-  v3 camera_position;
-  v3 camera_target;
+  bnd_v3 camera_position;
+  bnd_v3 camera_target;
 } program_config;
 
 typedef enum {
@@ -62,14 +69,14 @@ void unregister_gizmo(int id);
 bool import_raylib_mesh(bnd_world *world, Mesh mesh, bnd_mesh_handle *handle);
 void register_mesh_for_rendering(bnd_mesh_handle handle, Mesh mesh);
 
-void draw_arrow(v3 start, v3 direction, Color color);
+void draw_arrow(bnd_v3 start, bnd_v3 direction, Color color);
 void draw_bounding_boxes(const bnd_world *world);
 
 void draw_model_with_wireframe(Model model, Vector3 position, float scale, Color color);
 
 void physics_draw_collisions(const bnd_world *world);
 
-ragdoll ragdoll_create(bnd_world *world, v3 position);
+ragdoll ragdoll_create(bnd_world *world, bnd_v3 position);
 
 void ui_initialize();
 void ui_teardown();
@@ -85,9 +92,9 @@ void ui_label(char *label);
 void ui_label_bool(const char *lable, bool value);
 void ui_label_float(char *label, float value);
 void ui_label_int(const char *label, count_t value);
-void ui_label_v3(const char *label, v3 value);
+void ui_label_v3(const char *label, bnd_v3 value);
 void ui_label_stat(const char *label, float value);
-void ui_label_matrix(const char *label, m3 value);
+void ui_label_matrix(const char *label, bnd_m3 value);
 void ui_label_string(char *label, char *value);
 
 void ui_value_int(const char *label, int *value, int min_value, int max_value);
@@ -99,12 +106,5 @@ void ui_checkbox(const char *label, bool *is_checked);
 bool ui_dropdown(const char *label, char **values, count_t values_count, count_t *selected, bool *active);
 
 Clay_Color ui_text_color(int control);
-
-quat ray_quat(Quaternion q);
-v3 ray_vec(Vector3 x);
-
-Vector3 vec_ray(v3 v);
-Quaternion quat_ray(quat q);
-
 
 #endif
