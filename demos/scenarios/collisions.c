@@ -12,7 +12,6 @@ bnd_body_shape box_shape = {
   .rotation = (quat){ 0, 0, 0, 1 },
 };
 
-
 static void draw_simplex(const simplex *s) {
   Vector3 p3 = vec_ray(s->points[3].v);
   Vector3 p2 = vec_ray(s->points[2].v);
@@ -21,6 +20,15 @@ static void draw_simplex(const simplex *s) {
 
   Color color = GREEN;
   color.a = 100;
+
+  Color point_colors[4] = { RED, GREEN, BLUE, YELLOW };
+  for (count_t i = 0; i < s->size; ++i) {
+    Vector3 v1 = vec_ray(s->points[i].v1);
+    Vector3 v2 = vec_ray(s->points[i].v2);
+
+    DrawSphere(v1, 0.05, point_colors[i]);
+    DrawSphere(v2, 0.05, point_colors[i]);
+  }
 
   DrawTriangle3D(p3, p1, p0, color);
   DrawTriangle3D(p3, p2, p1, color);
