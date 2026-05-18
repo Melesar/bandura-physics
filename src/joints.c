@@ -105,7 +105,7 @@ static count_t generate_contacts(bnd_world *world, count_t start, count_t end, b
 
     const common_data *data[2];
     data[0] = (common_data *)dynamics;
-    data[1] = is_dynamic ? (common_data *)dynamics : statics;
+    data[1] = is_dynamic ? (common_data *)dynamics : (common_data *)statics;
 
     bnd_v3 world_points[2];
     count_t indices[2];
@@ -123,6 +123,10 @@ static count_t generate_contacts(bnd_world *world, count_t start, count_t end, b
     }
 
     contact *contact = contacts_new_default(world, indices[0], indices[1]);
+    if (contact == NULL) {
+      continue;
+    }
+
     contact->point = bnd_v3_scale(bnd_v3_add(world_points[0], world_points[1]), 0.5);
     contact->normal = bnd_v3_scale(offset, 1.0 / distance);
     contact->depth = distance - j.max_error;

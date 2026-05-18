@@ -237,7 +237,7 @@ const common_data *as_common_const(const bnd_world *world, bnd_body_type type);
 bnd_error contacts_init(bnd_world *world);
 void contacts_teardown(bnd_world *world);
 void contacts_reset(bnd_world *world);
-void contacts_ensure_capacity(bnd_world *world, count_t additional_count);
+bnd_error contacts_ensure_capacity(bnd_world *world, count_t additional_count);
 contact *contacts_new_default(bnd_world *world, count_t body_a, count_t body_b);
 void contacts_generate(bnd_world *world);
 void contacts_resolve(bnd_world *world, float dt);

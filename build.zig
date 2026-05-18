@@ -3,7 +3,16 @@ const zcc = @import("compile_commands");
 
 const ResolvedTarget = std.Build.ResolvedTarget;
 
-const COMMON_FLAGS = &.{ "-std=c99", "-Wall", "-Wextra", "-Werror=format", "-Werror=shadow", "-Werror=incompatible-pointer-types", "-Werror=return-type", "-Wno-unused-parameter" };
+const COMMON_FLAGS = &.{
+  "-std=c99",
+  "-Wall",
+  "-Wextra",
+  "-Werror=format",
+  "-Werror=shadow",
+  "-Werror=incompatible-pointer-types",
+  "-Werror=pointer-type-mismatch",
+  "-Werror=return-type",
+  "-Wno-unused-parameter" };
 
 const Options = struct {
     profiling: bool,

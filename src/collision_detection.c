@@ -5,6 +5,7 @@
 
 #include <float.h>
 #include <math.h>
+#include <string.h>
 
 typedef struct {
   bnd_v3 center;
@@ -176,6 +177,10 @@ static count_t sphere_sphere_collision(bnd_world *world, const collision_detecti
   bnd_v3 normal = distance > EPSILON ? bnd_v3_scale(offset, 1 / distance) : bnd_v3_up();
 
   contact *c = new_contact(world, ctx);
+  if (c == NULL) {
+    return 0;
+  }
+
   c->point = bnd_v3_add(center_b, bnd_v3_scale(normal, radius_b + penetration));
   c->normal = normal;
   c->depth = -penetration;
@@ -206,7 +211,11 @@ static count_t box_plane_collision(bnd_world *world, const collision_detection_c
 
   const count_t max_contacts = 4;
 
-  contacts_ensure_capacity(world, max_contacts);
+  bnd_error e = contacts_ensure_capacity(world, max_contacts);
+  if (e.type != BND_OK) {
+    raise_error(e.type, NULL, e.message);
+    return 0;
+  }
 
   count_t contact_count = 0;
   for (count_t i = 0; i < 8 && contact_count < max_contacts; ++i) {
@@ -240,6 +249,10 @@ static count_t sphere_plane_collision(bnd_world *world, const collision_detectio
   }
 
   contact *contact = new_contact(world, ctx);
+  if (contact == NULL) {
+    return 0;
+  }
+
   contact->normal = plane_normal;
   contact->point = bnd_v3_add(sphere_center, bnd_v3_scale(plane_normal, -plane_sphere_distance));
   contact->depth = sphere_radius - plane_sphere_distance;
@@ -285,6 +298,10 @@ static count_t cylinder_plane_collision(bnd_world *world, const collision_detect
   bnd_v3 deepest_point = bnd_v3_add(cylinder_center, bnd_v3_add(cap_offset, radial_offset));
 
   contact *contact = new_contact(world, ctx);
+  if (contact == NULL) {
+    return 0;
+  }
+
   contact->normal = plane_normal;
   contact->point = bnd_v3_add(deepest_point, bnd_v3_scale(plane_normal, -min_distance));
   contact->depth = -min_distance;
@@ -338,6 +355,10 @@ static count_t mesh_plane_collision(bnd_world *world, const collision_detection_
   point = bnd_v3_add(point, bnd_v3_scale(plane_normal, -min_dot)); // Project the deepest vertex back on the plane.
 
   contact *c = new_contact(world, ctx);
+  if (c == NULL) {
+    return 0;
+  }
+
   c->point = point;
   c->normal = plane_normal;
   c->depth = -min_dot;
@@ -352,6 +373,10 @@ static count_t detect_collisions(bnd_world *world, const collision_detection_con
   }
 
   contact *c = new_contact(world, ctx);
+  if (c == NULL) {
+    return 0;
+  }
+
   epa_get_contact(ctx, &s, world->config.collision_detection.epa_tolerance, c);
 
   return 1;

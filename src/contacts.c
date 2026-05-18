@@ -1,3 +1,4 @@
+#include "bandura.h"
 #include "bnd-core.h"
 #include "profiler.h"
 
@@ -70,22 +71,37 @@ void contacts_teardown(bnd_world *world) {
   world->allocator.free(world->contacts.values, world->contacts.capacity * sizeof(contact));
 }
 
-void contacts_ensure_capacity(bnd_world *world, count_t additional_count) {
+bnd_error contacts_ensure_capacity(bnd_world *world, count_t additional_count) {
   contacts *contacts = &world->contacts;
 
   count_t count_needed = contacts->count + additional_count;
+  if (count_needed < contacts->capacity) {
+    return OK;
+  }
+
+  if (world->allocator.realloc == NULL) {
+    return (bnd_error) { BND_ERROR_NO_SPACE_AVAILABLE, "Contacts buffer is full and Allocator.realloc is NULL" };
+  }
+
+  count_t old_capacity = contacts->capacity;
   while (count_needed >= contacts->capacity) {
     contacts->capacity <<= 1;
 
     if (contacts->capacity >= count_needed) {
-      contacts->values = realloc(contacts->values, contacts->capacity * sizeof(contact));
+      REALLOC_BUFFER(contacts->values, world->allocator, sizeof(contact), old_capacity, contacts->capacity);
       break;
     }
   }
+
+  return OK;
 }
 
 contact *contacts_new_default(bnd_world *world, count_t body_a, count_t body_b) {
-  contacts_ensure_capacity(world, 1);
+  bnd_error e = contacts_ensure_capacity(world, 1);
+  if (e.type != BND_OK) {
+    raise_error(e.type, NULL, e.message);
+    return NULL;
+  }
 
   contact *c = &world->contacts.values[world->contacts.count++];
   c->index_a = body_a;
