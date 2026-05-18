@@ -7,15 +7,17 @@ bool is_collision;
 bnd_raycast_hit hit;
 
 void handle_error(bnd_error_type error_type, char *error_message, void *error_data) {
-  if (error_type == BND_ERROR_INVALID_POLYTOPE) {
-    TraceLog(LOG_FATAL, error_message);
-  }
+  TraceLog(LOG_ERROR, error_message);
 }
 
 void scenario_configure(program_config *config, bnd_config *physics) {
   config->window_title = "Rigidbodies";
   config->camera_position = (bnd_v3){ 22.542, 11.645, 20.752 };
   config->camera_target = (bnd_v3){ 0, 0, 0 };
+
+  physics->memory.dynamics_capacity = 4;
+  physics->memory.statics_capacity = 2;
+  physics->memory.contacts_capacity = 5;
 }
 
 void scenario_initialize(bnd_world *world) {

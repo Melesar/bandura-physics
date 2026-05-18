@@ -37,7 +37,7 @@ void draw_gizmos();
 
 static void draw_custom_grid(int slices, float spacing);
 static void setup_scene(Shader shader);
-static void init_physics();
+static void init_physics(const program_config *program_config);
 static Shader setup_lighting();
 static Camera setup_camera(program_config config);
 static void update_camera(Camera *camera, float deltaTime);
@@ -109,7 +109,7 @@ int main(int argc, char **argv) {
   ui_initialize();
   init_debugging();
   init_gizmos();
-  init_physics();
+  init_physics(&program_config);
 
   setup_scene(shader);
   scenario_initialize(world);
@@ -390,8 +390,21 @@ static void reset() {
   scenario_setup_scene(world);
 }
 
-static void init_physics() {
-  world = bnd_init(config);
+static void init_physics(const program_config *program_config) {
+  if (program_config->custom_malloc == NULL) {
+    world = bnd_init(config);
+  } else {
+    bnd_error e;
+    world = bnd_init_with_allocator(config, (bnd_allocator) {
+      program_config->custom_malloc,
+      program_config->custom_realloc,
+      program_config->custom_free
+    }, &e);
+
+    if (e.type != BND_OK) {
+      TraceLog(LOG_FATAL, "Failed to initialize the world: %s", e.message);
+    }
+  }
 }
 
 static void build_ui() {

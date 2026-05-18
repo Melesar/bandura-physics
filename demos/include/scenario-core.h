@@ -38,6 +38,10 @@ typedef struct {
   bool draw_ground;
   bnd_v3 camera_position;
   bnd_v3 camera_target;
+
+  bnd_malloc_fn custom_malloc;
+  bnd_realloc_fn custom_realloc;
+  bnd_free_fn custom_free;
 } program_config;
 
 typedef enum {
