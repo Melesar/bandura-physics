@@ -39,10 +39,10 @@ typedef enum {
   BND_ERROR_INVALID_ALLOCATOR,
   BND_ERROR_MESH_INVALID,
   BND_ERROR_MESH_IS_CONCAVE,
+  BND_ERROR_BODY_HANDLE_INVALID,
 
   // Debug mode errors
   BND_ERROR_INVALID_POLYTOPE,
-  BND_ERROR_BODY_REMOVED,
 } bnd_error_type;
 
 typedef void (*bnd_error_callback)(bnd_error_type error_type, char *error_message, void *error_data);
@@ -295,7 +295,7 @@ BNDAPI bool bnd_event_any(bnd_world *world, bnd_body_handle body);
 BNDAPI bool bnd_event_enumerate(bnd_world *world, bnd_body_handle body, bnd_event_enumerator *enumerator);
 BNDAPI bool bnd_event_next(bnd_world *world, bnd_event_enumerator *enumerator);
 
-BNDAPI bool bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, bnd_mesh_handle *handle, bnd_v3 *center_of_mass);
+BNDAPI bnd_error bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, bnd_mesh_handle *handle, bnd_v3 *center_of_mass);
 
 BNDAPI void bnd_enumerate_bodies_typed(const bnd_world *world, bnd_body_type type, bnd_body_enumerator_typed *enumerator);
 BNDAPI bool bnd_body_next_typed(const bnd_world *world, bnd_body_enumerator_typed *enumerator);

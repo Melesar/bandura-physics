@@ -1,17 +1,21 @@
 #include "bnd-core.h"
 #include "bnd-math.h"
+#include <string.h>
 
-static inline void resize_if_needed(joints *joints) {
+static bnd_error resize_if_needed(bnd_allocator allocator, joints *joints) {
   if (joints->count < joints->capacity) {
-    return;
+    return OK;
   }
 
+  count_t old_capacity = joints->capacity;
   while (joints->count >= joints->capacity) {
     joints->capacity *= 2;
   }
 
-  joints->values = realloc(joints->values, joints->capacity * sizeof(bnd_joint));
-  joints->ids = realloc(joints->ids, joints->capacity * sizeof(count_t));
+  REALLOC_BUFFER(joints->values, allocator , sizeof(bnd_joint), old_capacity, joints->capacity);
+  REALLOC_BUFFER(joints->ids, allocator , sizeof(count_t), old_capacity, joints->capacity);
+
+  return OK;
 }
 
 count_t bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_v3 contact_offset_a, bnd_v3 contact_offset_b, float max_distance) {
@@ -33,7 +37,11 @@ count_t bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle 
 
   joints *joints = &world->joints;
 
-  resize_if_needed(joints);
+  bnd_error e = resize_if_needed(world->allocator, joints);
+  if (e.type != BND_OK) {
+    raise_error(e.type, NULL, e.message);
+    return ~0;
+  }
 
   count_t last_index = joints->count++;
   bool is_dynamic = body_b.type == BND_DYNAMIC;
@@ -54,9 +62,9 @@ count_t bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle 
   }
 
   joints->values[index] = (bnd_joint){
-      .bodies = {body_a, body_b},
-      .relative_contact_positions = {contact_offset_a, contact_offset_b},
-      .max_error = max_distance,
+    .bodies = {body_a, body_b},
+    .relative_contact_positions = {contact_offset_a, contact_offset_b},
+    .max_error = max_distance,
   };
   joints->ids[index] = id;
 
@@ -135,12 +143,17 @@ void joints_generate_static(bnd_world *world) {
   generate_contacts(world, world->joints.dynamic_count, world->joints.count, false);
 }
 
-void joints_init(bnd_world *world) {
-  world->joints.values = malloc(world->config.memory.joints_capacity * sizeof(bnd_joint));
-  world->joints.ids = malloc(world->config.memory.joints_capacity * sizeof(count_t));
+bnd_error joints_init(bnd_world *world) {
+  bnd_allocator allocator = world->allocator;
+
+  ALLOC_BUFFER(world->joints.values, world->config.memory.joints_capacity * sizeof(bnd_joint));
+  ALLOC_BUFFER(world->joints.ids, world->config.memory.joints_capacity * sizeof(count_t));
+
   world->joints.capacity = world->config.memory.joints_capacity;
 
   joints_reset(world);
+
+  return OK;
 }
 
 void joints_reset(bnd_world *world) {
@@ -150,6 +163,6 @@ void joints_reset(bnd_world *world) {
 }
 
 void joints_teardown(bnd_world *world) {
-  free(world->joints.values);
-  free(world->joints.ids);
+  world->allocator.free(world->joints.values, world->joints.capacity * sizeof(bnd_joint));
+  world->allocator.free(world->joints.ids, world->joints.capacity * sizeof(count_t));
 }

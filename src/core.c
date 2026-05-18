@@ -6,14 +6,11 @@
 
 #define MAX_MESSAGE_SIZE 512
 
-#define OK (bnd_error){BND_OK, NULL}
-#define OOM_ERROR (bnd_error){BND_ERROR_OUT_OF_MEMORY, "Allocator.malloc failed to allocate memory"}
-
-#define ALLOC_BUFFER(buffer, capacity) \
-  buffer = allocator.malloc(capacity); \
-  if (buffer == NULL) { \
-    return OOM_ERROR; \
-  } \
+#define INVOKE(invocation) \
+  e = invocation; \
+  if (e.type != BND_OK) { \
+    return e; \
+  }
 
 const count_t max_body_index = (count_t)~0 >> 9;
 
@@ -148,12 +145,13 @@ static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allo
   world->dynamics.awake_count = 0;
   world->generation = 0;
 
-  contacts_init(world);
-  joints_init(world);
-  shapes_init(world);
-  meshes_init(world);
-  events_init(world);
-  epa_init(config);
+  bnd_error e;
+  INVOKE(contacts_init(world))
+  INVOKE(joints_init(world))
+  INVOKE(shapes_init(world))
+  INVOKE(meshes_init(world))
+  INVOKE(events_init(world))
+  INVOKE(epa_init(world))
 
   profiler_init_default();
 
@@ -221,6 +219,15 @@ count_t ephemeral_body_index(const common_data *data) {
   return data->capacity;
 }
 
+char *format_error(const char *template, ...) {
+  va_list list;
+  va_start(list, template);
+  vsnprintf(error_message_buffer, MAX_MESSAGE_SIZE, template, list);
+  va_end(list);
+
+  return error_message_buffer;
+}
+
 void raise_error(bnd_error_type type, void *data, const char *template, ...) {
   if (error_callback == NULL) {
     return;
@@ -249,6 +256,6 @@ void raise_error_debug(bnd_error_type type, void *data, const char *template, ..
 #endif
 }
 
-void notify_body_removed(bnd_body_handle handle) {
-  raise_error_debug(BND_ERROR_BODY_REMOVED, NULL, "Body %d (%s) has been removed", handle.index, handle.type == BND_DYNAMIC ? "dynamic" : "static");
+void notify_handle_invalid(bnd_body_handle handle) {
+  raise_error(BND_ERROR_BODY_HANDLE_INVALID, NULL, "Body handle %d (%s) is invalid. Perhaps the body has been removed", handle.index, handle.type == BND_DYNAMIC ? "dynamic" : "static");
 }

@@ -4,7 +4,6 @@
 
 #include <string.h>
 #include <float.h>
-#include <stdlib.h>
 
 #define NIL 0
 #define EPA_MAX_ATTEMPTS 128
@@ -564,10 +563,16 @@ static bool epa_expand_polytope(polytope *polytope, support_point p) {
   return true;
 }
 
-void epa_init(bnd_config config) {
-  uint32_t memory_size = polytope_memory_size(config.memory.epa_max_nodes);
-  uint8_t *memory = malloc(memory_size);
-  pt = polytope_init(memory, config.memory.epa_max_nodes);
+bnd_error epa_init(bnd_world *world) {
+  bnd_allocator allocator = world->allocator;
+  uint32_t memory_size = polytope_memory_size(world->config.memory.epa_max_nodes);
+  uint8_t *memory;
+
+  ALLOC_BUFFER(memory, memory_size);
+
+  pt = polytope_init(memory, world->config.memory.epa_max_nodes);
+
+  return OK;
 }
 
 void epa_get_contact(const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact) {

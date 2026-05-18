@@ -6,10 +6,28 @@
 #include <float.h>
 #include <math.h>
 #include <assert.h>
-#include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 
-#define INVALID_HANDLE (bnd_body_handle) { 0, 0, ~(uint32_t)0 }
+#define INVALID_INDEX ((count_t)~0)
+#define INVALID_HANDLE (bnd_body_handle) { 0, 0, INVALID_INDEX }
+#define INVALID_BODY (bnd_body) { NULL, NULL, NULL, NULL, INVALID_HANDLE }
+
+#define REALLOCATE_IF_NEEDED(data, is_dynamic, allocator) \
+  if ((data)->count + 1 >= (data)->capacity) { \
+    if (allocator.realloc == NULL) { \
+      const char *s1 = is_dynamic ? "Dynamic" : "Static"; \
+      const char *s2 = is_dynamic ? "dynamics" : "static"; \
+      raise_error(BND_ERROR_NO_SPACE_AVAILABLE, NULL, "%s bodies count exceeds capacity and Allocator.realloc is NULL. Increase %s_capacity in bnd_config or provide a realloc function in the allocator.", s1, s2); \
+      return INVALID_BODY; \
+    } \
+    \
+    bnd_error e = realloc_data(data, allocator, is_dynamic); \
+    if (e.type != BND_OK) { \
+      raise_error(e.type, NULL, e.message); \
+      return INVALID_BODY; \
+    } \
+  }
 
 extern count_t max_body_index;
 
@@ -339,42 +357,41 @@ void new_outer_lookup(common_data *data, outer_lookup_node *target_node, count_t
   target_node->next = next;
 }
 
-static void realloc_commons(common_data *data, bnd_allocator allocator) {
+static bnd_error realloc_data(common_data *data, bnd_allocator allocator, bool with_dynamics) {
+  count_t old_capacity = data->capacity + EPHEMERAL_BODIES_COUNT;
   while (data->count >= data->capacity) {
     data->capacity = data->capacity << 1;
   }
 
   count_t total_capacity = data->capacity + EPHEMERAL_BODIES_COUNT;
-  data->positions = realloc(data->positions, sizeof(bnd_v3) * total_capacity);
-  data->rotations = realloc(data->rotations, sizeof(bnd_quat) * total_capacity);
-  data->shapes = realloc(data->shapes, sizeof(body_shapes) * total_capacity);
-  data->aabbs = realloc(data->aabbs, sizeof(bnd_aabb) * total_capacity);
-  data->event_masks = realloc(data->event_masks, sizeof(bnd_event_type) * total_capacity);
-  data->event_links = realloc(data->event_links, sizeof(event_link) * total_capacity);
-  data->free_list = realloc(data->free_list, sizeof(count_t) * total_capacity);
-  data->generations = realloc(data->generations, sizeof(uint8_t) * total_capacity);
-  data->outer_lookup = realloc(data->outer_lookup, sizeof(outer_lookup_node) * total_capacity);
-  data->inner_lookup = realloc(data->inner_lookup, sizeof(count_t) * total_capacity);
-}
+  REALLOC_BUFFER(data->positions, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
+  REALLOC_BUFFER(data->rotations, allocator, sizeof(bnd_quat), old_capacity, total_capacity);
+  REALLOC_BUFFER(data->shapes, allocator, sizeof(body_shapes), old_capacity, total_capacity);
+  REALLOC_BUFFER(data->aabbs, allocator, sizeof(bnd_aabb), old_capacity, total_capacity);
+  REALLOC_BUFFER(data->event_masks, allocator, sizeof(bnd_event_type), old_capacity, total_capacity);
+  REALLOC_BUFFER(data->event_links, allocator, sizeof(event_link), old_capacity, total_capacity);
+  REALLOC_BUFFER(data->free_list, allocator, sizeof(count_t), old_capacity, total_capacity);
+  REALLOC_BUFFER(data->generations, allocator, sizeof(uint8_t), old_capacity, total_capacity);
+  REALLOC_BUFFER(data->outer_lookup, allocator, sizeof(outer_lookup_node), old_capacity, total_capacity);
+  REALLOC_BUFFER(data->inner_lookup, allocator, sizeof(count_t), old_capacity, total_capacity);
 
-static void realloc_dynamics(dynamic_bodies *data, bnd_allocator allocator) {
-  if (allocator.realloc == NULL) {
-    return;
+  if (with_dynamics) {
+    dynamic_bodies *dynamics = (dynamic_bodies *) data;
+    REALLOC_BUFFER(dynamics->forces, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
+    REALLOC_BUFFER(dynamics->torques, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
+    REALLOC_BUFFER(dynamics->impulses, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
+    REALLOC_BUFFER(dynamics->angular_impulses, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
+    REALLOC_BUFFER(dynamics->accelerations, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
+
+    REALLOC_BUFFER(dynamics->inv_masses, allocator, sizeof(float), old_capacity, total_capacity);
+    REALLOC_BUFFER(dynamics->velocities, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
+    REALLOC_BUFFER(dynamics->angular_momenta, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
+    REALLOC_BUFFER(dynamics->inv_inertia_tensors, allocator, sizeof(bnd_m3), old_capacity, total_capacity);
+    REALLOC_BUFFER(dynamics->inv_intertias, allocator, sizeof(bnd_m3), old_capacity, total_capacity);
+    REALLOC_BUFFER(dynamics->motion_avgs, allocator, sizeof(float), old_capacity, total_capacity);
   }
 
-  count_t total_capacity = data->capacity + EPHEMERAL_BODIES_COUNT;
-  data->forces = realloc(data->forces, sizeof(bnd_v3) * total_capacity);
-  data->torques = realloc(data->torques, sizeof(bnd_v3) * total_capacity);
-  data->impulses = realloc(data->impulses, sizeof(bnd_v3) * total_capacity);
-  data->angular_impulses = realloc(data->angular_impulses, sizeof(bnd_v3) * total_capacity);
-  data->accelerations = realloc(data->accelerations, sizeof(bnd_v3) * total_capacity);
-
-  data->inv_masses = realloc(data->inv_masses, sizeof(float) * total_capacity);
-  data->velocities = realloc(data->velocities, sizeof(bnd_v3) * total_capacity);
-  data->angular_momenta = realloc(data->angular_momenta, sizeof(bnd_v3) * total_capacity);
-  data->inv_inertia_tensors = realloc(data->inv_inertia_tensors, sizeof(bnd_m3) * total_capacity);
-  data->inv_intertias = realloc(data->inv_intertias, sizeof(bnd_m3) * total_capacity);
-  data->motion_avgs = realloc(data->motion_avgs, sizeof(float) * total_capacity);
+  return OK;
 }
 
 static shape_dimension_bracket get_shapes_bracket(count_t shapes_count) {
@@ -445,9 +462,7 @@ static count_t insert_new_dynamic_body(bnd_world *world) {
 
 static bnd_body add_primitive_body_static(bnd_world *world, bnd_body_shape shape) {
   common_data *data = as_common(world, BND_STATIC);
-  if (data->capacity < data->count + 1) {
-    realloc_commons(data, world->allocator);
-  }
+  REALLOCATE_IF_NEEDED(data, false, world->allocator)
 
   count_t index = data->count++;
   init_body_common(world, data, BRACKET_PRIMITIVE, &shape, 1, index);
@@ -468,10 +483,7 @@ static bnd_body add_primitive_body_static(bnd_world *world, bnd_body_shape shape
 
 static bnd_body add_primitive_body_dynamic(bnd_world *world, bnd_body_shape shape, float mass) {
   dynamic_bodies *data = &world->dynamics;
-  if (data->capacity < data->count + 1) {
-    realloc_commons((common_data *)data, world->allocator);
-    realloc_dynamics(data, world->allocator);
-  }
+  REALLOCATE_IF_NEEDED((common_data *)data, true, world->allocator)
 
   count_t index = insert_new_dynamic_body(world);
   init_body_common(world, (common_data *)data, BRACKET_PRIMITIVE, &shape, 1, index);
@@ -526,9 +538,7 @@ bnd_body bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, 
   shape_dimension_bracket bracket = get_shapes_bracket(shapes_count);
 
   common_data *data = as_common(world, BND_STATIC);
-  if (data->capacity < data->count + 1) {
-    realloc_commons(data, world->allocator);
-  }
+  REALLOCATE_IF_NEEDED(data, false, world->allocator)
 
   count_t index = data->count++;
   init_body_common(world, (common_data *)&world->statics, bracket, shapes, shapes_count, index);
@@ -548,15 +558,11 @@ bnd_body bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, 
 }
 
 bnd_body bnd_add_compound_body_dynamic(bnd_world *world, bnd_body_shape *shapes, float *masses, count_t shapes_count) {
-  shape_dimension_bracket bracket = get_shapes_bracket(shapes_count);
-
   dynamic_bodies *data = &world->dynamics;
-  if (data->capacity < data->count + 1) {
-    realloc_commons((common_data *)data, world->allocator);
-    realloc_dynamics(data, world->allocator);
-  }
+  REALLOCATE_IF_NEEDED((common_data *) data, true, world->allocator)
 
   count_t index = insert_new_dynamic_body(world);
+  shape_dimension_bracket bracket = get_shapes_bracket(shapes_count);
   init_body_common(world, (common_data *)data, bracket, shapes, shapes_count, index);
 
   float mass;
@@ -586,11 +592,12 @@ bnd_body bnd_add_mesh_static(bnd_world *world, bnd_mesh_handle mesh) {
 }
 
 void bnd_remove_body(bnd_world *world, bnd_body_handle handle) {
-  common_data *data = as_common(world, handle.type);
-  if (handle.generation != data->generations[handle.index]) {
+  if (!bnd_handle_valid(world, handle)) {
+    notify_handle_invalid(handle);
     return;
   }
 
+  common_data *data = as_common(world, handle.type);
   data->generations[handle.index] += 1;
   data->free_list[data->free_count++] = handle.index; // We keep the outer index in the free list
 
@@ -641,8 +648,8 @@ void bnd_apply_force(bnd_world *world, bnd_body_handle handle, bnd_v3 force) {
     return;
   }
 
-  if (handle.generation != world->dynamics.generations[handle.index]) {
-    notify_body_removed(handle);
+  if (!bnd_handle_valid(world, handle)) {
+    notify_handle_invalid(handle);
     return;
   }
 
@@ -657,8 +664,8 @@ void bnd_apply_force_at(bnd_world *world, bnd_body_handle handle, bnd_v3 force, 
   if (handle.type != BND_DYNAMIC)
     return;
 
-  if (handle.generation != world->dynamics.generations[handle.index]) {
-    notify_body_removed(handle);
+  if (!bnd_handle_valid(world, handle)) {
+    notify_handle_invalid(handle);
     return;
   }
 
@@ -679,8 +686,8 @@ void bnd_apply_impulse(bnd_world *world, bnd_body_handle handle, bnd_v3 impulse)
   if (handle.type != BND_DYNAMIC)
     return;
 
-  if (handle.generation != world->dynamics.generations[handle.index]) {
-    notify_body_removed(handle);
+  if (!bnd_handle_valid(world, handle)) {
+    notify_handle_invalid(handle);
     return;
   }
 
@@ -695,8 +702,8 @@ void bnd_apply_impulse_at(bnd_world *world, bnd_body_handle handle, bnd_v3 impul
   if (handle.type != BND_DYNAMIC)
     return;
 
-  if (handle.generation != world->dynamics.generations[handle.index]) {
-    notify_body_removed(handle);
+  if (!bnd_handle_valid(world, handle)) {
+    notify_handle_invalid(handle);
     return;
   }
 
@@ -715,6 +722,10 @@ void bnd_apply_impulse_at(bnd_world *world, bnd_body_handle handle, bnd_v3 impul
 
 bool bnd_handle_valid(const bnd_world *world, bnd_body_handle handle) {
   const common_data *data = as_common_const(world, handle.type);
+  if (handle.index == INVALID_INDEX) {
+    return false;
+  }
+
   return handle.generation == data->generations[handle.index];
 }
 
@@ -740,8 +751,8 @@ count_t bnd_collisions_count(const bnd_world *world) {
 
 bnd_v3 bnd_get_position(const bnd_world *world, bnd_body_handle handle) {
   const common_data *data = as_common_const(world, handle.type);
-  if (handle.generation != data->generations[handle.index]) {
-    notify_body_removed(handle);
+  if (!bnd_handle_valid(world, handle)) {
+    notify_handle_invalid(handle);
     return bnd_v3_zero();
   }
 
@@ -751,8 +762,8 @@ bnd_v3 bnd_get_position(const bnd_world *world, bnd_body_handle handle) {
 
 bnd_quat bnd_get_rotation(const bnd_world *world, bnd_body_handle handle) {
   const common_data *data = as_common_const(world, handle.type);
-  if (handle.generation != data->generations[handle.index]) {
-    notify_body_removed(handle);
+  if (!bnd_handle_valid(world, handle)) {
+    notify_handle_invalid(handle);
     return bnd_qidentity();
   }
 
@@ -762,8 +773,8 @@ bnd_quat bnd_get_rotation(const bnd_world *world, bnd_body_handle handle) {
 
 bnd_body_shape *bnd_get_shapes(const bnd_world *world, bnd_body_handle handle, count_t *count) {
   const common_data *data = as_common_const(world, handle.type);
-  if (handle.generation != data->generations[handle.index]) {
-    notify_body_removed(handle);
+  if (!bnd_handle_valid(world, handle)) {
+    notify_handle_invalid(handle);
     return NULL;
   }
 
@@ -776,8 +787,8 @@ bnd_body_shape *bnd_get_shapes(const bnd_world *world, bnd_body_handle handle, c
 bnd_aabb bnd_get_bounding_box(const bnd_world *world, bnd_body_handle handle) {
   const common_data *data = as_common_const(world, handle.type);
 
-  if (data->generations[handle.index] != handle.generation) {
-    notify_body_removed(handle);
+  if (!bnd_handle_valid(world, handle)) {
+    notify_handle_invalid(handle);
     return (bnd_aabb){ 0 };
   }
 
@@ -790,8 +801,8 @@ bnd_v3 bnd_get_velocity(const bnd_world *world, bnd_body_handle handle) {
     return bnd_v3_zero();
   }
 
-  if (handle.generation != world->dynamics.generations[handle.index]) {
-    notify_body_removed(handle);
+  if (!bnd_handle_valid(world, handle)) {
+    notify_handle_invalid(handle);
     return bnd_v3_zero();
   }
 
@@ -805,8 +816,8 @@ bnd_v3 bnd_get_angular_velocity(const bnd_world *world, bnd_body_handle handle) 
   }
 
   const dynamic_bodies *dynamics = &world->dynamics;
-  if (handle.generation != dynamics->generations[handle.index]) {
-    notify_body_removed(handle);
+  if (!bnd_handle_valid(world, handle)) {
+    notify_handle_invalid(handle);
     return bnd_v3_zero();
   }
 
@@ -823,8 +834,8 @@ bnd_v3 bnd_get_angular_momentum(const bnd_world *world, bnd_body_handle handle) 
     return bnd_v3_zero();
   }
 
-  if (handle.generation != world->dynamics.generations[handle.index]) {
-    notify_body_removed(handle);
+  if (!bnd_handle_valid(world, handle)) {
+    notify_handle_invalid(handle);
     return bnd_v3_zero();
   }
 
@@ -838,8 +849,8 @@ bnd_m3 bnd_get_inertia(const bnd_world *world, bnd_body_handle handle) {
   }
 
   const dynamic_bodies *dynamics = &world->dynamics;
-  if (handle.generation != dynamics->generations[handle.index]) {
-    notify_body_removed(handle);
+  if (!bnd_handle_valid(world, handle)) {
+    notify_handle_invalid(handle);
     return (bnd_m3){ 0 };
   }
 
@@ -856,8 +867,8 @@ bnd_m3 bnd_get_base_inertia(const bnd_world *world, bnd_body_handle handle) {
   }
 
   const dynamic_bodies *dynamics = &world->dynamics;
-  if (handle.generation != dynamics->generations[handle.index]) {
-    notify_body_removed(handle);
+  if (!bnd_handle_valid(world, handle)) {
+    notify_handle_invalid(handle);
     return (bnd_m3){ 0 };
   }
 
@@ -872,8 +883,8 @@ float bnd_get_motion_avg(const bnd_world *world, bnd_body_handle handle) {
     return 0;
   }
 
-  if (handle.generation != world->dynamics.generations[handle.index]) {
-    notify_body_removed(handle);
+  if (!bnd_handle_valid(world, handle)) {
+    notify_handle_invalid(handle);
     return 0;
   }
 
@@ -1024,8 +1035,8 @@ void bnd_put_to_sleep(bnd_world *world, bnd_body_handle handle) {
   }
 
   dynamic_bodies *dynamics = &world->dynamics;
-  if (handle.generation != dynamics->generations[handle.index]) {
-    notify_body_removed(handle);
+  if (!bnd_handle_valid(world, handle)) {
+    notify_handle_invalid(handle);
     return;
   }
 
@@ -1054,8 +1065,8 @@ void bnd_awaken_body(bnd_world *world, bnd_body_handle handle) {
   if (index < dynamics->awake_count || index >= dynamics->count)
     return;
 
-  if (handle.generation != dynamics->generations[index]) {
-    notify_body_removed(handle);
+  if (!bnd_handle_valid(world, handle)) {
+    notify_handle_invalid(handle);
     return;
   }
 

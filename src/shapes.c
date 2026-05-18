@@ -1,3 +1,4 @@
+#include "bandura.h"
 #include "bnd-core.h"
 #include <assert.h>
 #include <stdint.h>
@@ -9,17 +10,9 @@ static count_t bracket_block_count(const bnd_world *world, shape_dimension_brack
   return world->shape_brackets[bracket].capacity / SHAPE_BRACKET_BLOCK_CAPACITY;
 }
 
-static shapes_bracket allocate_bracket(bnd_allocator allocator, count_t capacity, count_t block_count, count_t shapes_count) {
-  uint64_t *slots = allocator.malloc(block_count * sizeof(uint64_t));
-  bnd_body_shape *shapes = allocator.malloc(shapes_count * sizeof(bnd_body_shape));
-
-  memset(slots, 0, block_count * sizeof(uint64_t));
-
-  return (shapes_bracket){slots, shapes, capacity};
-}
-
-void shapes_init(bnd_world *world) {
+bnd_error shapes_init(bnd_world *world) {
   const bnd_config *config = &world->config;
+  bnd_allocator allocator = world->allocator;
 
   for (count_t i = 0; i < BRACKET_COUNT; ++i) {
     count_t blocks_count = config->memory.shapes_brackets_capacity[i] / SHAPE_BRACKET_BLOCK_CAPACITY +
@@ -29,14 +22,25 @@ void shapes_init(bnd_world *world) {
     count_t bracket_dimension = 1 << i;
     count_t shapes_count = bracket_capacity * bracket_dimension;
 
-    world->shape_brackets[i] = allocate_bracket(world->allocator, bracket_capacity, blocks_count, shapes_count);
+    shapes_bracket *bracket = &world->shape_brackets[i];
+
+    ALLOC_BUFFER(bracket->slots, blocks_count * sizeof(uint64_t));
+    ALLOC_BUFFER(bracket->shapes, shapes_count * sizeof(bnd_body_shape));
+
+    memset(bracket->slots, 0, blocks_count * sizeof(uint64_t));
+
+    bracket->capacity = bracket_capacity;
   }
+
+  return OK;
 }
 
 void shapes_teardown(bnd_world *world) {
   for (count_t i = 0; i < BRACKET_COUNT; ++i) {
-    world->allocator.free(world->shape_brackets[i].slots);
-    world->allocator.free(world->shape_brackets[i].shapes);
+    shapes_bracket *bracket = &world->shape_brackets[i];
+    count_t block_count = bracket_block_count(world, i);
+    world->allocator.free(bracket->slots, block_count * sizeof(uint64_t));
+    world->allocator.free(bracket->shapes, (1 << i) * block_count * SHAPE_BRACKET_BLOCK_CAPACITY * sizeof(bnd_body_shape));
   }
 }
 
@@ -63,28 +67,24 @@ bool shapes_any_slot_available(const bnd_world *world, shape_dimension_bracket b
   return false;
 }
 
-void shapes_expand_bracket(bnd_world *world, shape_dimension_bracket bracket) {
+bnd_error shapes_expand_bracket(bnd_world *world, shape_dimension_bracket bracket) {
   count_t bracket_capacity = 1 << bracket;
 
-  count_t current_capacity = world->shape_brackets[bracket].capacity;
+  shapes_bracket *current_bracket = &world->shape_brackets[bracket];
+  count_t current_capacity = current_bracket->capacity;
   count_t current_block_count = bracket_block_count(world, bracket);
-  uint64_t *current_slots = world->shape_brackets[bracket].slots;
-  bnd_body_shape *current_shapes = world->shape_brackets[bracket].shapes;
 
   count_t new_capacity = current_capacity + SHAPE_BRACKET_BLOCK_CAPACITY;
   count_t new_block_count = current_block_count + 1;
   count_t shapes_count = bracket_capacity * new_block_count * SHAPE_BRACKET_BLOCK_CAPACITY;
 
-  shapes_bracket new_bracket = allocate_bracket(world->allocator, new_capacity, new_block_count, shapes_count);
-  memcpy(new_bracket.slots, current_slots, current_block_count * sizeof(uint64_t));
-  memcpy(new_bracket.shapes, current_shapes, current_capacity * bracket_capacity * sizeof(bnd_body_shape));
+  REALLOC_BUFFER(current_bracket->slots, world->allocator, sizeof(uint64_t), current_block_count, new_block_count);
+  REALLOC_BUFFER(current_bracket->shapes, world->allocator, sizeof(bnd_body_shape), bracket_capacity * current_block_count * SHAPE_BRACKET_BLOCK_CAPACITY, shapes_count);
 
-  world->shape_brackets[bracket] = new_bracket;
+  current_bracket->capacity = new_capacity;
 
-  if (world->allocator.free) {
-    world->allocator.free(current_shapes);
-    world->allocator.free(current_slots);
-  }
+  return OK;
+
 }
 
 bool shapes_put_into_empty_slot(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes, count_t shapes_count, count_t *slot_number) {

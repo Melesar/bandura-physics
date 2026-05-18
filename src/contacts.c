@@ -1,6 +1,7 @@
 #include "bnd-core.h"
 #include "profiler.h"
-#include <stdlib.h>
+
+#include <string.h>
 
 static bnd_event make_collision_event(const bnd_world *world, bnd_body_type type, const contact *c) {
   return (bnd_event) { .type = BND_EVENT_COLLISION, .collision = { .contact = (bnd_contact) {
@@ -52,15 +53,22 @@ void contacts_reset(bnd_world *world) {
   world->contacts.dynamic_count = 0;
 }
 
-void contacts_init(bnd_world *world) {
+bnd_error contacts_init(bnd_world *world) {
   contacts *contacts = &world->contacts;
-  contacts->values = malloc(world->config.memory.contacts_capacity * sizeof(contact));
+  bnd_allocator allocator = world->allocator;
+
+  ALLOC_BUFFER(contacts->values, world->config.memory.contacts_capacity * sizeof(contact));
+
   contacts->capacity = world->config.memory.contacts_capacity;
   contacts->count = 0;
   contacts->dynamic_count = 0;
+
+  return OK;
 }
 
-void contacts_teardown(bnd_world *world) { free(world->contacts.values); }
+void contacts_teardown(bnd_world *world) {
+  world->allocator.free(world->contacts.values, world->contacts.capacity * sizeof(contact));
+}
 
 void contacts_ensure_capacity(bnd_world *world, count_t additional_count) {
   contacts *contacts = &world->contacts;

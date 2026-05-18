@@ -14,10 +14,11 @@
     return OOM_ERROR; \
   } \
 
-#define ENSURE_REALLOC(allocator) \
-  if (allocator.realloc == NULL) { \
-    return OOM_ERROR; \
-  } \
+#define REALLOC_BUFFER(buffer, allocator, element_size, old_size, new_size) \
+  buffer = allocator.realloc(buffer, old_size * element_size, element_size * new_size); \
+  if (buffer == NULL) { \
+    return (bnd_error) { BND_ERROR_OUT_OF_MEMORY, "Allocator.realloc failed to re-allocate buffer" }; \
+  }
 
 typedef struct {
   bnd_v3 point;
@@ -222,9 +223,10 @@ typedef struct {
 
 typedef bnd_v3 (*support_func)(const shape_context *, bnd_v3);
 
+char *format_error(const char *template, ...);
 void raise_error(bnd_error_type type, void *data, const char *template, ...);
 void raise_error_debug(bnd_error_type type, void *data, const char *template, ...);
-void notify_body_removed(bnd_body_handle handle);
+void notify_handle_invalid(bnd_body_handle handle);
 
 bnd_body_handle make_body_handle(const bnd_world *world, bnd_body_type type, count_t index);
 count_t handle_to_inner_index(const bnd_world *world, bnd_body_handle handle);
@@ -232,7 +234,7 @@ count_t handle_to_inner_index(const bnd_world *world, bnd_body_handle handle);
 common_data *as_common(bnd_world *world, bnd_body_type type);
 const common_data *as_common_const(const bnd_world *world, bnd_body_type type);
 
-void contacts_init(bnd_world *world);
+bnd_error contacts_init(bnd_world *world);
 void contacts_teardown(bnd_world *world);
 void contacts_reset(bnd_world *world);
 void contacts_ensure_capacity(bnd_world *world, count_t additional_count);
@@ -243,20 +245,20 @@ void contacts_resolve(bnd_world *world, float dt);
 count_t collisions_detect_dynamic(bnd_world *world);
 void collisions_detect_static(bnd_world *world);
 
-void joints_init(bnd_world *world);
+bnd_error joints_init(bnd_world *world);
 void joints_teardown(bnd_world *world);
 void joints_reset(bnd_world *world);
 count_t joints_generate_dynamic(bnd_world *world);
 void joints_generate_static(bnd_world *world);
 
-void meshes_init(bnd_world *world);
+bnd_error meshes_init(bnd_world *world);
 void meshes_teardown(bnd_world *world);
 
-void shapes_init(bnd_world *world);
+bnd_error shapes_init(bnd_world *world);
 void shapes_teardown(bnd_world *world);
 void shapes_reset(bnd_world *world);
 bool shapes_any_slot_available(const bnd_world *world, shape_dimension_bracket bracket);
-void shapes_expand_bracket(bnd_world *world, shape_dimension_bracket bracket);
+bnd_error shapes_expand_bracket(bnd_world *world, shape_dimension_bracket bracket);
 bool shapes_put_into_empty_slot(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes, count_t shapes_count, count_t *slot_number);
 void shapes_clear_slot(bnd_world *world, shape_dimension_bracket bracket, count_t slot);
 body_shapes shapes_write(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes, count_t count);
@@ -264,7 +266,7 @@ bnd_body_shape *shapes_get(const bnd_world *world, body_shapes shapes);
 
 count_t ephemeral_body_index(const common_data *data);
 
-void events_init(bnd_world *world);
+bnd_error events_init(bnd_world *world);
 void events_teardown(bnd_world *world);
 void events_reset(bnd_world *world);
 bool events_subscribed(const common_data *data, count_t index, bnd_event_type event_type);
@@ -272,7 +274,7 @@ void events_push(bnd_world *world, common_data *data, count_t index, bnd_event e
 
 bnd_quat integrate_rotation_midpoint(bnd_quat rotation, bnd_v3 angular_momentum, bnd_m3 base_inv_inertia, float dt);
 bool gjk_check_intersection(const bnd_world *world, const collision_detection_context *ctx, simplex *simplex);
-void epa_init(bnd_config config);
+bnd_error epa_init(bnd_world *world);
 void epa_get_contact(const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact);
 support_point support(const collision_detection_context *ctx, bnd_v3 direction);
 
