@@ -41,6 +41,60 @@ void bnd_register_error_callback(bnd_error_callback callback) {
   error_callback = callback;
 }
 
+count_t bnd_required_memory(const bnd_config *config) {
+  count_t size = sizeof(bnd_world);
+
+  count_t common_size = sizeof(bnd_v3)
+    + sizeof(bnd_quat)
+    + sizeof(body_shapes)
+    + sizeof(bnd_aabb)
+    + sizeof(bnd_event_type)
+    + sizeof(event_link)
+    + sizeof(uint8_t)
+    + sizeof(count_t)
+    + sizeof(outer_lookup_node)
+    + sizeof(count_t);
+
+  count_t dynamic_size = common_size
+    + 4 * sizeof(bnd_v3)
+    + sizeof(float)
+    + 2 * sizeof(bnd_v3)
+    + sizeof(bnd_m3)
+    + sizeof(bnd_v3)
+    + sizeof(bnd_m3)
+    + sizeof(float);
+
+  count_t contact_size = sizeof(contact);
+  count_t joint_size = sizeof(bnd_joint) + sizeof(count_t);
+  count_t mesh_size = sizeof(bnd_v3) * DEFAULT_VERTEX_PER_MESH
+    + sizeof(uint32_t) * DEFAULT_FACE_PER_MESH * 3
+    + sizeof(submesh)
+    + sizeof(bnd_mesh)
+    + sizeof(bnd_m3)
+    + sizeof(float)
+    + sizeof(bnd_aabb);
+
+  count_t event_size = sizeof(bnd_event) + sizeof(count_t);
+  count_t shapes_size = 0;
+  for (count_t i = 0; i < BRACKET_COUNT; ++i) {
+    count_t blocks_count, shapes_count, bracket_capacity;
+    shapes_get_bracket_properties(config, i, &blocks_count, &shapes_count, &bracket_capacity);
+
+    shapes_size += shapes_count * sizeof(bnd_body_shape)
+      + blocks_count * sizeof(uint64_t);
+  }
+
+  size += config->memory.dynamics_capacity * dynamic_size
+    + config->memory.statics_capacity * common_size
+    + config->memory.contacts_capacity * contact_size
+    + config->memory.joints_capacity * joint_size
+    + config->memory.meshes_capacity * mesh_size
+    + config->memory.events_capacity * event_size
+    + shapes_size;
+
+  return size;
+}
+
 static bnd_error init_commons(common_data *data, count_t capacity, bnd_allocator allocator) {
   data->capacity = capacity;
   data->count = 0;

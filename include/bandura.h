@@ -237,6 +237,7 @@ typedef struct {
 } bnd_event_enumerator;
 
 BNDAPI bnd_config bnd_default_config();
+BNDAPI count_t bnd_required_memory(const bnd_config *config);
 
 BNDAPI bnd_world *bnd_init(bnd_config config);
 BNDAPI bnd_world *bnd_init_with_allocator(bnd_config config, bnd_allocator allocator, bnd_error *error);

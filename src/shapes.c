@@ -1,4 +1,3 @@
-#include "bandura.h"
 #include "bnd-core.h"
 #include <assert.h>
 #include <stdint.h>
@@ -6,24 +5,31 @@
 
 #define SHAPE_BRACKET_BLOCK_CAPACITY 64
 
+void shapes_get_bracket_properties(const bnd_config *config, count_t bracket_index, count_t *blocks, count_t *shapes, count_t *capacity) {
+  count_t blocks_count = config->memory.shapes_brackets_capacity[bracket_index] / SHAPE_BRACKET_BLOCK_CAPACITY +
+                          ((config->memory.shapes_brackets_capacity[bracket_index] & (SHAPE_BRACKET_BLOCK_CAPACITY - 1)) > 0);
+  count_t bracket_capacity = blocks_count * SHAPE_BRACKET_BLOCK_CAPACITY;
+
+  count_t bracket_dimension = 1 << bracket_index;
+  count_t shapes_count = bracket_capacity * bracket_dimension;
+
+  *blocks = blocks_count;
+  *shapes = shapes_count;
+  *capacity = bracket_capacity;
+}
+
 static count_t bracket_block_count(const bnd_world *world, shape_dimension_bracket bracket) {
   return world->shape_brackets[bracket].capacity / SHAPE_BRACKET_BLOCK_CAPACITY;
 }
 
 bnd_error shapes_init(bnd_world *world) {
-  const bnd_config *config = &world->config;
   bnd_allocator allocator = world->allocator;
 
   for (count_t i = 0; i < BRACKET_COUNT; ++i) {
-    count_t blocks_count = config->memory.shapes_brackets_capacity[i] / SHAPE_BRACKET_BLOCK_CAPACITY +
-                           ((config->memory.shapes_brackets_capacity[i] & (SHAPE_BRACKET_BLOCK_CAPACITY - 1)) > 0);
-    count_t bracket_capacity = blocks_count * SHAPE_BRACKET_BLOCK_CAPACITY;
-
-    count_t bracket_dimension = 1 << i;
-    count_t shapes_count = bracket_capacity * bracket_dimension;
+    count_t blocks_count, shapes_count, bracket_capacity;
+    shapes_get_bracket_properties(&world->config, i, &blocks_count, &shapes_count, &bracket_capacity);
 
     shapes_bracket *bracket = &world->shape_brackets[i];
-
     ALLOC_BUFFER(bracket->slots, blocks_count * sizeof(uint64_t));
     ALLOC_BUFFER(bracket->shapes, shapes_count * sizeof(bnd_body_shape));
 

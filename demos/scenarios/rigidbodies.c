@@ -1,3 +1,4 @@
+#include "raylib.h"
 #include "scenario-core.h"
 #include "bnd-math.h"
 #include "raymath.h"
@@ -5,6 +6,20 @@
 
 bool is_collision;
 bnd_raycast_hit hit;
+
+uint8_t *memory;
+uint64_t offset, size;
+
+static void *memory_alloc(uint64_t bytes) {
+  if (offset + bytes > size) {
+    TraceLog(LOG_FATAL, "Memory exceeded");
+    return NULL;
+  }
+
+  void *ptr = memory + offset;
+  offset += bytes;
+  return ptr;
+}
 
 void handle_error(bnd_error_type error_type, char *error_message, void *error_data) {
   TraceLog(LOG_ERROR, error_message);
@@ -18,6 +33,12 @@ void scenario_configure(program_config *config, bnd_config *physics) {
   physics->memory.dynamics_capacity = 4;
   physics->memory.statics_capacity = 2;
   physics->memory.contacts_capacity = 5;
+
+  size = bnd_required_memory(physics);
+  memory = malloc(size);
+  offset = 0;
+
+  config->custom_malloc = memory_alloc;
 }
 
 void scenario_initialize(bnd_world *world) {
@@ -83,4 +104,6 @@ void scenario_draw_scene(bnd_world *world) {}
 
 void scenario_build_ui(bnd_world *world) {}
 
-void scenario_teardown() {}
+void scenario_teardown() {
+  free(memory);
+}

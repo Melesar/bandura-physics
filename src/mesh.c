@@ -7,8 +7,6 @@
 #include <string.h>
 #include <math.h>
 
-#define DEFAULT_VERTEX_PER_MESH 512
-#define DEFAULT_FACE_PER_MESH 256
 
 static bnd_error mesh_validation_error(char *message) {
   return (bnd_error) { BND_ERROR_MESH_INVALID, message };

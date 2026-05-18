@@ -4,6 +4,8 @@
 #include "bandura.h"
 
 #define EPHEMERAL_BODIES_COUNT 4
+#define DEFAULT_VERTEX_PER_MESH 512
+#define DEFAULT_FACE_PER_MESH 256
 
 #define OK (bnd_error){BND_OK, NULL}
 #define OOM_ERROR (bnd_error){BND_ERROR_OUT_OF_MEMORY, "Allocator.malloc failed to allocate memory"}
@@ -257,6 +259,7 @@ void meshes_teardown(bnd_world *world);
 bnd_error shapes_init(bnd_world *world);
 void shapes_teardown(bnd_world *world);
 void shapes_reset(bnd_world *world);
+void shapes_get_bracket_properties(const bnd_config *config, count_t bracket_index, count_t *blocks, count_t *shapes, count_t *capacity);
 bool shapes_any_slot_available(const bnd_world *world, shape_dimension_bracket bracket);
 bnd_error shapes_expand_bracket(bnd_world *world, shape_dimension_bracket bracket);
 bool shapes_put_into_empty_slot(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes, count_t shapes_count, count_t *slot_number);
