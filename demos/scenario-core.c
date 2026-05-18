@@ -1,5 +1,6 @@
 #include "scenario-core.h"
 #include "bnd-math.h"
+#include "raylib.h"
 #include "raymath.h"
 #include "rlgl.h"
 #include <stdlib.h>
@@ -215,7 +216,9 @@ static bnd_mesh_data raylib_mesh_to_bnd(Mesh m) {
 bool import_raylib_mesh(bnd_world *world, Mesh mesh, bnd_mesh_handle *handle) {
   bnd_v3 com;
   bnd_mesh_data data = raylib_mesh_to_bnd(mesh);
-  if (!bnd_import_mesh(world, &data, handle, &com)) {
+  bnd_error e = bnd_import_mesh(world, &data, handle, &com);
+  if (e.type != BND_OK) {
+    TraceLog(LOG_ERROR, "Failed to import mesh: %s", e.message);
     return false;
   }
 
