@@ -3,6 +3,7 @@
 #include "bnd-math.h"
 #include "raymath.h"
 #include <unistd.h>
+#include <stdlib.h>
 
 bool is_collision;
 bnd_raycast_hit hit;
@@ -11,8 +12,9 @@ uint8_t *memory;
 uint64_t offset, size;
 
 static void *memory_alloc(uint64_t bytes) {
+  TraceLog(LOG_DEBUG, "Allocating %lu bytes", bytes);
   if (offset + bytes > size) {
-    TraceLog(LOG_FATAL, "Memory exceeded");
+    TraceLog(LOG_FATAL, "Memory exceeded. Available: %lu bytes, requested: %lu bytes", size, offset + bytes);
     return NULL;
   }
 

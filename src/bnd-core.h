@@ -280,6 +280,7 @@ bool gjk_check_intersection(const bnd_world *world, const collision_detection_co
 bnd_error epa_init(bnd_world *world);
 void epa_get_contact(const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact);
 support_point support(const collision_detection_context *ctx, bnd_v3 direction);
+uint32_t polytope_memory_size(uint16_t max_nodes);
 
 float distance_to_triangle(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_v3 *closest);
 float distance_to_line_segment(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 *closest);

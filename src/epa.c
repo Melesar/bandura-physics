@@ -73,7 +73,7 @@ static uint32_t polytope_flags_size(uint16_t max_nodes) {
   return max_nodes + 1 + (max_nodes % 2 == 0);
 }
 
-static uint32_t polytope_memory_size(uint16_t max_nodes) {
+uint32_t polytope_memory_size(uint16_t max_nodes) {
   return sizeof(polytope) + (max_nodes + 1) * sizeof(polytope_node) + polytope_flags_size(max_nodes) + max_nodes * sizeof(uint16_t);
 }
 

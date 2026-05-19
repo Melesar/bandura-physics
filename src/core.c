@@ -84,13 +84,16 @@ count_t bnd_required_memory(const bnd_config *config) {
       + blocks_count * sizeof(uint64_t);
   }
 
-  size += config->memory.dynamics_capacity * dynamic_size
-    + config->memory.statics_capacity * common_size
+  count_t polytope_size = polytope_memory_size(config->memory.epa_max_nodes);
+
+  size += (config->memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT) * dynamic_size
+    + (config->memory.statics_capacity + EPHEMERAL_BODIES_COUNT) * common_size
     + config->memory.contacts_capacity * contact_size
     + config->memory.joints_capacity * joint_size
     + config->memory.meshes_capacity * mesh_size
     + config->memory.events_capacity * event_size
-    + shapes_size;
+    + shapes_size
+    + polytope_size;
 
   return size;
 }
@@ -177,9 +180,9 @@ static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allo
     return error;
   }
 
-  const count_t vectors = sizeof(bnd_v3) * config.memory.dynamics_capacity;
-  const count_t floats = sizeof(float) * config.memory.dynamics_capacity;
-  const count_t matrices = sizeof(bnd_m3) * config.memory.dynamics_capacity;
+  const count_t vectors = sizeof(bnd_v3) * (config.memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT);
+  const count_t floats = sizeof(float) * (config.memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT);
+  const count_t matrices = sizeof(bnd_m3) * (config.memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT);
 
   world->statics.dirty = false;
 
