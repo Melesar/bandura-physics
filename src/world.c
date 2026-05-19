@@ -14,7 +14,7 @@
 #define INVALID_BODY (bnd_body) { NULL, NULL, NULL, NULL, INVALID_HANDLE }
 
 #define REALLOCATE_IF_NEEDED(data, is_dynamic, allocator) \
-  if ((data)->count + 1 >= (data)->capacity) { \
+  if ((data)->count + 1 > (data)->capacity) { \
     if (allocator.realloc == NULL) { \
       const char *s1 = is_dynamic ? "Dynamic" : "Static"; \
       const char *s2 = is_dynamic ? "dynamics" : "static"; \

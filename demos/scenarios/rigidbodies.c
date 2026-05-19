@@ -12,8 +12,6 @@ uint8_t *memory;
 uint64_t offset, size;
 
 static void *memory_alloc(uint64_t alignment, uint64_t bytes) {
-  TraceLog(LOG_DEBUG, "Allocating %lu bytes", bytes);
-
   offset = (offset + alignment - 1) & ~(alignment - 1);
   if (offset + bytes > size) {
     TraceLog(LOG_FATAL, "Memory exceeded. Available: %lu bytes, requested: %lu bytes", size, offset + bytes);
@@ -34,9 +32,9 @@ void scenario_configure(program_config *config, bnd_config *physics) {
   config->camera_position = (bnd_v3){ 22.542, 11.645, 20.752 };
   config->camera_target = (bnd_v3){ 0, 0, 0 };
 
-  physics->memory.dynamics_capacity = 4;
-  physics->memory.statics_capacity = 2;
-  physics->memory.contacts_capacity = 5;
+  physics->memory.dynamics_capacity = 64;
+  physics->memory.statics_capacity = 5;
+  physics->memory.contacts_capacity = 128;
 
   size = bnd_required_memory(physics);
   memory = malloc(size);
@@ -46,6 +44,7 @@ void scenario_configure(program_config *config, bnd_config *physics) {
 }
 
 void scenario_initialize(bnd_world *world) {
+  TraceLog(LOG_INFO, "Allocated %lu, used %lu bytes", size, offset);
   bnd_register_error_callback(handle_error);
 }
 
