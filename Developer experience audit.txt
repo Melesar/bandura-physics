@@ -1,0 +1,934 @@
+
+# New session - 2026-05-19T21:17:53.856Z
+
+**Session ID:** ses_1bde5ccbfffe4hbCF5nVHVCiqf
+**Created:** 5/19/2026, 11:17:53 PM
+**Updated:** 5/19/2026, 11:24:41 PM
+
+---
+
+## User
+
+I want you to audit this project. It's a physics engine build as a C library and I want your verdict on the developer experience of this library. Consider to different user groups:
+1) Hobbyists game developers working with tech like Raylib or SDL. How well would this project suit their needs should they want to implement physics in their games?
+2) More professional studios working with engines like Unity or Godot and looking for alternative implementions of physics.
+For each user group identify their use cases, requiremenets and attitude. Evaluate this project against those and give a verdict on how well it's built to suit their needs. Use 1 subagent for each group. Don't focus on the feature set or the performance of this library, just on the experience of using it and integrating into the project.
+Look at @include/bandura.h which is the main API header. Also read the @README.md where I wrote documentation. When needed, you may go into the `src` to check the implementation of certain things. `demos/scenarios` contains usage examples
+
+---
+
+## Assistant (Build · Claude Opus 4.6 · 123.5s)
+
+
+
+Now let me gather more context about the project structure, build system, demos, and other aspects that affect developer experience.
+
+**Tool: task**
+
+**Input:**
+```json
+{
+  "description": "Explore project structure",
+  "prompt": "Explore the project at /home/melesar/Projects/Physics thoroughly. I need a comprehensive understanding of the project structure for a developer experience audit. Please provide:\n\n1. The top-level directory listing\n2. The contents of the `include/` directory (all header files)\n3. The contents of `demos/scenarios/` - list all files and read 2-3 of the scenario files to understand usage patterns\n4. The build system file (build.zig or similar)\n5. Any configuration files, CI files, or packaging files\n6. Check if there's a LICENSE file, THIRD_PARTY_NOTICES, .gitignore, etc.\n7. Read the `include/bnd-math.h` file\n8. Check what's in `src/` directory structure\n\nReturn all of this information so I can evaluate the developer experience.",
+  "subagent_type": "explore"
+}
+```
+
+**Output:**
+```
+task_id: ses_1bde5a5d1ffezYKYIQigwHZL0i (for resuming to continue this task if needed)
+
+<task_result>
+Now I have a comprehensive picture. Here is the full audit report.
+
+---
+
+# Project Audit Report: Bandura Physics Engine
+
+**Project root:** `/home/melesar/Projects/Physics`
+**Author:** Serhii Pikhota (Melesar)
+**License:** zlib
+**Version:** 0.0.1
+
+---
+
+## 1. Top-Level Directory Listing
+
+```
+/home/melesar/Projects/Physics/
+  .cache/
+  .DS_Store
+  .git/
+  .gitignore
+  .gitmodules
+  .ignore
+  .opencode/
+  .zed/
+  .zig-cache/
+  build.zig            -- Zig build script (main build system)
+  build.zig.zon        -- Zig build manifest (dependencies)
+  compile_commands.json -- Generated for IDE tooling
+  demos/               -- Demo/scenario applications (6 scenarios)
+  include/             -- Public API headers (4 files)
+  Justfile             -- Task runner shortcut for release builds
+  LICENSE              -- zlib license
+  profiler/            -- Built-in profiler subsystem
+  README.md            -- Comprehensive documentation
+  scripts/             -- Utility scripts (Python profiler plotter)
+  src/                 -- Core library source (14 files)
+  tests/               -- Test infrastructure (2 files)
+  THIRD_PARTY_NOTICES  -- Third-party attribution
+  vendor/              -- Git submodule dependencies
+  zig-out/             -- Build output directory
+```
+
+---
+
+## 2. `include/` Directory -- Public API Headers (4 files)
+
+| File | Path | Purpose |
+|---|---|---|
+| `bandura.h` | `/home/melesar/Projects/Physics/include/bandura.h` | **Main public API** -- 315 lines. Defines all types (`bnd_v3`, `bnd_quat`, `bnd_m3`, `bnd_body`, `bnd_world`, `bnd_config`, etc.), error types, shape types, event system, and the full `BNDAPI`-exported function surface. Supports `BND_CUSTOM_VEC3`, `BND_CUSTOM_QUAT`, `BND_CUSTOM_MAT3` for user-supplied math types. |
+| `bnd-math.h` | `/home/melesar/Projects/Physics/include/bnd-math.h` | **Math utilities** -- 196 lines. Inline vector/quaternion operations (`bnd_v3_cross`, `bnd_v3_dot`, `bnd_v3_rotate`, `bnd_v3_barycentric`, `bnd_qmul`, `bnd_qinvert`, etc.) plus declarations for `bnd_m3_*` matrix operations. |
+| `profiler.h` | `/home/melesar/Projects/Physics/include/profiler.h` | **Profiler API** -- 124 lines. Conditionally compiled (`BND_PROFILING`). Provides `PROFILE_BLOCK`/`PROFILE_FUNCTION` macros using GCC `__cleanup__` attribute. Includes a monitor system for reading profiler data from another thread. Compiles to no-ops when profiling is disabled. |
+| `semaphores.h` | `/home/melesar/Projects/Physics/include/semaphores.h` | **Cross-platform semaphore abstraction** -- 42 lines. Wraps POSIX `sem_t` on Linux and `dispatch_semaphore_t` on macOS with inline `semaphore_init`/`post`/`wait`/`destroy` functions. |
+
+---
+
+## 3. `demos/scenarios/` -- 6 Scenario Files
+
+| File | Path |
+|---|---|
+| `compounds.c` | `/home/melesar/Projects/Physics/demos/scenarios/compounds.c` |
+| `meshes.c` | `/home/melesar/Projects/Physics/demos/scenarios/meshes.c` |
+| `ragdolls.c` | `/home/melesar/Projects/Physics/demos/scenarios/ragdolls.c` |
+| `rigidbodies.c` | `/home/melesar/Projects/Physics/demos/scenarios/rigidbodies.c` |
+| `sandbox.c` | `/home/melesar/Projects/Physics/demos/scenarios/sandbox.c` |
+| `vortex.c` | `/home/melesar/Projects/Physics/demos/scenarios/vortex.c` |
+
+### Scenario Architecture (Usage Pattern)
+
+Each scenario file implements a common interface defined in `demos/include/scenario-core.h`. The callbacks are:
+
+- `scenario_configure(program_config *config, bnd_config *physics)` -- Set window title, camera, physics config
+- `scenario_initialize(bnd_world *world)` -- One-time init after world creation
+- `scenario_setup_scene(bnd_world *world)` -- Populate the scene with bodies
+- `scenario_simulate(bnd_world *world, float dt)` -- Per-frame simulation logic
+- `scenario_handle_input(bnd_world *world, Camera *cam)` -- Input handling
+- `scenario_draw_scene(bnd_world *world)` -- Custom rendering
+- `scenario_build_ui(bnd_world *world)` -- UI overlay (using Clay)
+- `scenario_teardown()` -- Cleanup
+
+### Scenario Summaries (3 files read):
+
+**`rigidbodies.c`** (112 lines) -- Demonstrates custom arena allocator, planes, static boxes, static cylinder, dynamic box spawning (KEY_X), sphere shooting (left click with impulse along camera direction), and raycast-based body removal (right click). Shows the `bnd_required_memory` / custom `malloc` pattern.
+
+**`ragdolls.c`** (114 lines) -- Demonstrates the joints system with ragdoll creation, compound body creation (ramp made of two boxes), hanging a ragdoll from a ramp via a joint, applying impulses (KEY_J), and reading back per-bone velocity/angular_velocity/angular_momentum in a Clay UI panel.
+
+**`vortex.c`** (309 lines) -- Most complex scenario. Creates a mixed scene (spheres, boxes, imported cone mesh, compound "hammers", compound "dumbbells", compound "stickmen"), places 6 vortex attractors on the ground, and applies per-frame physics forces using body enumeration (`bnd_enumerate_bodies_typed`), contact queries (`bnd_get_contacts`), and grounded-body bitfield tracking. Demonstrates force falloff math, mesh import, and custom draw calls.
+
+---
+
+## 4. Build System -- `build.zig` and `build.zig.zon`
+
+**`/home/melesar/Projects/Physics/build.zig`** (325 lines)
+
+- **Language:** C99 compiled via Zig's build system
+- **Library output:** `libbandura` (dynamic/shared library)
+- **Installed headers:** `bandura.h`, `bnd-math.h`
+- **Compiler flags:** `-std=c99 -Wall -Wextra` plus strict `-Werror` for shadow, incompatible pointers, return type, and format; `-Wno-unused-parameter`
+- **Build options:**
+  - `profiling` (bool, default false) -- enables `BND_PROFILING` define and links the static profiler library
+  - `install-tests` (bool, default false) -- installs test binary
+  - `include-demos` (bool, default true) -- builds demo executables
+- **Optimization modes:** Debug (`-g -O0 -DBND_DEBUG`), ReleaseSafe (`-O2`), ReleaseFast (`-O3`), ReleaseSmall (`-Os`)
+- **Sanitizers:** `float-divide-by-zero` and `leak` (on Debug/ReleaseSafe, excluding macOS arm64 and Windows)
+- **Targets:**
+  - `libbandura` (dynamic library from `src/`)
+  - `bnd_profiler` (static library from `profiler/`)
+  - `bandura_tests` (executable from `tests/`, links both above)
+  - One executable per scenario in `demos/scenarios/` (each links raylib, bandura, and includes clay/raygui)
+- **Run steps:** `zig build run-<scenario_name>` for each scenario; `zig build test` for tests
+- **Platform linking:** Linux links X11/GLX/pthread/math; macOS links IOKit/Cocoa/OpenGL
+- **Compile commands:** generates `compile_commands.json` via `zig-compile-commands` dependency
+
+**`/home/melesar/Projects/Physics/build.zig.zon`** (9 lines)
+
+```
+.name = .bandura
+.version = "0.0.1"
+.dependencies:
+  - raylib (local, vendor/raylib)
+  - clay (local, vendor/clay)
+  - raygui (local, vendor/raygui)
+  - compile_commands (remote, GitHub archive)
+```
+
+---
+
+## 5. Configuration, CI, and Packaging Files
+
+| File | Path | Purpose |
+|---|---|---|
+| `Justfile` | `/home/melesar/Projects/Physics/Justfile` | Single `release` recipe: `zig build --release=fast -Dinclude-demos=false --prefix <prefix>` |
+| `.gitmodules` | `/home/melesar/Projects/Physics/.gitmodules` | 3 submodules: `vendor/raylib`, `vendor/clay`, `vendor/raygui` |
+| `.gitignore` | `/home/melesar/Projects/Physics/.gitignore` | Ignores `.cache/`, `.zig-cache/`, `zig-out`, `compile_commands.json`, `*.csv`, `*.png`, `*.pdf` |
+| `.ignore` | `/home/melesar/Projects/Physics/.ignore` | Ignores `vendor/` for search tools (ripgrep, etc.) |
+| `.zed/tasks.json` | `/home/melesar/Projects/Physics/.zed/tasks.json` | Zed editor tasks |
+| `.zed/debug.json` | `/home/melesar/Projects/Physics/.zed/debug.json` | Zed editor debug config |
+| `.opencode/` | `/home/melesar/Projects/Physics/.opencode/` | OpenCode AI tool config (package.json, commands) |
+| `compile_commands.json` | `/home/melesar/Projects/Physics/compile_commands.json` | Generated clangd-compatible compile database |
+| `scripts/plot_bandura_profile.py` | `/home/melesar/Projects/Physics/scripts/plot_bandura_profile.py` | Python script for visualizing profiler output |
+
+**No CI files found** -- there are no `.github/workflows/`, `.gitlab-ci.yml`, or any YAML CI configuration files in the project.
+
+---
+
+## 6. License and Legal Files
+
+| File | Path | Details |
+|---|---|---|
+| `LICENSE` | `/home/melesar/Projects/Physics/LICENSE` | **zlib License**, Copyright (c) 2026 Serhii Pikhota (Melesar). Permissive, allows commercial use with attribution. |
+| `THIRD_PARTY_NOTICES` | `/home/melesar/Projects/Physics/THIRD_PARTY_NOTICES` | Credits 3 dependencies, all zlib-licensed: **raylib** (Ramon Santamaria), **clay** (Nic Barker), **raygui** (Ramon Santamaria). All included as unmodified git submodules. |
+| `.gitignore` | `/home/melesar/Projects/Physics/.gitignore` | Standard ignores for build artifacts and generated files. |
+
+---
+
+## 7. `include/bnd-math.h` -- Full Contents
+
+**Path:** `/home/melesar/Projects/Physics/include/bnd-math.h` (196 lines)
+
+The file provides:
+
+- **Convenience macros:** `vec3(x,y,z)`, `quat(x,y,z,w)`, `EPSILON` (0.000001f) -- with a TODO to remove the macros
+- **Vector3 operations (all `static inline`):**
+  - `bnd_v3_cross`, `bnd_v3_dot`, `bnd_v3_add`, `bnd_v3_sub`, `bnd_v3_scale`
+  - `bnd_v3_len`, `bnd_v3_lensqr`, `bnd_v3_normalize`
+  - `bnd_v3_distance`, `bnd_v3_distancesqr`
+  - `bnd_v3_zero`, `bnd_v3_one`, `bnd_v3_up`, `bnd_v3_right`, `bnd_v3_forward`
+  - `bnd_v3_rotate` (rotate vector by quaternion)
+  - `bnd_v3_negate`, `bnd_v3_barycentric`, `bnd_v3_min`, `bnd_v3_max`
+- **Quaternion operations (all `static inline`):**
+  - `bnd_qadd`, `bnd_qscale`, `bnd_qmul`, `bnd_qnormalize`, `bnd_qinvert`, `bnd_qidentity`
+- **Matrix3 operations (declared, implemented in `math.c`):**
+  - `bnd_m3_identity`, `bnd_m3_transpose`, `bnd_m3_inverse`, `bnd_m3_add`, `bnd_m3_multiply`, `bnd_m3_scale`, `bnd_m3_negate`, `bnd_m3_rotate`
+
+Note: `bnd_v3_normalize` has an empty `if` body at line 36 (likely a missed debug/logging hook).
+
+---
+
+## 8. `src/` Directory Structure
+
+**Path:** `/home/melesar/Projects/Physics/src/` (14 files)
+
+| File | Purpose |
+|---|---|
+| `bnd-core.h` | **Internal header** (312 lines) -- Defines internal data structures (`dynamic_bodies`, `static_bodies`, `contacts`, `joints`, `mesh_storage`, `events_storage`, `bnd_world_t`), GJK/EPA types (`simplex`, `support_point`), shape brackets system, and internal function declarations. Uses a `COMMON_FIELDS` macro for struct composition. |
+| `core.c` | World init/teardown, body creation/removal, force/impulse application, body enumeration, sleep management |
+| `world.c` | Simulation step (`bnd_simulate`), integration, world reset |
+| `collision_detection.c` | Broad-phase (AABB) and narrow-phase collision detection |
+| `contacts_resolution.c` | Impulse-based contact resolution |
+| `contacts.c` | Contact generation and management |
+| `gjk.c` | GJK (Gilbert-Johnson-Keerthi) intersection algorithm |
+| `epa.c` | EPA (Expanding Polytope Algorithm) for contact point generation |
+| `shapes.c` | Shape bracket allocation/deallocation system |
+| `joints.c` | Joint constraint system |
+| `mesh.c` | Mesh import, validation, inertia/volume computation |
+| `math.c` | Matrix3 operations implementation |
+| `queries.c` | Raycast and overlap queries |
+| `events.c` | Event subscription and dispatch system |
+
+### Supporting Directories
+
+**`tests/`** (2 files):
+- `runner.c` -- Test runner entry point
+- `testing.h` -- Test framework header
+
+**`profiler/`** (3 files):
+- `profiler.c` -- Core profiler (frame timing, block markers, sample collection)
+- `labels.c` -- Hash-map label storage for profiler markers
+- `csv_file_monitor.c` -- Monitor that writes profiler output to CSV
+
+**`demos/`** (infrastructure):
+- `main.c` -- Entry point, window creation, game loop
+- `scenario-core.c` -- Scenario loading, rendering pipeline, debug drawing
+- `gizmos.c` -- Debug visualization (wireframes, AABBs, contacts)
+- `ui.c` -- Clay-based UI integration
+- `include/scenario-core.h` -- Scenario interface definition
+- `include/rprand.h` -- Random number generator header
+- `shaders/lighting_fog.fs`, `shaders/lighting_fog.vs` -- Fragment/vertex shaders for demo rendering
+
+**`vendor/`** (3 git submodules):
+- `raylib/` -- Window management, rendering, input
+- `clay/` -- Immediate-mode UI layout library
+- `raygui/` -- GUI widgets for raylib
+
+**`scripts/`** (1 file):
+- `plot_bandura_profile.py` -- Visualization of profiler CSV output
+
+---
+
+This covers the complete project structure for your developer experience audit.
+</task_result>
+```
+
+---
+
+## Assistant (Build · Claude Opus 4.6 · 232.5s)
+
+Now I have comprehensive context. Let me launch both audit subagents in parallel.
+
+**Tool: task**
+
+**Input:**
+```json
+{
+  "description": "Audit: hobbyist DX evaluation",
+  "prompt": "You are auditing the developer experience (DX) of a C physics engine library called \"Bandura\" from the perspective of **hobbyist game developers** working with frameworks like Raylib or SDL. Do NOT evaluate the feature set or performance — focus exclusively on the experience of integrating and using this library.\n\nHere is all the context you need. Read it carefully and produce a detailed, structured evaluation.\n\n---\n\n## USER GROUP PROFILE\n\n**Hobbyist game developers** using Raylib, SDL, GLFW, or similar low-level frameworks.\n\nTypical characteristics:\n- Working solo or in small teams (1-3 people)\n- May not have deep C expertise; many are learning\n- Value simplicity, quick iteration, and \"just works\" experience\n- Often work on small-to-medium projects (game jams, personal projects, prototypes)\n- Usually don't have custom allocators or complex build pipelines\n- Want to add physics without it dominating their architecture\n- Prioritize clear documentation, examples, and a low barrier to entry\n- Their rendering framework already handles the game loop; they need physics to slot in\n\n---\n\n## LIBRARY OVERVIEW\n\n**Bandura** is a 3D rigid-body physics engine written in C99 with no dependencies. It uses the Zig build system (version 0.15.2). It outputs a shared library (`.so`/`.dll`/`.dylib`) plus two header files (`bandura.h` and `bnd-math.h`).\n\n### Build System\n- Uses **Zig** as the build system (`build.zig`)\n- Build command: `zig build --release=fast -Dinclude-demos=false`\n- Outputs shared library + headers to `zig-out/` (or custom prefix with `--prefix`)\n- There is a `Justfile` with a single `release` recipe\n- No CMake, no Makefile, no pkg-config file, no vcpkg/conan support\n- No CI pipeline\n\n### API Header (`bandura.h`, 315 lines)\n- Defines math types (`bnd_v3`, `bnd_quat`, `bnd_m3`) with `BND_CUSTOM_VEC3/QUAT/MAT3` overrides\n- Uses `typedef uint32_t count_t` for counts\n- Error handling via `bnd_error_type` enum + `bnd_error_callback` function pointer\n- Custom allocator support via `bnd_allocator` (malloc/realloc/free function pointers)\n- Body creation returns `bnd_body` struct with raw pointers to position/rotation/velocity/angular_momentum\n- `bnd_body_handle` (a struct with type, generation, index) for persistent references\n- Configuration via `bnd_config` struct with nested sub-structs (memory, simulation, collision_detection, collision_resolution)\n- Uses `BNDAPI` macro for symbol visibility\n- Anonymous unions in `bnd_body_shape`\n- Event system with subscribe/enumerate/next pattern\n\n### Math Header (`bnd-math.h`, 196 lines)\n- Inline vector/quaternion operations\n- Convenience macros: `vec3(x,y,z)`, `quat(x,y,z,w)`\n- Constants: `bnd_v3_zero()`, `bnd_v3_up()`, `bnd_v3_one()`, etc.\n- Has a TODO to remove the `vec3`/`quat` macros\n\n### Documentation (README.md, 519 lines)\n- Includes: quickstart, spawning bodies, referencing bodies, joints, meshes, queries, collision events\n- Has a Raylib mesh conversion example\n- Has a custom allocator example (arena)\n- Has a custom math type integration example (Raylib Vector3/Quaternion)\n- The compound body code example has a syntax error: `bnd_body_shape shapes[] = {}` should use `{` not `= {}`\n- The custom allocator example has a bug: `bnd_handle_valid()` called with no arguments\n- No API reference/doxygen\n\n### Demo Scenarios (6 files in `demos/scenarios/`)\n- rigidbodies.c, ragdolls.c, compounds.c, meshes.c, vortex.c, sandbox.c\n- Each implements a common `scenario_*` callback interface\n- Demos depend on raylib, clay, raygui (git submodules)\n- rigidbodies.c demonstrates custom arena allocator, spawning, raycasting, shooting\n- ragdolls.c demonstrates joints, compound bodies, impulses\n- vortex.c (309 lines) demonstrates mesh import, body enumeration, force application\n\n### Key Design Decisions\n- `bnd_body` returns raw pointers to internal data; meant for immediate use only after creation, invalidated during `bnd_simulate`\n- No `bnd_set_position`/`bnd_set_rotation` — you must dereference pointers from `bnd_body`\n- After body creation, you use `bnd_body_handle` for everything (getters exist: `bnd_get_position`, `bnd_get_velocity`, etc., but no setters)\n- `bnd_config` has many tuning parameters exposed (epa_max_nodes, shapes_brackets_capacity[5], etc.)\n- Uses `count_t` typedef instead of standard `uint32_t` or `size_t`\n- Joint API returns `count_t` ID, not a handle type\n- `bnd_simulate` takes a single `dt` parameter (no fixed timestep enforcement)\n- The library does NOT export `bnd_init_with_allocator` for the simple path — `bnd_init` uses default malloc\n- Error callback is global (not per-world)\n- No built-in debug rendering helpers in the public API (those are in the demo infrastructure)\n\n---\n\n## YOUR TASK\n\nEvaluate Bandura's developer experience for hobbyist developers along these dimensions:\n\n1. **Getting Started / Onboarding**\n   - How easy is it to build and integrate the library?\n   - Quality of quickstart documentation\n   - First-time setup friction\n\n2. **API Design & Ergonomics**\n   - Intuitiveness of the API\n   - Naming conventions\n   - Type safety and discoverability\n   - The `bnd_body` pointer pattern (immediate use only)\n   - Getter/setter asymmetry\n   - Configuration complexity\n\n3. **Documentation & Examples**\n   - Completeness and accuracy\n   - Are the examples copy-pasteable?\n   - Coverage of common use cases\n   - Bugs/issues in documentation code\n\n4. **Integration with Existing Projects**\n   - Compatibility with common build systems (CMake, Make, etc.)\n   - Math type interop\n   - Ease of linking\n\n5. **Error Handling & Debugging**\n   - How are errors communicated?\n   - What happens when things go wrong?\n   - Debug tooling\n\n6. **Overall Verdict**\n   - Summary of strengths and weaknesses\n   - A rating (Poor / Below Average / Average / Good / Excellent)\n   - Top 3 things to improve for this audience\n\nBe honest, specific, and reference concrete API details. Do not sugarcoat issues.",
+  "subagent_type": "general"
+}
+```
+
+**Output:**
+```
+task_id: ses_1bde31f7effez9Vh7SOokjtFtZ (for resuming to continue this task if needed)
+
+<task_result>
+
+
+# Bandura Physics Engine — Developer Experience Audit
+
+**Audience:** Hobbyist game developers using Raylib/SDL/GLFW
+**Scope:** Integration and usage experience only (not features or performance)
+
+---
+
+## 1. Getting Started / Onboarding
+
+### Build System: A Hard Gate
+
+The single biggest onboarding obstacle is the **Zig-only build system**. The target audience overwhelmingly uses CMake, Make, or just compiles with raw `gcc`/`clang` commands. Requiring Zig 0.15.2 means:
+
+- Installing a specific version of a niche toolchain they almost certainly don't have
+- Learning enough Zig build semantics to troubleshoot if anything goes wrong
+- No way to integrate Bandura into their existing `CMakeLists.txt` or `Makefile`
+
+There is no `CMakeLists.txt`, no `Makefile`, no `pkg-config` file, no vcpkg/conan manifest. The `Justfile` contains a single `release` recipe — helpful only if you already have both `just` and `zig` installed.
+
+For a hobbyist who wants to "add physics this weekend," the realistic path is:
+
+1. Install Zig 0.15.2 (hope it's available for their platform/package manager)
+2. Run `zig build --release=fast -Dinclude-demos=false`
+3. Find the `.so`/`.dll` and two headers in `zig-out/`
+4. Manually copy them into their project
+5. Figure out linker flags themselves
+
+There are no prebuilt binaries. There is no CI pipeline that could even produce them. This is a significant amount of friction before writing a single line of physics code.
+
+**Verdict:** High friction. Many hobbyists will bounce here.
+
+### Quickstart Documentation
+
+The README does include a quickstart section, which is good. However, the path from "I have the source" to "physics is running in my game" requires mentally stitching together several README sections: build instructions, quickstart code, and framework-specific integration (e.g., the Raylib mesh example). There is no single, end-to-end "here's a complete 50-line program" that compiles and runs.
+
+---
+
+## 2. API Design & Ergonomics
+
+### The `bnd_body` Pointer Pattern
+
+This is the most architecturally unusual decision in the API and the one most likely to cause silent bugs:
+
+```c
+bnd_body body = bnd_add_body(...);
+// body.position, body.rotation, etc. are raw pointers
+// into internal engine memory
+
+*body.position = (bnd_v3){0, 10, 0};  // OK here
+
+bnd_simulate(world, dt);
+
+*body.position = (bnd_v3){0, 20, 0};  // UNDEFINED — pointer may be invalid
+```
+
+The library hands you raw pointers that are **silently invalidated** by `bnd_simulate`. There is no compile-time or runtime protection. A hobbyist who stores `bnd_body` in a struct and writes to it next frame will get memory corruption with no error message. This is a dangling-pointer footgun aimed directly at the audience least equipped to diagnose it.
+
+The *intended* workflow is: use `bnd_body` immediately after creation for initial setup, then switch to `bnd_body_handle` for everything else. But this two-phase pattern is non-obvious and easy to get wrong. There are getters (`bnd_get_position`, `bnd_get_velocity`) but **no setters** — the only way to set position is through those ephemeral raw pointers. This means you literally cannot teleport a body after the frame it was created.
+
+**This is the single most dangerous API decision for this audience.**
+
+### Getter/Setter Asymmetry
+
+| Operation | Initial Setup | After Simulation |
+|---|---|---|
+| Set position | `*body.position = ...` | **Impossible** |
+| Get position | `*body.position` | `bnd_get_position(handle)` |
+| Set velocity | `*body.velocity = ...` | **Impossible** |
+| Get velocity | `*body.velocity` | `bnd_get_velocity(handle)` |
+
+For a game developer, not being able to set a body's position at an arbitrary time is a severe limitation from an ergonomics standpoint. Teleporting entities, resetting state, implementing respawns — all are common operations that this API simply doesn't support after creation.
+
+### Configuration Complexity
+
+`bnd_config` contains nested sub-structs with tuning parameters like `epa_max_nodes` and `shapes_brackets_capacity[5]`. A hobbyist does not know what EPA is, does not know how to size bracket capacities, and should never need to. While there appear to be defaults, the exposure of these internals in the primary configuration struct adds cognitive load. A `bnd_config_default()` function is the minimum; ideally most of these parameters would be hidden behind an "advanced" path.
+
+### Naming & Types
+
+- **`count_t`**: A custom typedef for `uint32_t`. Adds confusion without adding value. Every C developer knows `uint32_t` and `size_t`; `count_t` requires looking up the definition. It also collides with potential user-defined types.
+- **Joint IDs are `count_t`**: Bodies get a proper `bnd_body_handle` with type/generation/index (safe against use-after-free). Joints get a bare integer. This is inconsistent — if handle safety matters for bodies, it matters for joints too.
+- **`BNDAPI` macro**: Standard practice for shared libraries, fine.
+- **`bnd_` prefix**: Consistent and short. Good.
+- **Anonymous unions in `bnd_body_shape`**: Work in C11 but can cause warnings in strict C99 mode, which is what the library claims to target.
+
+### Discoverability
+
+With only 315 lines in the header and no generated API docs, a developer's primary discovery mechanism is reading the raw header file. The `bnd_` prefix and consistent naming help, but there's no grouped organization (e.g., "Body functions," "World functions," "Query functions") beyond what the header layout provides.
+
+---
+
+## 3. Documentation & Examples
+
+### Accuracy Issues
+
+Two confirmed bugs in the README code examples:
+
+1. **Compound body example**: `bnd_body_shape shapes[] = {}` — empty initializer with `= {}` is not valid C99. Should be `bnd_body_shape shapes[] = { ... }` with actual content, or the example needs to populate the array.
+2. **Custom allocator example**: `bnd_handle_valid()` called with no arguments — this is clearly wrong and will not compile.
+
+These are the kind of errors that cost a beginner 30+ minutes of debugging. Copy-paste-and-run is the gold standard for example code, and these examples fail that test at compile time.
+
+### Coverage
+
+The README covers the major workflows:
+- Quickstart (good)
+- Spawning bodies (good)
+- Persistent references via handles (important, covered)
+- Joints (covered)
+- Mesh import (covered)
+- Collision events (covered)
+- Raylib integration (valuable for target audience)
+- Custom allocators (covered, but buggy example)
+- Custom math types (covered)
+
+What's **missing**:
+- Complete, compilable example programs (not fragments)
+- API reference / function signature listing
+- Explanation of the body pointer lifetime rules (the most critical "gotcha")
+- Guidance on timestep management (`bnd_simulate` takes raw `dt` — no discussion of fixed vs. variable timestep, accumulator patterns, etc.)
+- Troubleshooting / FAQ section
+- Any explanation of what the config parameters actually do
+
+### Demo Code
+
+The 6 demo scenarios are a genuine strength — `rigidbodies.c`, `ragdolls.c`, `vortex.c` etc. show real usage patterns. However, they depend on `raylib`, `clay`, and `raygui` as git submodules, which means building the demos is another multi-step process. For a hobbyist, these are "read-only" references rather than runnable starting points unless they're already in the Raylib ecosystem **and** have Zig installed.
+
+---
+
+## 4. Integration with Existing Projects
+
+### Build System Compatibility
+
+| Build System | Supported? |
+|---|---|
+| Zig | Yes (native) |
+| CMake | No |
+| Make | No |
+| Meson | No |
+| pkg-config | No |
+| vcpkg / Conan | No |
+| Raw compiler invocation | Manual (copy .so + headers) |
+
+The only integration path is to pre-build with Zig and then manually link. This is workable but fragile — the developer must manage library paths, ensure the shared library is findable at runtime (`LD_LIBRARY_PATH`, `rpath`, DLL copying on Windows), and keep headers in sync with the binary.
+
+A static library option would be significantly simpler for this audience (just link the `.a` and forget about it). There's no indication whether static builds are supported.
+
+### Math Type Interop
+
+The `BND_CUSTOM_VEC3` / `BND_CUSTOM_QUAT` / `BND_CUSTOM_MAT3` overrides are a good design decision. Being able to make Bandura use `Vector3` and `Quaternion` from Raylib directly eliminates conversion boilerplate. The README documents this with a Raylib-specific example, which is well-targeted for the audience.
+
+This is one of the library's clear DX strengths.
+
+### Shared Library Concerns
+
+Distributing a shared library (`.so`/`.dll`/`.dylib`) adds deployment complexity. When a hobbyist ships their game, they need to bundle the Bandura shared library alongside the executable and ensure it's loadable. On Linux, this means dealing with `rpath` or `LD_LIBRARY_PATH`. On Windows, the DLL needs to be in the same directory or on `PATH`. Many hobbyists have been burned by "DLL not found" at runtime.
+
+A header-only or static library option would eliminate this entire class of problems.
+
+---
+
+## 5. Error Handling & Debugging
+
+### Error Callback
+
+Errors are communicated through a global `bnd_error_callback` function pointer and a `bnd_error_type` enum. This is a reasonable pattern for C, but:
+
+- **Global callback**: If you had two physics worlds (unlikely for hobbyists, but possible), errors from both go to the same callback with no way to distinguish them.
+- **Discoverability**: A hobbyist who doesn't set the callback gets... nothing? Silent failure? The README should document what happens when no callback is set (does the library `abort`? silently continue? `fprintf(stderr, ...)`?).
+- **Error enum**: Without API docs, the developer must read the header to discover what error types exist and what they mean.
+
+### Debugging Support
+
+There are **no debug rendering helpers** in the public API. Collision shapes, contact points, body AABBs, joint anchors — none of these are visualizable without writing custom rendering code. The demo infrastructure apparently has debug rendering, but it's not exposed.
+
+For a hobbyist, "I added physics and things are going through each other" is the #1 debugging scenario. Without visual debugging tools, their only option is `printf`-ing positions and hoping to spot the issue. This is a significant gap.
+
+### Silent Failures
+
+The `bnd_body` pointer invalidation is the worst case: using a stale pointer doesn't trigger an error — it corrupts memory or reads garbage. Combined with no debug build assertions (none mentioned), a hobbyist can spend hours chasing a bug that a `#ifdef DEBUG` pointer validity check would catch instantly.
+
+---
+
+## 6. Overall Verdict
+
+### Strengths
+
+- **Clean, consistent naming**: The `bnd_` prefix and naming conventions are clear and predictable.
+- **Math type interop**: `BND_CUSTOM_VEC3`/`QUAT`/`MAT3` is a genuinely good DX feature that shows awareness of the integration problem.
+- **Useful demo scenarios**: Real-world code examples covering ragdolls, mesh import, raycasting — valuable reference material.
+- **No dependencies**: A C99 library with zero dependencies is inherently easy to *conceptually* integrate, even if the build system doesn't make it easy in practice.
+- **README covers real workflows**: The documentation focuses on practical tasks (spawning, joints, events), not abstract API descriptions.
+
+### Weaknesses
+
+- **Zig-only build system** with no CMake/Make alternative and no prebuilt binaries — a hard gate for the target audience.
+- **Dangerous pointer lifetime semantics** (`bnd_body` raw pointers silently invalidated) with no runtime safety net.
+- **No setters after creation** — a fundamental ergonomics gap for game developers.
+- **Buggy documentation examples** that won't compile as-is.
+- **No debug rendering** exposed in the public API.
+- **Shared-library-only output** adds deployment complexity with no static alternative documented.
+- **No API reference** — the header file is the documentation.
+- **Inconsistent handle safety** — bodies get generational handles, joints get bare integers.
+- **Custom `count_t` typedef** adds friction without benefit.
+
+### Rating: **Below Average**
+
+The library has solid fundamentals (clean C99, no dependencies, good naming, math type interop), but the combination of build system friction, a dangerous pointer pattern, missing setters, buggy examples, and no debug tooling puts it below the threshold for a "pick up and use" experience that hobbyist game developers expect.
+
+### Top 3 Improvements for This Audience
+
+1. **Add a CMakeLists.txt and/or a single-header/static-library option.** Alternatively, publish prebuilt binaries for major platforms via GitHub Releases. The goal is: a hobbyist can add physics to their project in under 5 minutes without installing Zig.
+
+2. **Fix the `bnd_body` pointer pattern.** Either (a) add setters (`bnd_set_position(handle, pos)`) so developers never need to use raw pointers after creation, or (b) make `bnd_body` pointers stable across simulation steps, or (c) at minimum add debug-mode assertions that detect stale pointer access. The current design is a silent-corruption trap.
+
+3. **Fix the documentation bugs and add a complete, compilable example.** A single `example.c` file (50-80 lines) that creates a world, drops a box onto a floor, steps the simulation, and prints positions — compilable with `gcc example.c -lbandura -o example` — would dramatically lower the barrier to entry.
+</task_result>
+```
+
+**Tool: task**
+
+**Input:**
+```json
+{
+  "description": "Audit: professional studio DX evaluation",
+  "prompt": "You are auditing the developer experience (DX) of a C physics engine library called \"Bandura\" from the perspective of **professional game studios** using engines like Unity or Godot and evaluating alternative physics implementations. Do NOT evaluate the feature set or performance — focus exclusively on the experience of integrating and using this library in a professional context.\n\nHere is all the context you need. Read it carefully and produce a detailed, structured evaluation.\n\n---\n\n## USER GROUP PROFILE\n\n**Professional game studios** using Unity, Godot, Unreal, or custom engines.\n\nTypical characteristics:\n- Teams of 5-50+ developers with dedicated engine/tools programmers\n- Strong C/C++ expertise; comfortable with low-level APIs\n- Require production-grade reliability, determinism, and well-defined behavior\n- Need the library to integrate into complex build pipelines (CMake, Meson, Bazel, custom)\n- Value control over memory allocation, threading, and lifecycle\n- Need extensive API documentation, versioning guarantees, and migration paths\n- Care about ABI stability, platform support, and CI/CD integration\n- May need to wrap the C API in C++, C#, or GDScript bindings\n- Expect professional error handling (no silent failures, no undefined behavior)\n- Want debug/diagnostic tools, deterministic replay, profiling hooks\n- Need the library to work in their existing ecosystem, not the other way around\n\n---\n\n## LIBRARY OVERVIEW\n\n**Bandura** is a 3D rigid-body physics engine written in C99 with no dependencies. It uses the Zig build system (version 0.15.2). It outputs a shared library (`.so`/`.dll`/`.dylib`) plus two header files (`bandura.h` and `bnd-math.h`).\n\n### Build System\n- Uses **Zig** as the build system (`build.zig`, 325 lines)\n- Build command: `zig build --release=fast -Dinclude-demos=false`\n- Outputs shared library + headers to `zig-out/` (or custom prefix with `--prefix`)\n- There is a `Justfile` with a single `release` recipe\n- No CMake, Meson, Makefile, pkg-config, vcpkg, or conan support\n- No CI pipeline (no GitHub Actions, GitLab CI, etc.)\n- No automated testing beyond a basic `tests/runner.c` and `tests/testing.h`\n- Version is 0.0.1 in `build.zig.zon`\n- Compiler flags: `-std=c99 -Wall -Wextra -Werror` on specific warnings\n- Sanitizers enabled in debug (float-divide-by-zero, leak) but not on macOS arm64 or Windows\n- Windows marked as \"Should work but is not actively tested\"\n\n### API Header (`bandura.h`, 315 lines)\n- Defines math types (`bnd_v3`, `bnd_quat`, `bnd_m3`) with `BND_CUSTOM_VEC3/QUAT/MAT3` compile-time overrides\n- Uses `typedef uint32_t count_t` for counts (non-standard, potentially namespace-polluting)\n- Error handling: `bnd_error_type` enum + global `bnd_error_callback` function pointer (set via `bnd_register_error_callback`)\n- Custom allocator support via `bnd_allocator` struct (malloc/realloc/free function pointers)\n  - malloc signature: `void* (*)(uint64_t alignment, uint64_t size)` — alignment-aware\n  - realloc/free are optional\n- Body creation returns `bnd_body` struct with raw pointers: `bnd_v3 *position`, `bnd_quat *rotation`, `bnd_v3 *velocity`, `bnd_v3 *angular_momentum`\n  - These pointers are ONLY valid immediately after creation; invalidated by `bnd_simulate`\n  - No setter functions exist; only getter functions (`bnd_get_position`, `bnd_get_rotation`, etc.)\n  - This means you CANNOT reposition a body after its initial creation through the public API\n- `bnd_body_handle` is a struct: `{ bnd_body_type type; uint8_t generation; count_t index; }` — generational handle pattern\n- `bnd_config` with nested sub-structs: memory (7 fields including `shapes_brackets_capacity[5]`), simulation (7 fields), collision_detection (2 fields), collision_resolution (4 fields) — 20 tuning parameters total\n- Event system: subscribe per body, enumerate with `bnd_event_enumerator`, only `BND_EVENT_COLLISION` exists\n- Anonymous unions in `bnd_body_shape` (C11 feature, not C99)\n- No thread-safety documentation\n- No `bnd_set_position`, `bnd_set_velocity`, `bnd_set_rotation` functions\n- No body user-data field for attaching game-side metadata\n- Joint API uses `count_t` return (not a typed handle), while body removal uses `bnd_body_handle`\n- `bnd_world` is an opaque type (good)\n- Error callback is global, not per-world — problematic for multi-world scenarios\n- `BNDAPI` macro handles `__declspec(dllexport)` on Windows, `__attribute__((visibility(\"default\")))` elsewhere\n  - Missing `dllimport` for consumer builds (no `BANDURA_EXPORTS` or similar guard)\n\n### Math Header (`bnd-math.h`, 196 lines)\n- Inline vector/quaternion operations\n- Convenience macros: `vec3(x,y,z)`, `quat(x,y,z,w)` — short names, collision risk\n- Has a TODO: \"remove macro\" on `vec3`/`quat`\n- `bnd_v3_normalize` has an empty `if` body (line 36) — likely a missed debug assertion\n\n### Internal Architecture (`src/`, 14 files)\n- Core internal header `bnd-core.h` (312 lines) with full internal data layout\n- Uses a `COMMON_FIELDS` macro for struct composition\n- Data-oriented: separate arrays for positions, rotations, velocities, etc.\n- Shape \"brackets\" system for collision detection grouping\n- GJK + EPA for narrow-phase collision detection\n- Built-in profiler subsystem (conditional compilation with `BND_PROFILING`)\n\n### Documentation (README.md, 519 lines)\n- Covers: quickstart, spawning bodies, referencing bodies, joints, meshes, queries, events\n- Includes Raylib mesh conversion example\n- Includes custom allocator example with arena pattern\n- Includes custom math type integration example\n- Code bugs in documentation:\n  - `bnd_body_shape shapes[] = {}` — syntax error (should be `= {`)\n  - `bnd_handle_valid()` called with no arguments\n  - Variables `bytes` used but `size` defined in allocator example\n- No API reference, no Doxygen, no structured documentation site\n- No changelog, no migration guide, no versioning policy\n\n### Demo Scenarios (6 files)\n- Implement a `scenario_*` callback interface\n- Depend on raylib/clay/raygui (git submodules in vendor/)\n- Show realistic usage: body creation, forces, raycasting, joints, mesh import, body enumeration\n\n### Platform Support\n- Linux: actively supported\n- macOS: supported\n- Windows: \"should work\" — `BNDAPI` has `__declspec(dllexport)` but no `dllimport` handling\n\n---\n\n## YOUR TASK\n\nEvaluate Bandura's developer experience for professional studio integration along these dimensions:\n\n1. **Build System & Integration**\n   - Compatibility with professional build pipelines\n   - Packaging and distribution\n   - Platform support maturity\n   - ABI considerations\n\n2. **API Design & Production Readiness**\n   - Type safety and API contracts\n   - The `bnd_body` immediate-use pointer pattern\n   - Getter/setter asymmetry (no way to reposition bodies after creation)\n   - Handle consistency (body handles vs joint IDs)\n   - Thread safety\n   - Namespace pollution\n   - Missing user-data attachment point\n\n3. **Memory Management & Control**\n   - Custom allocator design\n   - Memory predictability\n   - `bnd_required_memory` for pre-allocation\n\n4. **Error Handling & Reliability**\n   - Error reporting model (global callback + return codes)\n   - Failure modes and recovery\n   - Edge cases and undefined behavior risks\n\n5. **Documentation & Maintainability**\n   - Documentation quality for a professional audience\n   - API stability guarantees\n   - Versioning and changelog\n   - Code quality signals (CI, tests, static analysis)\n\n6. **Binding Generation & Ecosystem**\n   - How easy is it to wrap this API in C#, GDScript, Lua, etc.?\n   - Opaque types, handle patterns, callback patterns\n   - Any obstacles to FFI?\n\n7. **Overall Verdict**\n   - Summary of strengths and weaknesses\n   - A rating (Poor / Below Average / Average / Good / Excellent)\n   - Top 3 things to improve for this audience\n\nBe honest, specific, and reference concrete API details. Do not sugarcoat issues. This audience has high standards.",
+  "subagent_type": "general"
+}
+```
+
+**Output:**
+```
+task_id: ses_1bde283e4ffeax6Yh8XYvzMGcM (for resuming to continue this task if needed)
+
+<task_result>
+Now I have a thorough understanding of the codebase. Here is the evaluation.
+
+---
+
+# Bandura Physics Engine — Developer Experience Audit
+
+**Audience:** Professional game studios (5-50+ developers, production pipelines, shipping titles)
+**Scope:** Integration and usage experience only — not features or performance.
+
+---
+
+## 1. Build System & Integration
+
+### 1.1 Compatibility with Professional Build Pipelines
+
+**Rating: Poor**
+
+Bandura's only build system is Zig 0.15.2. There is no CMake, Meson, Makefile, pkg-config, vcpkg manifest, Conan recipe, or any other standard C/C++ packaging mechanism. The `Justfile` contains a single recipe that wraps the Zig command.
+
+For professional studios, this is a **hard blocker**. Virtually every professional C/C++ project uses CMake, Meson, or a proprietary build system. Requiring a studio to install a specific Zig version (0.15.2 — not even a stable 1.x release) just to build a dependency is an extraordinary ask. Zig's build system is not interoperable: you cannot `find_package(Bandura)` in CMake, you cannot produce a `.pc` file for pkg-config, and there is no install target that produces a standard library layout with headers in `include/` and libraries in `lib/`.
+
+The output goes to `zig-out/`, which is a non-standard prefix. The `--prefix` flag helps, but there is no `install` rule that places headers in `${prefix}/include` and the library in `${prefix}/lib` per FHS or any convention. A studio's build engineer would need to write a custom wrapper script to extract the artifacts and integrate them manually.
+
+**What is needed:** At minimum, a `CMakeLists.txt` that compiles the 14 `.c` files with `-std=c99`, installs headers and the shared library, and exports a `BanduraConfig.cmake`. This is about 40 lines of CMake and would unlock 90%+ of professional build pipelines.
+
+### 1.2 Platform Support Maturity
+
+**Rating: Below Average**
+
+- Linux: actively supported
+- macOS: supported but sanitizers are disabled on arm64 (`build.zig:297`)
+- Windows: "Should work but is not actively tested" (README line 31)
+
+The `BNDAPI` macro at `bandura.h:7-11` handles `dllexport` on Windows but **never defines `dllimport`** for consumer builds. This means any Windows consumer linking against `bandura.dll` will get linker errors or incorrect symbol resolution. The standard pattern requires:
+
+```c
+#ifdef BANDURA_BUILDING
+  #define BNDAPI __declspec(dllexport)
+#else
+  #define BNDAPI __declspec(dllimport)
+#endif
+```
+
+This is a **shipping bug** on Windows.
+
+### 1.3 ABI Considerations
+
+The header claims C99 (`-std=c99` in build flags), but `bnd_body_shape` at `bandura.h:99-125` uses **anonymous unions** — a C11 feature. This will fail to compile under strict C99 compilers (MSVC in C mode, older GCC with `-pedantic`). Studios compiling with `/std:c11` or later will be fine, but the mismatch between claimed and actual standard is a trust issue.
+
+The `bnd_body_shape` struct also uses bitfields in the internal `body_shapes` type (`bnd-core.h:147-150`), which have implementation-defined layout. While this is internal, the public `bnd_body_handle` struct (`bandura.h:138-142`) exposes the internal memory layout directly — any reordering of fields would be an ABI break with no versioning policy to communicate it.
+
+### 1.4 CI/CD
+
+**Rating: Poor**
+
+There is no CI pipeline. No GitHub Actions, no GitLab CI, no build matrix. A professional consumer has zero assurance that any commit builds on any platform. No automated test runs, no sanitizer passes in CI, no cross-compilation validation.
+
+---
+
+## 2. API Design & Production Readiness
+
+### 2.1 The `bnd_body` Immediate-Use Pointer Pattern
+
+**Rating: Poor — this is the most serious API design issue**
+
+`bnd_body` (defined at `bandura.h:144-151`) returns raw pointers into internal SoA arrays:
+
+```c
+typedef struct {
+  bnd_v3 *position;
+  bnd_quat *rotation;
+  bnd_v3 *velocity;
+  bnd_v3 *angular_momentum;
+  bnd_body_handle handle;
+} bnd_body;
+```
+
+These pointers are **invalidated by any subsequent body addition or removal** (due to reallocation in `realloc_data` at `world.c:360-395` and swapping in `swap_bodies` at `world.c:1100-1143`). The README notes this at line 115, but the API provides no compile-time or runtime guard against dangling use.
+
+This pattern is dangerous in any codebase larger than a demo. If a studio engineer adds two bodies in sequence:
+
+```c
+bnd_body a = bnd_add_sphere_dynamic(world, 5, 1);
+bnd_body b = bnd_add_sphere_dynamic(world, 5, 1);
+*a.position = vec3(0, 5, 0); // POTENTIAL USE-AFTER-FREE
+```
+
+The second `bnd_add_*` call may realloc the positions array, invalidating `a.position`. This is **undefined behavior** with no diagnostic. The README warns about `bnd_simulate` invalidating pointers, but the actual danger zone is **any subsequent body creation**, which the README does not explicitly call out.
+
+### 2.2 Getter/Setter Asymmetry
+
+**Rating: Poor**
+
+There are getter functions (`bnd_get_position`, `bnd_get_velocity`, etc.) but **no setter functions**. The only way to set a body's position is through the `bnd_body` raw pointers at creation time. After that first simulation step, there is no public API to teleport, reposition, or reset a body's transform.
+
+This makes the library unusable for common game scenarios:
+- Respawning a player
+- Teleporting entities
+- Level transitions
+- Serialization/deserialization of world state
+- Editor "move object" tools
+- Networking: applying server-authoritative corrections
+
+This is not a minor omission — it is a **fundamental missing capability** for game development.
+
+### 2.3 Handle Consistency
+
+Bodies use `bnd_body_handle` (a typed struct with generational index), which is good. But joints use `count_t` (i.e., `uint32_t`) as their ID type (`bandura.h:261-263`). This means:
+
+- No type safety between body handles and joint IDs — both are ultimately `uint32_t`
+- No generational validity checking for joints
+- Joint IDs could be accidentally passed where body handles are expected (different parameter types help, but the inconsistency signals an unfinished API)
+
+### 2.4 Namespace Pollution
+
+`typedef uint32_t count_t;` at `bandura.h:33` defines a **global, unqualified typedef** in the public header. Any consumer project that defines its own `count_t` will get a compilation error. This should be `bnd_count_t` or removed entirely in favor of `uint32_t`.
+
+Similarly, `bnd-math.h` defines:
+- `EPSILON` at line 7 — an extremely common macro name, guaranteed to collide
+- `vec3(x,y,z)` and `quat(x,y,z,w)` at lines 10-11 — short macro names with high collision probability
+
+The header itself has a TODO to remove `vec3`/`quat` (line 9), acknowledging the problem.
+
+### 2.5 Missing User-Data Attachment
+
+There is no `void *user_data` field on body handles or any `bnd_set_user_data` / `bnd_get_user_data` function. Every physics engine used in games needs this. Without it, studios must maintain a parallel lookup table mapping `bnd_body_handle` to their own game object, which is error-prone and slower than a simple pointer stored alongside the body.
+
+### 2.6 Thread Safety
+
+There is **zero documentation** about thread safety. The API uses a global `error_callback` function pointer (`core.c:18`) and a global `error_message_buffer` (`core.c:17`). If two threads call any function that raises an error simultaneously, the error message will be corrupted (race condition on `error_message_buffer`). The error callback itself is global, not per-world — problematic for multi-world scenarios.
+
+For a professional studio running physics on a dedicated thread (standard practice), the lack of any threading documentation or guarantees is a significant risk.
+
+---
+
+## 3. Memory Management & Control
+
+### 3.1 Custom Allocator Design
+
+**Rating: Good (with caveats)**
+
+The `bnd_allocator` struct (`bandura.h:74-78`) is well-designed for the target audience:
+- `malloc` takes alignment and size (alignment-aware allocation is essential for SIMD/cache-line work)
+- `realloc` is optional (good for fixed-budget arena allocators)
+- `free` is optional (good for arenas that free all at once)
+- `realloc` passes both old and new sizes (excellent — this is what arena/pool allocators need)
+
+`bnd_required_memory` at `core.c:44-103` lets you pre-calculate the exact allocation size, which is valuable for arenas and fixed-budget memory systems. This is one of the better-designed aspects of the library.
+
+### 3.2 Caveats
+
+The default allocator (`core.c:20-37`) calls standard `malloc` and **ignores the alignment parameter entirely** (`core.c:21`). This means debug/test builds don't validate alignment behavior — a custom allocator might work in testing but fail in production if alignment matters.
+
+The `bnd_init` path (`core.c:222-228`) does not check the return value of `bnd_init_internal` — if any internal allocation fails, the partially-initialized world pointer is still returned to the caller. Only `bnd_init_with_allocator` properly propagates errors.
+
+---
+
+## 4. Error Handling & Reliability
+
+### 4.1 Error Reporting Model
+
+**Rating: Below Average**
+
+The library has two error reporting mechanisms that don't compose well:
+
+1. **Return-value errors** — `bnd_init_with_allocator` returns `bnd_error`, `bnd_import_mesh` returns `bnd_error`
+2. **Global callback** — `bnd_register_error_callback` sets a single process-wide function pointer
+
+Problems:
+- Body creation functions (`bnd_add_*`) return `bnd_body` with no error channel. On failure, they return `INVALID_BODY` (all-null pointers, `INVALID_INDEX` handle). The only way to detect failure is checking `bnd_handle_valid()` on the result — but the README example at line 504 calls `bnd_handle_valid()` **with no arguments**, which is a compilation error.
+- The global error callback writes to a single static buffer (`error_message_buffer`, `core.c:17`). If the callback is invoked from multiple contexts (or re-entrantly), messages are corrupted.
+- If no callback is registered, errors are **silently dropped** (`core.c:293-295`). Applying force to an invalid handle with no callback registered produces zero feedback.
+
+### 4.2 Specific Reliability Concerns
+
+- `bnd_v3_normalize` in `bnd-math.h:33-38` has an empty `if` body when the vector length is below `EPSILON`. This is almost certainly a missing assertion or error path.
+- `bnd_init` at `core.c:222-228` does not propagate allocation failures to the caller.
+- `bnd_awaken_body` at `world.c:1059-1080` calls `handle_to_inner_index` **before** validating the handle (`bnd_handle_valid` check is at line 1068, but `handle_to_inner_index` is at line 1063). This can produce an out-of-bounds array access on an invalid handle.
+
+---
+
+## 5. Documentation & Maintainability
+
+### 5.1 Documentation Quality
+
+**Rating: Below Average**
+
+The README is the **only** documentation. It covers basic usage well enough for a hobbyist, but falls short of professional standards:
+
+- **No API reference.** Every public function, struct, enum, and constant should have documented preconditions, postconditions, error behavior, and thread-safety guarantees. None of this exists.
+- **No Doxygen/Javadoc comments** in the headers. The header files have zero documentation comments.
+- **Code errors in documentation:**
+  - `bnd_body_shape shapes[] = {}` at README line 140 — should be `= {`
+  - `bnd_handle_valid()` with no arguments at README line 504
+  - `bytes` vs `size` variable name mismatch in the allocator example at README lines 460-467
+- **No explanation of the `shapes_brackets_capacity` array** — 5 magic numbers that control collision detection memory, with no documentation of what each index means
+
+### 5.2 Versioning & Stability
+
+**Rating: Poor**
+
+- Version is `0.0.1` (`build.zig.zon:1`), signaling pre-alpha
+- No changelog
+- No semantic versioning policy
+- No migration guide
+- No API stability guarantees
+- No deprecation mechanism
+
+A professional studio cannot adopt a library with no versioning contract. Even for evaluation purposes, there is no way to know what changed between commits.
+
+### 5.3 Testing
+
+**Rating: Poor**
+
+The test suite consists of `tests/runner.c` (10 lines) calling three test functions: `labels_tests`, `csv_file_monitor_tests`, `shapes_tests`. The test harness (`testing.h`) uses raw `assert()` — test failure crashes the process with no diagnostic output beyond the assertion message.
+
+There are no tests for:
+- Body creation/removal lifecycle
+- Handle validation and generational correctness
+- Collision detection
+- Contact resolution
+- Joints
+- Event system
+- Custom allocator paths
+- Error handling paths
+- Edge cases (zero mass, degenerate shapes, null pointers)
+
+For a physics engine, this level of test coverage provides essentially no confidence in correctness.
+
+---
+
+## 6. Binding Generation & Ecosystem
+
+### 6.1 FFI Friendliness
+
+**Rating: Average**
+
+Positive signals:
+- `bnd_world` is an opaque pointer type (`bandura.h:215`) — ideal for FFI
+- Most functions take/return simple structs and handles — straightforward to marshal
+- No C++ features in the public API
+- Generational handle pattern maps well to FFI (it's just a struct of integers)
+
+### 6.2 FFI Obstacles
+
+- **Anonymous unions** in `bnd_body_shape` (`bandura.h:102-121`) and `bnd_event` (`bandura.h:227-231`) — these are not representable in many FFI systems (C#'s P/Invoke requires `[FieldOffset]` attributes with explicit layout; GDScript has no union support at all)
+- **Function pointer callbacks** (`bnd_error_callback`) require careful lifetime management in managed languages
+- **The `bnd_body` raw pointer pattern** cannot be safely exposed through FFI — managed languages cannot safely dereference C pointers that may be invalidated by future calls
+- **`count_t` typedef** — binding generators will see `uint32_t`, losing the semantic meaning
+- **No `extern "C"` guard** — the header will work when included from C but requires the consumer to add `extern "C"` when used from C++. A standard `#ifdef __cplusplus extern "C" {` block is expected.
+- **No static library option** — only dynamic library output (`build.zig:138`). Many engines (especially mobile targets) prefer static linking.
+
+---
+
+## 7. Overall Verdict
+
+### Strengths
+
+1. **Clean opaque world type** — `bnd_world*` is correctly hidden, preventing consumers from depending on internal layout
+2. **Custom allocator with alignment support** — well-designed for game engine memory systems, with `bnd_required_memory` for pre-allocation
+3. **Data-oriented internal architecture** — SoA layout, bracket-based collision grouping, and separation of hot/cold data suggest good cache behavior (though this is a performance attribute, the clean internal structure makes the codebase easier to audit)
+4. **Small, self-contained codebase** — 14 source files, no dependencies, compiles with standard C warnings enabled
+
+### Weaknesses
+
+1. **No standard build system integration** — Zig-only build is a hard blocker for most studios
+2. **Dangerous `bnd_body` raw pointer pattern** — trivially produces use-after-free with no diagnostic
+3. **No setter functions** — cannot reposition bodies after creation, making the library unsuitable for most game scenarios
+4. **No Windows `dllimport`** — broken shared library consumption on Windows
+5. **Global mutable state** (error callback, error message buffer) — not thread-safe, not multi-world safe
+6. **Near-zero test coverage** — 3 test functions for an entire physics engine
+7. **No API reference, no changelog, no versioning policy**
+8. **Namespace pollution** (`count_t`, `EPSILON`, `vec3`, `quat`)
+9. **No user-data field on bodies**
+10. **C11 features in a nominally C99 header**
+
+### Rating: **Below Average**
+
+Bandura shows competent physics engineering internally (the SoA layout, GJK/EPA implementation, generational handles, bracket system). But from a **professional integration standpoint**, it is not ready for production use. The build system gap alone disqualifies it from most studios' evaluation processes, and the API-level issues (no setters, unsafe pointer pattern, no thread safety) would be discovered in the first hour of integration and likely end the evaluation.
+
+### Top 3 Improvements for Professional Studios
+
+1. **Add CMake support and fix the Windows `dllimport`/`dllexport` macro.** This is the single highest-leverage change. A ~50-line `CMakeLists.txt` with proper install rules, a `BanduraConfig.cmake`, and a fixed `BNDAPI` macro would make the library evaluable by 10x more teams overnight.
+
+2. **Add `bnd_set_position`, `bnd_set_velocity`, `bnd_set_rotation`, `bnd_set_angular_momentum` functions — and deprecate the raw-pointer `bnd_body` pattern.** The setter functions should take `(bnd_world*, bnd_body_handle, value)` and be safe to call at any time. This eliminates the use-after-free risk and makes the API complete for game development. Consider also adding `bnd_set_user_data` / `bnd_get_user_data`.
+
+3. **Add a real test suite and CI pipeline.** Automated tests covering body lifecycle, handle validity, collision detection, allocator paths, and error handling — running on Linux, macOS, and Windows in GitHub Actions — would be the minimum bar for a professional consumer to trust the library. This also enables safe refactoring of the two issues above.
+</task_result>
+```
+
+---
+
+## Assistant (Build · Claude Opus 4.6 · 51.4s)
+
+---
+
+# Bandura Physics Engine — Developer Experience Audit
+
+## Group 1: Hobbyist Game Developers (Raylib / SDL)
+
+### Getting Started / Onboarding
+
+The single biggest barrier is the **Zig-only build system**. This audience overwhelmingly uses CMake, Make, or raw `gcc`/`clang`. Requiring Zig 0.15.2 (a niche toolchain in a non-stable version) means installing unfamiliar tools before writing a single line of physics code. There are no prebuilt binaries, no CMakeLists.txt, no Makefile, no pkg-config, and no CI pipeline that could produce release artifacts. Many hobbyists will bounce here.
+
+The README does include a quickstart, but there's no single end-to-end compilable example file that a user can `gcc example.c -lbandura -o example` to verify their setup.
+
+### API Design & Ergonomics
+
+**The `bnd_body` pointer pattern is the most dangerous design decision for this audience.** Body creation returns raw pointers into internal engine memory (`bnd_v3 *position`, etc.) that are silently invalidated by `bnd_simulate` *and by any subsequent body creation* (due to potential reallocation). A hobbyist who stores `bnd_body` and writes to it next frame gets memory corruption with zero error message.
+
+Compounding this: **there are no setter functions**. The only way to set a body's position is through those ephemeral raw pointers at creation time. After that, you have `bnd_get_position` but no `bnd_set_position`. Teleporting entities, respawning, resetting state — all impossible after the creation frame.
+
+Other concerns:
+- `count_t` typedef adds confusion vs standard `uint32_t`
+- Joint IDs are bare `uint32_t` while bodies get typed generational handles — inconsistent safety
+- `bnd_config` exposes 20+ tuning parameters including internals like `epa_max_nodes` and `shapes_brackets_capacity[5]`
+
+**Bright spot:** The `BND_CUSTOM_VEC3`/`QUAT`/`MAT3` overrides are genuinely good — letting Bandura use Raylib's `Vector3` directly eliminates conversion boilerplate.
+
+### Documentation
+
+Two confirmed bugs in README examples that will fail to compile:
+- `bnd_body_shape shapes[] = {}` (invalid C99 syntax, `README.md:140`)
+- `bnd_handle_valid()` called with no arguments (`README.md:504`)
+
+Coverage of workflows (spawning, joints, meshes, events, raycasts) is solid, and the Raylib-specific examples are well-targeted. But there's no API reference, no explanation of what config parameters do, no discussion of timestep management, and no troubleshooting section.
+
+### Verdict: **Below Average**
+
+**Top 3 improvements:**
+1. Add a CMakeLists.txt or publish prebuilt binaries — eliminate the Zig requirement
+2. Add setter functions (`bnd_set_position`, `bnd_set_velocity`, etc.) to replace the raw-pointer pattern
+3. Fix documentation bugs and provide a complete, compilable example file
+
+---
+
+## Group 2: Professional Studios (Unity / Godot / Custom Engines)
+
+### Build System & Platform Support
+
+The Zig-only build system is a **hard blocker** for professional pipelines. No CMake, Meson, pkg-config, vcpkg, or Conan support. Studios cannot `find_package(Bandura)` or integrate it into any standard build workflow.
+
+Windows support is declared as "should work but is not actively tested" — and the `BNDAPI` macro has a **shipping bug**: it defines `__declspec(dllexport)` but never `__declspec(dllimport)`, meaning Windows consumers linking against the DLL will get linker errors.
+
+The header claims C99 but uses anonymous unions (`bnd_body_shape`, `bnd_event`) — a C11 feature that will fail under strict C99 compilers. No `extern "C"` guard for C++ consumers.
+
+### API Design & Production Readiness
+
+**Critical issues:**
+
+| Problem | Impact |
+|---|---|
+| No setter functions after creation | Cannot teleport, respawn, serialize, or network-correct body positions |
+| `bnd_body` raw pointers silently invalidated | Use-after-free with no diagnostic, even between consecutive body additions |
+| Global error callback + static message buffer | Not thread-safe, not multi-world safe |
+| No `void *user_data` on bodies | Studios must maintain parallel lookup tables |
+| `count_t` / `EPSILON` / `vec3` / `quat` in global namespace | Collision risk in large codebases |
+| No `extern "C"` block | Requires manual wrapping for C++ |
+
+**Positive aspects:**
+- `bnd_world*` is properly opaque
+- Generational handle pattern on bodies is correct
+- Custom allocator with alignment support and `bnd_required_memory` is well-designed
+- Small, self-contained codebase (14 source files, no deps) is easy to audit
+
+### Documentation & Quality Signals
+
+No API reference, no Doxygen, no changelog, no versioning policy, no migration guide. Version is `0.0.1`. The test suite has 3 test functions covering profiler labels, CSV monitor, and shapes — no tests for body lifecycle, collision detection, handle validity, joints, events, allocator paths, or error handling. No CI pipeline running on any platform.
+
+### FFI / Binding Generation
+
+Anonymous unions in `bnd_body_shape` and `bnd_event` are difficult to represent in C# P/Invoke and impossible in GDScript. The `bnd_body` raw-pointer pattern cannot be safely exposed through any managed-language FFI. Only dynamic library output is available (no static linking option).
+
+### Verdict: **Below Average**
+
+The internal engineering (SoA layout, GJK/EPA, bracket system) signals competence, but the API surface is not production-ready.
+
+**Top 3 improvements:**
+1. Add CMake support + fix Windows `dllimport`/`dllexport` — this is the highest-leverage change
+2. Add setter functions and deprecate the raw-pointer `bnd_body` pattern; add `user_data` on bodies
+3. Add a real test suite and CI pipeline (Linux/macOS/Windows) — minimum bar for professional trust
+
+---
+
+## Cross-Cutting Summary
+
+Both audiences are blocked or severely hindered by the same core issues, though they weigh them differently:
+
+| Issue | Hobbyist Impact | Professional Impact |
+|---|---|---|
+| Zig-only build system | High friction, may abandon | Hard blocker |
+| No setters after creation | Confusing, limits gameplay | Disqualifying for most use cases |
+| `bnd_body` pointer unsafety | Silent corruption, hard to debug | Unacceptable risk |
+| Documentation bugs | Wastes time for beginners | Signals immaturity |
+| No CI/tests | Doesn't notice | No confidence in correctness |
+| Windows `dllimport` bug | Might not hit it | Shipping blocker |
+| Custom allocator design | Doesn't need it (but it's there) | **Genuine strength** |
+| Math type interop | **Genuine strength** | Useful but secondary |
+
+The library has a solid foundation — clean C99 code, no dependencies, good internal architecture, thoughtful features like math type overrides and alignment-aware allocators. The gaps are in the **API surface and packaging**, not the engineering underneath. Addressing the top issues (build system, setters, pointer safety) would move it from "Below Average" to "Good" for both audiences.
+
+---
