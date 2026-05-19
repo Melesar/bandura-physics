@@ -95,6 +95,10 @@ count_t bnd_required_memory(const bnd_config *config) {
     + shapes_size
     + polytope_size;
 
+  // Alignment
+  size += 7 * 7; // 8-bytes for world, shapes slots and EPA polytope
+  size += 44 * 3; // 4-bytes for the rest of the buffers
+
   return size;
 }
 

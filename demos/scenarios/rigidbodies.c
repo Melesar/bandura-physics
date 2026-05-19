@@ -11,8 +11,10 @@ bnd_raycast_hit hit;
 uint8_t *memory;
 uint64_t offset, size;
 
-static void *memory_alloc(uint64_t bytes) {
+static void *memory_alloc(uint64_t alignment, uint64_t bytes) {
   TraceLog(LOG_DEBUG, "Allocating %lu bytes", bytes);
+
+  offset = (offset + alignment - 1) & ~(alignment - 1);
   if (offset + bytes > size) {
     TraceLog(LOG_FATAL, "Memory exceeded. Available: %lu bytes, requested: %lu bytes", size, offset + bytes);
     return NULL;
