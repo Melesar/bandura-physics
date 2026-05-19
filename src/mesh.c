@@ -16,7 +16,7 @@ static bnd_error realloc_error() {
   return (bnd_error) { BND_ERROR_NO_SPACE_AVAILABLE, "Allocator.realloc failed to re-allocate mesh buffer" };
 }
 
-static bnd_error resize_buffer(bnd_allocator allocator, void **buffer, count_t count, count_t *capacity, count_t element_size) {
+static bnd_error resize_buffer(bnd_allocator allocator, void **buffer, count_t alignment, count_t count, count_t *capacity, count_t element_size) {
   count_t old_capacity = *capacity;
   if (count <= old_capacity) {
     return OK;
@@ -31,7 +31,7 @@ static bnd_error resize_buffer(bnd_allocator allocator, void **buffer, count_t c
     new_capacity *= 2;
   }
 
-  void *new_buffer = allocator.realloc(*buffer, old_capacity * element_size, new_capacity * element_size);
+  void *new_buffer = allocator.realloc(*buffer, alignment, old_capacity * element_size, new_capacity * element_size);
   if (new_buffer == NULL) {
     return realloc_error();
   }
@@ -56,10 +56,10 @@ static bnd_error ensure_meshes_capacity(bnd_allocator allocator, mesh_storage *m
     meshes->mesh_capacity *= 2;
   }
 
-  REALLOC_BUFFER(meshes->meshes, allocator, sizeof(bnd_mesh), old_capacity, meshes->mesh_capacity);
-  REALLOC_BUFFER(meshes->inertias, allocator, sizeof(bnd_m3), old_capacity, meshes->mesh_capacity);
-  REALLOC_BUFFER(meshes->volumes, allocator, sizeof(float), old_capacity, meshes->mesh_capacity);
-  REALLOC_BUFFER(meshes->aabbs, allocator, sizeof(bnd_aabb), old_capacity, meshes->mesh_capacity);
+  REALLOC_BUFFER4(meshes->meshes, allocator, sizeof(bnd_mesh), old_capacity, meshes->mesh_capacity);
+  REALLOC_BUFFER4(meshes->inertias, allocator, sizeof(bnd_m3), old_capacity, meshes->mesh_capacity);
+  REALLOC_BUFFER4(meshes->volumes, allocator, sizeof(float), old_capacity, meshes->mesh_capacity);
+  REALLOC_BUFFER4(meshes->aabbs, allocator, sizeof(bnd_aabb), old_capacity, meshes->mesh_capacity);
 
   return OK;
 }
@@ -101,7 +101,7 @@ static uint32_t read_index(const bnd_mesh_buffer *buffer, count_t i) {
 
 static bnd_error import_verticies(bnd_allocator allocator, const bnd_mesh_buffer *buffer, mesh_storage *meshes, bnd_v3 com) {
   count_t new_count = buffer->elements_count + meshes->vertex_count;
-  bnd_error err = resize_buffer(allocator, (void **)&meshes->verticies, new_count, &meshes->vertex_capacity, sizeof(bnd_v3));
+  bnd_error err = resize_buffer(allocator, (void **)&meshes->verticies, 4, new_count, &meshes->vertex_capacity, sizeof(bnd_v3));
   if (err.type != BND_OK) {
     return err;
   }
@@ -119,7 +119,7 @@ static bnd_error import_verticies(bnd_allocator allocator, const bnd_mesh_buffer
 
 static bnd_error import_indicies(bnd_allocator allocator, const bnd_mesh_buffer *buffer, mesh_storage *meshes) {
   count_t new_count = meshes->index_count + buffer->elements_count;
-  bnd_error err = resize_buffer(allocator, (void **)&meshes->indicies, new_count, &meshes->index_capacity, sizeof(uint32_t));
+  bnd_error err = resize_buffer(allocator, (void **)&meshes->indicies, 4, new_count, &meshes->index_capacity, sizeof(uint32_t));
   if (err.type != BND_OK) {
     return err;
   }
@@ -312,25 +312,25 @@ bnd_error meshes_init(bnd_world *world) {
   count_t num_meshes = world->config.memory.meshes_capacity;
   bnd_allocator allocator = world->allocator;
 
-  ALLOC_BUFFER(meshes->submeshes, num_meshes * sizeof(submesh));
+  ALLOC_BUFFER4(meshes->submeshes, num_meshes * sizeof(submesh));
   meshes->submesh_capacity = num_meshes;
   meshes->submesh_count = 0;
 
-  ALLOC_BUFFER(meshes->meshes, num_meshes * sizeof(bnd_mesh));
+  ALLOC_BUFFER4(meshes->meshes, num_meshes * sizeof(bnd_mesh));
   meshes->mesh_capacity = num_meshes;
   meshes->mesh_count = 0;
 
-  ALLOC_BUFFER(meshes->verticies, num_meshes * DEFAULT_VERTEX_PER_MESH * sizeof(bnd_v3));
+  ALLOC_BUFFER4(meshes->verticies, num_meshes * DEFAULT_VERTEX_PER_MESH * sizeof(bnd_v3));
   meshes->vertex_capacity = num_meshes * DEFAULT_VERTEX_PER_MESH;
   meshes->vertex_count = 0;
 
-  ALLOC_BUFFER(meshes->indicies, num_meshes * DEFAULT_FACE_PER_MESH * 3 * sizeof(uint32_t));
+  ALLOC_BUFFER4(meshes->indicies, num_meshes * DEFAULT_FACE_PER_MESH * 3 * sizeof(uint32_t));
   meshes->index_capacity = num_meshes * DEFAULT_FACE_PER_MESH * 3;
   meshes->index_count = 0;
 
-  ALLOC_BUFFER(meshes->inertias, num_meshes * sizeof(bnd_m3));
-  ALLOC_BUFFER(meshes->volumes, num_meshes * sizeof(float));
-  ALLOC_BUFFER(meshes->aabbs, num_meshes * sizeof(bnd_aabb));
+  ALLOC_BUFFER4(meshes->inertias, num_meshes * sizeof(bnd_m3));
+  ALLOC_BUFFER4(meshes->volumes, num_meshes * sizeof(float));
+  ALLOC_BUFFER4(meshes->aabbs, num_meshes * sizeof(bnd_aabb));
 
   return OK;
 }
@@ -383,7 +383,7 @@ bnd_error bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, bnd_mesh_
     return e;
   }
 
-  e = resize_buffer(allocator, (void **)&meshes->submeshes, meshes->submesh_count + 1, &meshes->submesh_capacity, sizeof(submesh));
+  e = resize_buffer(allocator, (void **)&meshes->submeshes, 4, meshes->submesh_count + 1, &meshes->submesh_capacity, sizeof(submesh));
   if (e.type != BND_OK) {
     return e;
   }

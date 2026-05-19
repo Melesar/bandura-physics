@@ -364,31 +364,31 @@ static bnd_error realloc_data(common_data *data, bnd_allocator allocator, bool w
   }
 
   count_t total_capacity = data->capacity + EPHEMERAL_BODIES_COUNT;
-  REALLOC_BUFFER(data->positions, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
-  REALLOC_BUFFER(data->rotations, allocator, sizeof(bnd_quat), old_capacity, total_capacity);
-  REALLOC_BUFFER(data->shapes, allocator, sizeof(body_shapes), old_capacity, total_capacity);
-  REALLOC_BUFFER(data->aabbs, allocator, sizeof(bnd_aabb), old_capacity, total_capacity);
-  REALLOC_BUFFER(data->event_masks, allocator, sizeof(bnd_event_type), old_capacity, total_capacity);
-  REALLOC_BUFFER(data->event_links, allocator, sizeof(event_link), old_capacity, total_capacity);
-  REALLOC_BUFFER(data->free_list, allocator, sizeof(count_t), old_capacity, total_capacity);
-  REALLOC_BUFFER(data->generations, allocator, sizeof(uint8_t), old_capacity, total_capacity);
-  REALLOC_BUFFER(data->outer_lookup, allocator, sizeof(outer_lookup_node), old_capacity, total_capacity);
-  REALLOC_BUFFER(data->inner_lookup, allocator, sizeof(count_t), old_capacity, total_capacity);
+  REALLOC_BUFFER4(data->positions, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
+  REALLOC_BUFFER4(data->rotations, allocator, sizeof(bnd_quat), old_capacity, total_capacity);
+  REALLOC_BUFFER4(data->shapes, allocator, sizeof(body_shapes), old_capacity, total_capacity);
+  REALLOC_BUFFER4(data->aabbs, allocator, sizeof(bnd_aabb), old_capacity, total_capacity);
+  REALLOC_BUFFER4(data->event_masks, allocator, sizeof(bnd_event_type), old_capacity, total_capacity);
+  REALLOC_BUFFER4(data->event_links, allocator, sizeof(event_link), old_capacity, total_capacity);
+  REALLOC_BUFFER4(data->free_list, allocator, sizeof(count_t), old_capacity, total_capacity);
+  REALLOC_BUFFER1(data->generations, allocator, sizeof(uint8_t), old_capacity, total_capacity);
+  REALLOC_BUFFER4(data->outer_lookup, allocator, sizeof(outer_lookup_node), old_capacity, total_capacity);
+  REALLOC_BUFFER4(data->inner_lookup, allocator, sizeof(count_t), old_capacity, total_capacity);
 
   if (with_dynamics) {
     dynamic_bodies *dynamics = (dynamic_bodies *) data;
-    REALLOC_BUFFER(dynamics->forces, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
-    REALLOC_BUFFER(dynamics->torques, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
-    REALLOC_BUFFER(dynamics->impulses, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
-    REALLOC_BUFFER(dynamics->angular_impulses, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
-    REALLOC_BUFFER(dynamics->accelerations, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
+    REALLOC_BUFFER4(dynamics->forces, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
+    REALLOC_BUFFER4(dynamics->torques, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
+    REALLOC_BUFFER4(dynamics->impulses, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
+    REALLOC_BUFFER4(dynamics->angular_impulses, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
+    REALLOC_BUFFER4(dynamics->accelerations, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
 
-    REALLOC_BUFFER(dynamics->inv_masses, allocator, sizeof(float), old_capacity, total_capacity);
-    REALLOC_BUFFER(dynamics->velocities, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
-    REALLOC_BUFFER(dynamics->angular_momenta, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
-    REALLOC_BUFFER(dynamics->inv_inertia_tensors, allocator, sizeof(bnd_m3), old_capacity, total_capacity);
-    REALLOC_BUFFER(dynamics->inv_intertias, allocator, sizeof(bnd_m3), old_capacity, total_capacity);
-    REALLOC_BUFFER(dynamics->motion_avgs, allocator, sizeof(float), old_capacity, total_capacity);
+    REALLOC_BUFFER4(dynamics->inv_masses, allocator, sizeof(float), old_capacity, total_capacity);
+    REALLOC_BUFFER4(dynamics->velocities, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
+    REALLOC_BUFFER4(dynamics->angular_momenta, allocator, sizeof(bnd_v3), old_capacity, total_capacity);
+    REALLOC_BUFFER4(dynamics->inv_inertia_tensors, allocator, sizeof(bnd_m3), old_capacity, total_capacity);
+    REALLOC_BUFFER4(dynamics->inv_intertias, allocator, sizeof(bnd_m3), old_capacity, total_capacity);
+    REALLOC_BUFFER4(dynamics->motion_avgs, allocator, sizeof(float), old_capacity, total_capacity);
   }
 
   return OK;

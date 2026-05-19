@@ -10,14 +10,24 @@
 #define OK (bnd_error){BND_OK, NULL}
 #define OOM_ERROR (bnd_error){BND_ERROR_OUT_OF_MEMORY, "Allocator.malloc failed to allocate memory"}
 
-#define ALLOC_BUFFER(buffer, capacity) \
-  buffer = allocator.malloc(capacity); \
+#define ALLOC_BUFFER1(buffer, capacity) ALLOC_BUFFER(buffer, 1, capacity)
+#define ALLOC_BUFFER2(buffer, capacity) ALLOC_BUFFER(buffer, 2, capacity)
+#define ALLOC_BUFFER4(buffer, capacity) ALLOC_BUFFER(buffer, 4, capacity)
+#define ALLOC_BUFFER8(buffer, capacity) ALLOC_BUFFER(buffer, 8, capacity)
+
+#define REALLOC_BUFFER1(buffer, allocator, element_size, old_size, new_size) REALLOC_BUFFER(buffer, allocator, 1, element_size, old_size, new_size)
+#define REALLOC_BUFFER2(buffer, allocator, element_size, old_size, new_size) REALLOC_BUFFER(buffer, allocator, 2, element_size, old_size, new_size)
+#define REALLOC_BUFFER4(buffer, allocator, element_size, old_size, new_size) REALLOC_BUFFER(buffer, allocator, 4, element_size, old_size, new_size)
+#define REALLOC_BUFFER8(buffer, allocator, element_size, old_size, new_size) REALLOC_BUFFER(buffer, allocator, 8, element_size, old_size, new_size)
+
+#define ALLOC_BUFFER(buffer, alingment, capacity) \
+  buffer = allocator.malloc(alingment, capacity); \
   if (buffer == NULL) { \
     return OOM_ERROR; \
   } \
 
-#define REALLOC_BUFFER(buffer, allocator, element_size, old_size, new_size) \
-  buffer = allocator.realloc(buffer, old_size * element_size, element_size * new_size); \
+#define REALLOC_BUFFER(buffer, allocator, alignment, element_size, old_size, new_size) \
+  buffer = allocator.realloc(buffer, alignment, old_size * element_size, element_size * new_size); \
   if (buffer == NULL) { \
     return (bnd_error) { BND_ERROR_OUT_OF_MEMORY, "Allocator.realloc failed to re-allocate buffer" }; \
   }

@@ -12,8 +12,8 @@ static bnd_error resize_if_needed(bnd_allocator allocator, joints *joints) {
     joints->capacity *= 2;
   }
 
-  REALLOC_BUFFER(joints->values, allocator , sizeof(bnd_joint), old_capacity, joints->capacity);
-  REALLOC_BUFFER(joints->ids, allocator , sizeof(count_t), old_capacity, joints->capacity);
+  REALLOC_BUFFER4(joints->values, allocator , sizeof(bnd_joint), old_capacity, joints->capacity);
+  REALLOC_BUFFER4(joints->ids, allocator , sizeof(count_t), old_capacity, joints->capacity);
 
   return OK;
 }
@@ -150,8 +150,8 @@ void joints_generate_static(bnd_world *world) {
 bnd_error joints_init(bnd_world *world) {
   bnd_allocator allocator = world->allocator;
 
-  ALLOC_BUFFER(world->joints.values, world->config.memory.joints_capacity * sizeof(bnd_joint));
-  ALLOC_BUFFER(world->joints.ids, world->config.memory.joints_capacity * sizeof(count_t));
+  ALLOC_BUFFER4(world->joints.values, world->config.memory.joints_capacity * sizeof(bnd_joint));
+  ALLOC_BUFFER4(world->joints.ids, world->config.memory.joints_capacity * sizeof(count_t));
 
   world->joints.capacity = world->config.memory.joints_capacity;
 

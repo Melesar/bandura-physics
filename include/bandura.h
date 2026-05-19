@@ -47,8 +47,8 @@ typedef enum {
 
 typedef void (*bnd_error_callback)(bnd_error_type error_type, char *error_message, void *error_data);
 
-typedef void* (*bnd_malloc_fn)(uint64_t size);
-typedef void* (*bnd_realloc_fn)(void *ptr, uint64_t old_size, uint64_t new_size);
+typedef void* (*bnd_malloc_fn)(uint64_t alignment, uint64_t size);
+typedef void* (*bnd_realloc_fn)(void *ptr, uint64_t alignment, uint64_t old_size, uint64_t new_size);
 typedef void  (*bnd_free_fn)(void *ptr, uint64_t size);
 
 typedef enum {

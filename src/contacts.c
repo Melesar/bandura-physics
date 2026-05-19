@@ -58,7 +58,7 @@ bnd_error contacts_init(bnd_world *world) {
   contacts *contacts = &world->contacts;
   bnd_allocator allocator = world->allocator;
 
-  ALLOC_BUFFER(contacts->values, world->config.memory.contacts_capacity * sizeof(contact));
+  ALLOC_BUFFER4(contacts->values, world->config.memory.contacts_capacity * sizeof(contact));
 
   contacts->capacity = world->config.memory.contacts_capacity;
   contacts->count = 0;
@@ -88,7 +88,7 @@ bnd_error contacts_ensure_capacity(bnd_world *world, count_t additional_count) {
     contacts->capacity <<= 1;
 
     if (contacts->capacity >= count_needed) {
-      REALLOC_BUFFER(contacts->values, world->allocator, sizeof(contact), old_capacity, contacts->capacity);
+      REALLOC_BUFFER4(contacts->values, world->allocator, sizeof(contact), old_capacity, contacts->capacity);
       break;
     }
   }

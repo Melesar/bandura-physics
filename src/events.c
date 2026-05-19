@@ -14,8 +14,8 @@ static bnd_error new_event_index(bnd_world *world, count_t *event_index) {
       world->events.capacity *= 2;
     }
 
-    REALLOC_BUFFER(world->events.events, world->allocator, sizeof(bnd_event), old_capacity, world->events.capacity);
-    REALLOC_BUFFER(world->events.links, world->allocator, sizeof(count_t), old_capacity, world->events.capacity);
+    REALLOC_BUFFER4(world->events.events, world->allocator, sizeof(bnd_event), old_capacity, world->events.capacity);
+    REALLOC_BUFFER4(world->events.links, world->allocator, sizeof(count_t), old_capacity, world->events.capacity);
   }
 
   *event_index = world->events.count;
@@ -96,8 +96,8 @@ bool bnd_event_next(bnd_world *world, bnd_event_enumerator *enumerator) {
 bnd_error events_init(bnd_world *world) {
   bnd_allocator allocator = world->allocator;
 
-  ALLOC_BUFFER(world->events.events, world->config.memory.events_capacity * sizeof(bnd_event));
-  ALLOC_BUFFER(world->events.links, world->config.memory.events_capacity * sizeof(count_t));
+  ALLOC_BUFFER4(world->events.events, world->config.memory.events_capacity * sizeof(bnd_event));
+  ALLOC_BUFFER4(world->events.links, world->config.memory.events_capacity * sizeof(count_t));
 
   world->events.capacity = world->config.memory.events_capacity;
   world->events.count = 0;

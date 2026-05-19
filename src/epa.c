@@ -568,7 +568,7 @@ bnd_error epa_init(bnd_world *world) {
   uint32_t memory_size = polytope_memory_size(world->config.memory.epa_max_nodes);
   uint8_t *memory;
 
-  ALLOC_BUFFER(memory, memory_size);
+  ALLOC_BUFFER8(memory, memory_size);
 
   pt = polytope_init(memory, world->config.memory.epa_max_nodes);
 

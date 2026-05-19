@@ -31,8 +31,8 @@ bnd_error shapes_init(bnd_world *world) {
     shapes_get_bracket_properties(&world->config, i, &blocks_count, &shapes_count, &bracket_capacity);
 
     shapes_bracket *bracket = &world->shape_brackets[i];
-    ALLOC_BUFFER(bracket->slots, blocks_count * sizeof(uint64_t));
-    ALLOC_BUFFER(bracket->shapes, shapes_count * sizeof(bnd_body_shape));
+    ALLOC_BUFFER8(bracket->slots, blocks_count * sizeof(uint64_t));
+    ALLOC_BUFFER4(bracket->shapes, shapes_count * sizeof(bnd_body_shape));
 
     memset(bracket->slots, 0, blocks_count * sizeof(uint64_t));
 
@@ -85,8 +85,8 @@ bnd_error shapes_expand_bracket(bnd_world *world, shape_dimension_bracket bracke
   count_t new_block_count = current_block_count + 1;
   count_t shapes_count = bracket_capacity * new_block_count * SHAPE_BRACKET_BLOCK_CAPACITY;
 
-  REALLOC_BUFFER(current_bracket->slots, world->allocator, sizeof(uint64_t), current_block_count, new_block_count);
-  REALLOC_BUFFER(current_bracket->shapes, world->allocator, sizeof(bnd_body_shape), bracket_capacity * current_block_count * SHAPE_BRACKET_BLOCK_CAPACITY, shapes_count);
+  REALLOC_BUFFER8(current_bracket->slots, world->allocator, sizeof(uint64_t), current_block_count, new_block_count);
+  REALLOC_BUFFER4(current_bracket->shapes, world->allocator, sizeof(bnd_body_shape), bracket_capacity * current_block_count * SHAPE_BRACKET_BLOCK_CAPACITY, shapes_count);
 
   current_bracket->capacity = new_capacity;
 

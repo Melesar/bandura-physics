@@ -17,11 +17,11 @@ const count_t max_body_index = (count_t)~0 >> 9;
 char error_message_buffer[MAX_MESSAGE_SIZE];
 bnd_error_callback error_callback = NULL;
 
-static void *std_malloc(uint64_t size) {
+static void *std_malloc(uint64_t alignment, uint64_t size) {
   return malloc(size);
 }
 
-static void *std_realloc(void *ptr, uint64_t old_size, uint64_t new_size) {
+static void *std_realloc(void *ptr, uint64_t alignment, uint64_t old_size, uint64_t new_size) {
   return realloc(ptr, new_size);
 }
 
@@ -105,16 +105,16 @@ static bnd_error init_commons(common_data *data, count_t capacity, bnd_allocator
   data->first_outer_node = max_body_index;
 
   count_t total_capacity = capacity + EPHEMERAL_BODIES_COUNT;
-  ALLOC_BUFFER(data->positions, sizeof(bnd_v3) * total_capacity);
-  ALLOC_BUFFER(data->rotations, sizeof(bnd_quat) * total_capacity);
-  ALLOC_BUFFER(data->shapes, sizeof(body_shapes) * total_capacity);
-  ALLOC_BUFFER(data->aabbs, sizeof(bnd_aabb) * total_capacity);
-  ALLOC_BUFFER(data->event_masks, sizeof(bnd_event_type) * total_capacity);
-  ALLOC_BUFFER(data->event_links, sizeof(event_link) * total_capacity);
-  ALLOC_BUFFER(data->free_list, sizeof(count_t) * total_capacity);
-  ALLOC_BUFFER(data->generations, sizeof(uint8_t) * total_capacity);
-  ALLOC_BUFFER(data->outer_lookup, sizeof(outer_lookup_node) * total_capacity);
-  ALLOC_BUFFER(data->inner_lookup, sizeof(count_t) * total_capacity);
+  ALLOC_BUFFER4(data->positions, sizeof(bnd_v3) * total_capacity);
+  ALLOC_BUFFER4(data->rotations, sizeof(bnd_quat) * total_capacity);
+  ALLOC_BUFFER4(data->shapes, sizeof(body_shapes) * total_capacity);
+  ALLOC_BUFFER4(data->aabbs, sizeof(bnd_aabb) * total_capacity);
+  ALLOC_BUFFER4(data->event_masks, sizeof(bnd_event_type) * total_capacity);
+  ALLOC_BUFFER4(data->event_links, sizeof(event_link) * total_capacity);
+  ALLOC_BUFFER4(data->free_list, sizeof(count_t) * total_capacity);
+  ALLOC_BUFFER1(data->generations, sizeof(uint8_t) * total_capacity);
+  ALLOC_BUFFER4(data->outer_lookup, sizeof(outer_lookup_node) * total_capacity);
+  ALLOC_BUFFER4(data->inner_lookup, sizeof(count_t) * total_capacity);
 
   return OK;
 }
@@ -186,18 +186,18 @@ static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allo
 
   world->statics.dirty = false;
 
-  ALLOC_BUFFER(world->dynamics.forces, vectors);
-  ALLOC_BUFFER(world->dynamics.torques, vectors);
-  ALLOC_BUFFER(world->dynamics.impulses, vectors);
-  ALLOC_BUFFER(world->dynamics.angular_impulses, vectors);
-  ALLOC_BUFFER(world->dynamics.accelerations, vectors);
+  ALLOC_BUFFER4(world->dynamics.forces, vectors);
+  ALLOC_BUFFER4(world->dynamics.torques, vectors);
+  ALLOC_BUFFER4(world->dynamics.impulses, vectors);
+  ALLOC_BUFFER4(world->dynamics.angular_impulses, vectors);
+  ALLOC_BUFFER4(world->dynamics.accelerations, vectors);
 
-  ALLOC_BUFFER(world->dynamics.inv_masses, floats);
-  ALLOC_BUFFER(world->dynamics.velocities, vectors);
-  ALLOC_BUFFER(world->dynamics.angular_momenta, vectors);
-  ALLOC_BUFFER(world->dynamics.inv_inertia_tensors, matrices);
-  ALLOC_BUFFER(world->dynamics.inv_intertias, matrices);
-  ALLOC_BUFFER(world->dynamics.motion_avgs, floats);
+  ALLOC_BUFFER4(world->dynamics.inv_masses, floats);
+  ALLOC_BUFFER4(world->dynamics.velocities, vectors);
+  ALLOC_BUFFER4(world->dynamics.angular_momenta, vectors);
+  ALLOC_BUFFER4(world->dynamics.inv_inertia_tensors, matrices);
+  ALLOC_BUFFER4(world->dynamics.inv_intertias, matrices);
+  ALLOC_BUFFER4(world->dynamics.motion_avgs, floats);
 
   world->dynamics.awake_count = 0;
   world->generation = 0;
@@ -217,7 +217,7 @@ static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allo
 
 bnd_world *bnd_init(bnd_config config) {
   bnd_allocator allocator = bnd_default_allocator();
-  bnd_world *world = allocator.malloc(sizeof(bnd_world));
+  bnd_world *world = allocator.malloc(8, sizeof(bnd_world));
 
   bnd_init_internal(world, config, allocator);
   return world;
@@ -229,7 +229,7 @@ bnd_world *bnd_init_with_allocator(bnd_config config, bnd_allocator allocator, b
     return NULL;
   }
 
-  bnd_world *world = allocator.malloc(sizeof(bnd_world));
+  bnd_world *world = allocator.malloc(8, sizeof(bnd_world));
   if (world == NULL) {
     *error = OOM_ERROR;
     return NULL;
