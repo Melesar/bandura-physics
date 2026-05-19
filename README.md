@@ -137,7 +137,7 @@ Bandura also supports combining multiple primitive shapes into a single body. Th
 
 ```c
   // Make a dumbell shape with a rotated cylinder and two spheres.
-  bnd_body_shape shapes[] = {}
+  bnd_body_shape shapes[] = {
     (bnd_body_shape) { 
       .type = BND_CYLINDER,
       .cylinder = { .radius = 0.3, .height = 3 },
@@ -429,6 +429,88 @@ int main() {
 ```
 
 ### Memory allocator
+
+If you want to control how Bandura allocates memory, you can provide your own memory management functions wrapped into [`bnd_allocator`](include/bandura.h). It accepts 3 function pointers: `malloc`, `realloc` and `free`.
+
+* `void *(*bnd_malloc_fn)(uint64_t alignment, uint64_t size)` (mandatory)
+
+  Used to initialize the physics world during `bnd_init`. Memory will be allocated according to the settings in `bnd_config.memory`. You can get the amount of memory needed for this using `bnd_required_memory(const bnd_config *config)`.
+
+* `void *(*bnd_realloc_fn)(void *ptr, uint64_t alignment, uint64_t old_size, uint64_t new_size)` (optional)
+
+  Bandura may request to expand the memory buffers when they become full. For example, when adding a new body, new joint or generating contacts during `bnd_simulate`. It will use this function if provided, otherwise the addition will fail and raise an error.
+
+* `void (*bnd_free_fn)(void *ptr, uint64_t size)` (optional)
+
+  This will be called during `bnd_teardown` to clean up the memory. Depending on your memory management strategy, you may or may not need to implement this.
+
+Here is an example of an arena-type custom allocator. It contains all the memory in a single buffer and doesn't allow to expand it.
+
+```c
+#include "bandura.h"
+#include <stdlib.h>
+#include <stdint.h>
+
+uint8_t *memory;
+uint64_t offset, size;
+
+static void *custom_malloc(uint64_t alignment, uint64_t size) {
+  offset = (offset + alignment - 1) & ~(alignment - 1);
+    
+  if (offset + bytes > size) {
+    // When malloc function returns NULL, Bandura will raise an error.
+    return NULL;
+  }
+
+  void *ptr = memory + offset;
+  offset += bytes;
+  return ptr;
+}
+
+static void on_error(bnd_error_type type, char *message, void *data) {
+  switch (type) {
+    case BND_ERROR_NO_SPACE_AVAILABLE:
+      // Raised when the buffers are full and realloc fuction is not provided.
+      break;
+
+    case BND_ERROR_OUT_OF_MEMORY:
+      // Raised when malloc or realloc return NULL.
+      break;
+
+    case BND_ERROR_INVALID_ALLOCATOR:
+      // Raised when malloc function is NULL.
+      break;
+  }
+}
+
+int main() {
+  bnd_config config = bnd_default_config();
+  bnd_allocator allocator = { custom_malloc, NULL, NULL };
+  bnd_error error;
+  
+  bnd_register_error_callback(on_error);
+
+  size = bnd_required_memory(&config);
+  memory = malloc(size);
+  offset = 0;
+  
+  bnd_world *world = bnd_init_with_allocator(config, allocator, &error);
+  if (error.type != BND_OK) {
+    printf("Failed to initialize Bandura: %s\n", error.message);
+    return 1;
+  }
+
+  bnd_body sphere = bnd_add_sphere_dynamic(world, 4, 2);
+  if (!bnd_handle_valid(world, sphere.handle)) {
+    // With custom allocator, body addition may fail if you provide insufficient memory capacity in the config
+    // and don't specify the realloc function.
+  }
+
+  // ...
+
+  return 0;
+}
+```
 
 ## License
 The project is licensed under the Zlib License. See [`LICENSE`](LICENSE).
