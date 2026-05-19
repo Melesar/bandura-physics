@@ -17,7 +17,9 @@ Bandura is a traditional Ukrainian [musical instrument](https://en.wikipedia.org
   * [Using meshes as body shapes](#using-meshes-as-body-shapes)
   * [Querying the physics world](#querying-the-physics-world)
   * [Reacting to collisions](#reacting-to-collisions)
-  * [Handling errors](#handling-errors)
+* [Bring your own...](#bring-your-own)
+  * [Math](#math)
+  * [Memory allocator](#memory-allocator)
 * [License](#license)
 * [Third-party code](#third-party-code)
 
@@ -27,7 +29,7 @@ Bandura is a traditional Ukrainian [musical instrument](https://en.wikipedia.org
 * **No dependencies**. The library itself is self-contained, so no third-party code is included.
 * **Data-oriented**. The data layout inside the engine allows for efficient CPU cache utilization, enabling high performance.
 * **Cross-platform**. Works on Linux and MacOS. Should work on Windows too, but is not actively tested there.
-* **Easy to use**. Include a single header and link against the shared library and you're good to go.
+* **Easy to use**. Include `bandura.h` for the core API and `bnd-math.h` for convenience math helpers, then link against the shared library.
 * **Rigidbody physics simulation**. Allows for dynamic simulations with different shapes, including primitives, compounds and triangular meshes. Supports forces, impulses, rotations and joints.
 * **Impulse-based collision resolution**. Objects respond to the collisions based on their mass, shape and collision velocity.
 
@@ -42,7 +44,7 @@ Bandura uses [Zig](https://ziglang.org) as a build system. Currently supported v
 ```bash
 zig build --release=fast -Dinclude-demos=false
 ```
-This will put the shared library file and the header file `bandura.h` into `zig-out` directory within the current directory. If you want the files to be installed into a different location, add `--prefix=<destination>` option to the command above.
+This will put the shared library file and the header files `bandura.h` and `bnd-math.h` into `zig-out` directory within the current directory. If you want the files to be installed into a different location, add `--prefix=<destination>` option to the command above.
 
 #### Building the demos
 
@@ -61,20 +63,23 @@ Executables will be installed into `zig-out/bin` by default.
 
 ## Using the library
 
+The examples below use `bnd-math.h` for helpers such as `vec3`, `bnd_v3_zero`, `bnd_v3_up`, and `bnd_qidentity`.
+
 ### Quickstart
 
 ```c
 #include "bandura.h"
+#include "bnd-math.h"
 
 int main() {
   // Create default config object.
   bnd_config config = bnd_default_config();
 
   // Initialize the physics world. This will be the root object for physics operations.
-  bnd_world *world = bnd_init(&config);
+  bnd_world *world = bnd_init(config);
 
   // Add a ground plane that passes through zero and has a (0, 1, 0) normal vector.
-  bnd_add_plane(world, zero(), up());
+  bnd_add_plane(world, bnd_v3_zero(), bnd_v3_up());
 
   // Add a sphere with mass 5 and radius 1.
   bnd_body sphere = bnd_add_sphere_dynamic(world, 5, 1);
@@ -97,13 +102,13 @@ int main() {
 Rigidbodies in Bandura can be of two types: **dynamic** and **static**. As the naming suggests, the former can move and respond to collisions, while the latter serve as static environment. Primitive shapes expose both variants, for example:
 
 ```c
-bnd_body bnd_add_box_dynamic(bnd_world *world, float mass, v3 size);
-bnd_body bnd_add_box_static(bnd_world *world, v3 size);
+bnd_body bnd_add_box_dynamic(bnd_world *world, float mass, bnd_v3 size);
+bnd_body bnd_add_box_static(bnd_world *world, bnd_v3 size);
 bnd_body bnd_add_sphere_dynamic(bnd_world *world, float mass, float radius);
 bnd_body bnd_add_sphere_static(bnd_world *world, float radius);
 ```
 
-Note that the static version doesn't require to specify mass, since static objects a treated as having _infinite_ mass.
+Note that the static version doesn't require to specify mass, since static objects are treated as having _infinite_ mass.
 
 The returned value `bnd_body` can be used to set initial state of the object: position and rotation, as well as velocity and angular momentum in case of dynamic bodies.
 
@@ -111,6 +116,7 @@ The returned value `bnd_body` can be used to set initial state of the object: po
 
 ```c
 #include "bandura.h"
+#include "bnd-math.h"
 
 int main() {
   // ...
@@ -135,20 +141,20 @@ Bandura also supports combining multiple primitive shapes into a single body. Th
     (bnd_body_shape) { 
       .type = BND_CYLINDER,
       .cylinder = { .radius = 0.3, .height = 3 },
-      .offset = zero(),
-      .rotation = (quat) { sinf(PI / 4), 0, 0, cosf(PI / 4) } 
+      .offset = bnd_v3_zero(),
+      .rotation = (bnd_quat) { sinf(PI / 4), 0, 0, cosf(PI / 4) } 
     },
     (bnd_body_shape) {
       .type = BND_SPHERE,
       .sphere = { .radius = 0.7 },
       .offset = vec3(0, 0, 1.5),
-      .rotation = qidentity()
+      .rotation = bnd_qidentity()
     },
     (bnd_body_shape) {
       .type = BND_SPHERE,
       .sphere = { .radius = 0.7 },
       .offset = vec3(0, 0, -1.5),
-      .rotation = qidentity() 
+      .rotation = bnd_qidentity() 
     }
   };
 
@@ -190,8 +196,8 @@ int main() {
 2) **Querying body's properties**
 
 ```c
-v3 sphere_position = bnd_get_position(world, sphere_handle);
-v3 sphere_velocity = bnd_get_velocity(world, sphere_handle);
+bnd_v3 sphere_position = bnd_get_position(world, sphere_handle);
+bnd_v3 sphere_velocity = bnd_get_velocity(world, sphere_handle);
 ```
 
 3) **Removing the body**
@@ -201,6 +207,8 @@ bnd_remove_body(world, sphere_handle);
 
 // From here on, `sphere_handle` is no longer valid and shouldn't be used.
 ```
+
+After the body is removed, its corresponding handle is invalidated. You can always check if a handle is valid using `bool bnd_handle_valid(const bnd_world *world, bnd_body_handle handle)` function.
 
 ### Bounding the bodies together
 
@@ -218,11 +226,11 @@ Bandura supports imposing constraints on the bodies, so that they cannot move fu
 
   bnd_body left_upper_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2);
   *left_upper_leg.position = vec3(0.23, 1.8, -0.2);
-  *left_upper_leg.rotation = (quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) };
+  *left_upper_leg.rotation = (bnd_quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) };
 
   bnd_body left_lower_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2);
   *left_lower_leg.position = vec3(0.23, 0.6, -0.2);
-  *left_lower_leg.rotation = (quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) };
+  *left_lower_leg.rotation = (bnd_quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) };
 
   bnd_body right_upper_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2);
   *right_upper_leg.position = vec3(-0.23, 1.8, 0);
@@ -232,18 +240,18 @@ Bandura supports imposing constraints on the bodies, so that they cannot move fu
 
   bnd_body left_upper_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2);
   *left_upper_arm.position = vec3(0.4, 3.9, -0.4);
-  *left_upper_arm.rotation = (quat) { sinf(PI / 10), 0, 0, cosf(PI / 10) };
+  *left_upper_arm.rotation = (bnd_quat) { sinf(PI / 10), 0, 0, cosf(PI / 10) };
 
   bnd_body left_lower_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2);
   *left_lower_arm.position = vec3(0.43, 3.37, -1.45);
-  *left_lower_arm.rotation = (quat) { sinf(PI / 4), 0, 0, cosf(PI / 12) };
+  *left_lower_arm.rotation = (bnd_quat) { sinf(PI / 4), 0, 0, cosf(PI / 12) };
 
   bnd_body right_upper_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2);
   *right_upper_arm.position = vec3(-0.43, 3.8, 0);
 
   bnd_body right_lower_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2);
   *right_lower_arm.position = vec3(-0.43, 2.63, -0.3);
-  *right_lower_arm.rotation = (quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) };
+  *right_lower_arm.rotation = (bnd_quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) };
 
   const float joint_margin = 0.1;
 
@@ -285,7 +293,7 @@ When primitive shapes or their combinations are not sufficient to represent a co
 Meshes have different representations depending on their format, development environment and many other factors. To use them inside the physics engine, they have to be converted into the appropriate format. Here is the function that is responsible for that:
 
 ```c
-bool bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, bnd_mesh_handle *handle, v3 *center_of_mass);
+bnd_error bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, bnd_mesh_handle *handle, bnd_v3 *center_of_mass);
 ```
 
   * `bnd_mesh_data` parameter carries information about the mesh's verticies and indicies. It's the user's responsibility to populate it from whatever external mesh format they use. Here is an example of converting the [Raylib's](https://www.raylib.com) mesh:
@@ -322,8 +330,8 @@ bool bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, bnd_mesh_handl
   } 
   ```
   * `bnd_mesh_handle` will be populated with the handle to the imported mesh upon success. This handle will be needed later to create bodies with this mesh.
-  * `v3 center_of_mass` will be populated with the position of the mesh's center of mass upon success. This position is relative to the origin of the mesh.
-  * The function will validate the mesh data inside `bnd_mesh_data` and return `false` in case it's invalid. It will also raise an error with an explanation of what went wrong (see [Handling errors](#handling-errors))
+  * `bnd_v3 center_of_mass` will be populated with the position of the mesh's center of mass upon success. This position is relative to the origin of the mesh.
+  * The function will validate the mesh data inside `bnd_mesh_data` and return a `bnd_error`. Success is reported as `err.type == BND_OK`; otherwise the returned error contains the failure type and message.
   * This functions should be called _once per mesh_. After that, its `bnd_mesh_handle` can be used to create as many bodies as you need from it.
 
 2) **Create a body with the imported mesh**
@@ -347,8 +355,8 @@ Here is an example of simulating an "explosion" using an overlap:
   count_t overlap_count = bnd_overlap(world, pos, explosion_radius, overlaps, 5); // Last parameter specifies the maximum overlap count.
 
   for (count_t i = 0; i < overlap_count; ++i) {
-    v3 body_pos = bnd_get_position(world, overlaps[i]);
-    bnd_apply_impulse(world, overlaps[i], scale(normalize(sub(body_pos, pos)), explosion_impulse));
+    bnd_v3 body_pos = bnd_get_position(world, overlaps[i]);
+    bnd_apply_impulse(world, overlaps[i], bnd_v3_scale(bnd_v3_normalize(bnd_v3_sub(body_pos, pos)), explosion_impulse));
   }
 ```
 
@@ -364,7 +372,7 @@ bnd_body b = bnd_add_sphere_dynamic(world, 5, 0.5);
 *b.position = vec3(0, 5, 0);
 
 // Makes the engine report collision events for this body during the simulation.
-bnd_event_subscribe(world, b.handle, BND_EVEN_COLLISION);
+bnd_event_subscribe(world, b.handle, BND_EVENT_COLLISION);
 
 bnd_simulate(world, dt);
 
@@ -372,7 +380,7 @@ bnd_event_enumerator enumerator;
 bnd_event_enumerate(world, b.handle, &enumerator);
 
 while (bnd_event_next(world, &enumerator)) {
-  bnd_event e = enumerator.event;
+  bnd_event e = enumerator.e;
   bnd_contact contact = e.collision.contact;
 
   // Process the collision
@@ -382,32 +390,45 @@ while (bnd_event_next(world, &enumerator)) {
 bnd_event_unsubscribe(world, b.handle, BND_EVENT_COLLISION);
 ```
 
-### Handling errors
+## Bring your own...
 
-Bandura can notify the users when something went wrong. To receive this notifications, you should register a callback function at any point of the program's lifetime:
+### Math
+
+If your project already uses its own math types and functions, you can configure Bandure to use those instead of its native ones. The only requirement is the binary compatibility:
+
+* For 3D vectors: 3 floats `x y z`
+* For quaternions: 4 floats `x y z w`
+* For 3x3 matrices: 9 floats arranged in rows `row0.x row0.y row0.z row1.x row1.y row1.z row2.x row2.y row2.z`
+
+Here is an example for [Raylib's](https://www.raylib.com) `Vector3` and `Quaternion` types:
 
 ```c
+#include "raylib.h"
+
+// These define-typedefs must come before bandura.h is included
+#define BND_CUSTOM_VEC3
+typedef Vector3 bnd_v3
+
+#define BND_CUSTOM_QUAT
+typedef Quaternion bnd_quat
+
 #include "bandura.h"
-#include <stdio.h>
 
-static void on_error(bnd_error error, char *message, void *data) {
-  switch (error) {
-    case BND_ERROR_MESH_INVALID:
-      bnd_mesh_data *mesh_data = (bnd_mesh_data *) data;
-      printf("Incorrectly populated mesh data: %p\n", data);
-      printf("Reason: %s\n", message);
-      break;
-  }
+int main() {
+  bnd_world *world = bnd_init(bnd_default_config());
+
+  Vector3 plane_point = (Vector3) { 0, 5, 0 };
+  Vector3 plane_normal = (Vector3) { 0, 1, 0 };
+
+  // Use Raylib's Vector3 directly with Bandura
+  bnd_add_plane(world, plane_point, plane_normal);
+
+  // ...
 }
 
-int main () {
-  bnd_register_error_callback(on_error);
-
-  bnd_config config = bnd_default_config();
-
-  //...
-}
 ```
+
+### Memory allocator
 
 ## License
 The project is licensed under the Zlib License. See [`LICENSE`](LICENSE).
