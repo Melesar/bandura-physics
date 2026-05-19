@@ -29,7 +29,7 @@ static void std_free(void *ptr, uint64_t size) {
   free(ptr);
 }
 
-static bnd_allocator bnd_default_allocator() {
+bnd_allocator bnd_default_allocator() {
   return (bnd_allocator){
     .malloc = std_malloc,
     .realloc = std_realloc,

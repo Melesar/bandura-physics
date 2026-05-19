@@ -1,3 +1,4 @@
+#include "bandura.h"
 #include "bnd-core.h"
 #include <assert.h>
 #include <stdint.h>
@@ -129,7 +130,7 @@ void shapes_clear_slot(bnd_world *world, shape_dimension_bracket bracket, count_
 
   uint64_t *slots = world->shape_brackets[bracket].slots;
   count_t block_index = slot / (SHAPE_BRACKET_BLOCK_CAPACITY * bracket_capacity);
-  count_t bit_index = slot % (SHAPE_BRACKET_BLOCK_CAPACITY * bracket_capacity);
+  count_t bit_index = slot % (SHAPE_BRACKET_BLOCK_CAPACITY * bracket_capacity) / bracket_capacity;
   if (block_index < block_count) {
     slots[block_index] &= ~((uint64_t)1 << bit_index);
   }
@@ -154,24 +155,28 @@ bnd_body_shape *shapes_get(const bnd_world *world, body_shapes shapes) {
 }
 
 #ifdef BND_TESTS
+
+#include "testing.h"
+
 void test_shapes_write_primitive_bracket_uses_second_block(void) {
-  physics_world world = {0};
-  world.config.shapes_brackets_capacity[BRACKET_PRIMITIVE] = 65;
+  bnd_world world = {0};
+  world.allocator = bnd_default_allocator();
+  world.config.memory.shapes_brackets_capacity[BRACKET_PRIMITIVE] = 65;
 
   shapes_init(&world);
 
   for (count_t i = 0; i < 65; ++i) {
-    body_shape shape = {0};
+    bnd_body_shape shape = {0};
     shape.type = BND_SPHERE;
     shape.sphere.radius = (float)i + 0.5f;
 
     body_shapes written = shapes_write(&world, BRACKET_PRIMITIVE, &shape, 1);
-    body_shape *stored = shapes_get(&world, written);
+    bnd_body_shape *stored = shapes_get(&world, written);
 
     assert(written.bracket == BRACKET_PRIMITIVE);
     assert(written.count == 1);
     assert(written.offset == i);
-    assert(memcmp(stored, &shape, sizeof(body_shape)) == 0);
+    assert(memcmp(stored, &shape, sizeof(bnd_body_shape)) == 0);
   }
 
   assert(world.shape_brackets[BRACKET_PRIMITIVE].capacity == 128);
@@ -183,13 +188,14 @@ void test_shapes_write_primitive_bracket_uses_second_block(void) {
 }
 
 void test_shapes_write_four_bracket_keeps_alignment_across_blocks(void) {
-  physics_world world = {0};
-  world.config.shapes_brackets_capacity[BRACKET_FOUR] = 65;
+  bnd_world world = {0};
+  world.allocator = bnd_default_allocator();
+  world.config.memory.shapes_brackets_capacity[BRACKET_FOUR] = 65;
 
   shapes_init(&world);
 
   for (count_t i = 0; i < 65; ++i) {
-    body_shape shapes[4] = {0};
+    bnd_body_shape shapes[4] = {0};
     count_t count = (i & 1) == 0 ? 3 : 4;
 
     for (count_t k = 0; k < count; ++k) {
@@ -199,12 +205,12 @@ void test_shapes_write_four_bracket_keeps_alignment_across_blocks(void) {
     }
 
     body_shapes written = shapes_write(&world, BRACKET_FOUR, shapes, count);
-    body_shape *stored = shapes_get(&world, written);
+    bnd_body_shape *stored = shapes_get(&world, written);
 
     assert(written.bracket == BRACKET_FOUR);
     assert(written.count == count);
     assert(written.offset == i * 4);
-    assert(memcmp(stored, shapes, count * sizeof(body_shape)) == 0);
+    assert(memcmp(stored, shapes, count * sizeof(bnd_body_shape)) == 0);
   }
 
   assert(world.shape_brackets[BRACKET_FOUR].capacity == 128);
@@ -215,13 +221,14 @@ void test_shapes_write_four_bracket_keeps_alignment_across_blocks(void) {
 }
 
 void test_shapes_expand_bracket_preserves_existing_data_after_two_blocks(void) {
-  physics_world world = {0};
-  world.config.shapes_brackets_capacity[BRACKET_TWO] = 65;
+  bnd_world world = {0};
+  world.allocator = bnd_default_allocator();
+  world.config.memory.shapes_brackets_capacity[BRACKET_TWO] = 65;
 
   shapes_init(&world);
 
   for (count_t i = 0; i < 128; ++i) {
-    body_shape shapes[2] = {0};
+    bnd_body_shape shapes[2] = {0};
     shapes[0].type = BND_BOX;
     shapes[0].box.size.x = (float)(i + 1);
     shapes[1].type = BND_SPHERE;
@@ -236,7 +243,7 @@ void test_shapes_expand_bracket_preserves_existing_data_after_two_blocks(void) {
   assert(world.shape_brackets[BRACKET_TWO].slots[1] == (uint64_t)~0);
   assert(!shapes_any_slot_available(&world, BRACKET_TWO));
 
-  body_shape extra_shapes[2] = {0};
+  bnd_body_shape extra_shapes[2] = {0};
   extra_shapes[0].type = BND_CYLINDER;
   extra_shapes[0].cylinder.radius = 7.0f;
   extra_shapes[0].cylinder.height = 9.0f;
@@ -244,10 +251,9 @@ void test_shapes_expand_bracket_preserves_existing_data_after_two_blocks(void) {
   extra_shapes[1].sphere.radius = 11.0f;
 
   body_shapes extra = shapes_write(&world, BRACKET_TWO, extra_shapes, 2);
-  body_shape
-  *first = world.shape_brackets[BRACKET_TWO].shapes;
-  body_shape *middle = world.shape_brackets[BRACKET_TWO].shapes + 64 * 2;
-  body_shape *stored_extra = shapes_get(&world, extra);
+  bnd_body_shape *first = world.shape_brackets[BRACKET_TWO].shapes;
+  bnd_body_shape *middle = world.shape_brackets[BRACKET_TWO].shapes + 64 * 2;
+  bnd_body_shape *stored_extra = shapes_get(&world, extra);
 
   assert(world.shape_brackets[BRACKET_TWO].capacity == 192);
   assert(extra.offset == 128 * 2);
@@ -271,14 +277,15 @@ void test_shapes_expand_bracket_preserves_existing_data_after_two_blocks(void) {
 }
 
 void test_shapes_clear_slot_reuses_second_block_slot_with_bracket_alignment(void) {
-  physics_world world = {0};
-  world.config.shapes_brackets_capacity[BRACKET_EIGHT] = 65;
+  bnd_world world = {0};
+  world.allocator = bnd_default_allocator();
+  world.config.memory.shapes_brackets_capacity[BRACKET_EIGHT] = 65;
 
   shapes_init(&world);
 
   body_shapes entries[66] = {0};
   for (count_t i = 0; i < 66; ++i) {
-    body_shape shapes[8] = {0};
+    bnd_body_shape shapes[8] = {0};
 
     for (count_t k = 0; k < 6; ++k) {
       shapes[k].type = BND_SPHERE;
@@ -297,22 +304,33 @@ void test_shapes_clear_slot_reuses_second_block_slot_with_bracket_alignment(void
 
   shapes_clear_slot(&world, BRACKET_EIGHT, entries[65].offset);
 
-  body_shape replacement_shapes[8] = {0};
+  bnd_body_shape replacement_shapes[8] = {0};
   for (count_t i = 0; i < 5; ++i) {
     replacement_shapes[i].type = BND_BOX;
     replacement_shapes[i].box.size.x = (float)(300 + i);
   }
 
   body_shapes replacement = shapes_write(&world, BRACKET_EIGHT, replacement_shapes, 5);
-  body_shape *stored_replacement = shapes_get(&world, replacement);
-  body_shape *preserved_neighbor = world.shape_brackets[BRACKET_EIGHT].shapes + entries[64].offset;
+  bnd_body_shape *stored_replacement = shapes_get(&world, replacement);
+  bnd_body_shape *preserved_neighbor = world.shape_brackets[BRACKET_EIGHT].shapes + entries[64].offset;
 
   assert(replacement.offset == entries[65].offset);
   assert(replacement.count == 5);
-  assert(memcmp(stored_replacement, replacement_shapes, 5 * sizeof(body_shape)) == 0);
+  assert(memcmp(stored_replacement, replacement_shapes, 5 * sizeof(bnd_body_shape)) == 0);
   assert(preserved_neighbor[0].type == BND_SPHERE);
   assert(preserved_neighbor[0].sphere.radius == 641.0f);
 
   shapes_teardown(&world);
+}
+
+void shapes_tests() {
+  TESTS_BEGIN("SHAPES")
+
+  TEST(test_shapes_write_primitive_bracket_uses_second_block)
+  TEST(test_shapes_write_four_bracket_keeps_alignment_across_blocks)
+  TEST(test_shapes_expand_bracket_preserves_existing_data_after_two_blocks)
+  TEST(test_shapes_clear_slot_reuses_second_block_slot_with_bracket_alignment)
+
+  TESTS_END
 }
 #endif

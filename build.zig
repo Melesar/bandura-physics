@@ -15,12 +15,16 @@ const COMMON_FLAGS = &.{
   "-Wno-unused-parameter" };
 
 const Options = struct {
+    target: ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
     profiling: bool,
     installTests: bool,
     includeDemos: bool,
 
     fn getOptions(b: *std.Build) Options {
         return .{
+            .target = b.standardTargetOptions(.{}),
+            .optimize = b.standardOptimizeOption(.{}),
             .profiling = b.option(bool, "profiling", "Enable profiling") orelse false,
             .installTests = b.option(bool, "install-tests", "Install tests binary") orelse false,
             .includeDemos = b.option(bool, "include-demos", "Build demo projects") orelse true,
@@ -29,16 +33,14 @@ const Options = struct {
 };
 
 pub fn build(b: *std.Build) !void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
     const options = Options.getOptions(b);
 
     var build_targets = try std.ArrayList(*std.Build.Step.Compile).initCapacity(b.allocator, 16);
     defer build_targets.deinit(b.allocator);
 
-    const banduraLib = try build_bandura(b, options, target, optimize);
+    const banduraLib = try build_bandura(b, options, false);
 
-    const profiler = try build_profiler(b, target, optimize, false);
+    const profiler = try build_profiler(b, options, false);
     try build_targets.append(b.allocator, profiler);
     if (options.profiling) {
         banduraLib.root_module.linkLibrary(profiler);
@@ -54,12 +56,12 @@ pub fn build(b: *std.Build) !void {
         const binarySources = try collectSources(b, "demos");
         defer b.allocator.free(binarySources);
 
-        const raylib = b.dependency("raylib", .{ .target = target, .optimize = optimize, .config = "-DPLATFORM_DESKTOP -DSUPPORT_PRAND_GENERATOR", .linkage = .dynamic });
+        const raylib = b.dependency("raylib", .{ .target = options.target, .optimize = options.optimize, .config = "-DPLATFORM_DESKTOP -DSUPPORT_PRAND_GENERATOR", .linkage = .dynamic });
         const clay = b.dependency("clay", .{});
         const raygui = b.dependency("raygui", .{});
         for (scenarioSources) |scenarioFile| {
-            const scenarioModule = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true });
-            const binFlags = try scenarioFlags(b, target.result, optimize);
+            const scenarioModule = b.createModule(.{ .target = options.target, .optimize = options.optimize, .link_libc = true });
+            const binFlags = try scenarioFlags(b, options.target.result, options.optimize);
             defer b.allocator.free(binFlags);
 
             scenarioModule.addCSourceFiles(.{
@@ -81,7 +83,7 @@ pub fn build(b: *std.Build) !void {
                 .root_module = scenarioModule,
             });
 
-            linkLibraries(scenario, target);
+            linkLibraries(scenario, options.target);
 
             scenario.linkLibrary(raylib.artifact("raylib"));
             scenario.linkLibrary(banduraLib);
@@ -98,23 +100,27 @@ pub fn build(b: *std.Build) !void {
         }
     }
 
-    const tests = try build_tests(b, options, target, optimize);
+    const tests = try build_tests(b, options);
     try build_targets.append(b.allocator, tests);
 
     _ = zcc.createStep(b, "cdb", try build_targets.toOwnedSlice(b.allocator));
 }
 
-fn build_bandura(b: *std.Build, options: Options, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !*std.Build.Step.Compile {
+fn build_bandura(b: *std.Build, options: Options, withTests: bool) !*std.Build.Step.Compile {
     const banduraModule = b.createModule(.{
-        .target = target,
-        .optimize = optimize,
+        .target = options.target,
+        .optimize = options.optimize,
         .link_libc = true,
     });
 
     banduraModule.addIncludePath(b.path("include"));
     banduraModule.addIncludePath(b.path("src"));
 
-    const libFlags = try libraryFlags(b, options, target.result, optimize);
+    if (withTests) {
+        banduraModule.addIncludePath(b.path("tests"));
+    }
+
+    const libFlags = try libraryFlags(b, options, withTests);
     defer b.allocator.free(libFlags);
 
     const banduraSources = try collectSources(b, "src");
@@ -137,9 +143,9 @@ fn build_bandura(b: *std.Build, options: Options, target: std.Build.ResolvedTarg
     return banduraLib;
 }
 
-fn build_profiler(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, enable_tests: bool) !*std.Build.Step.Compile {
-    const module = b.createModule(.{ .link_libc = true, .target = target, .optimize = optimize });
-    var flags = try compilerFlags(b, target.result, optimize);
+fn build_profiler(b: *std.Build, options: Options, enable_tests: bool) !*std.Build.Step.Compile {
+    const module = b.createModule(.{ .link_libc = true, .target = options.target, .optimize = options.optimize });
+    var flags = try compilerFlags(b, options.target.result, options.optimize);
     errdefer flags.deinit(b.allocator);
 
     try flags.append(b.allocator, "-DBND_PROFILING");
@@ -163,11 +169,11 @@ fn build_profiler(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std
     return lib;
 }
 
-fn build_tests(b: *std.Build, options: Options, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !*std.Build.Step.Compile {
+fn build_tests(b: *std.Build, options: Options) !*std.Build.Step.Compile {
     const testsModule = b.createModule(.{
         .link_libc = true,
-        .target = target,
-        .optimize = optimize,
+        .target = options.target,
+        .optimize = options.optimize,
     });
     testsModule.addIncludePath(b.path("tests"));
     testsModule.addIncludePath(b.path("include"));
@@ -189,8 +195,11 @@ fn build_tests(b: *std.Build, options: Options, target: std.Build.ResolvedTarget
         .flags = try flags.toOwnedSlice(b.allocator),
     });
 
-    const profiler = try build_profiler(b, target, optimize, true);
+    const profiler = try build_profiler(b, options, true);
     testsModule.linkLibrary(profiler);
+
+    const bandura = try build_bandura(b, options, true);
+    testsModule.linkLibrary(bandura);
 
     const tests = b.addExecutable(.{
         .name = "bandura_tests",
@@ -234,12 +243,18 @@ fn linkLibraries(compile: *std.Build.Step.Compile, target: ResolvedTarget) void 
     }
 }
 
-fn libraryFlags(b: *std.Build, options: Options, target: std.Target, optimize: std.builtin.OptimizeMode) ![]const []const u8 {
-    var flags = try compilerFlags(b, target, optimize);
+fn libraryFlags(b: *std.Build, options: Options, withTests: bool) ![]const []const u8 {
+    var flags = try compilerFlags(b, options.target.result, options.optimize);
     if (options.profiling)
         try flags.append(b.allocator, "-DBND_PROFILING");
 
-    try flags.append(b.allocator, "-fvisibility=hidden");
+    if (withTests) {
+      try flags.append(b.allocator, "-DBND_TESTS");
+    }
+
+    if (!withTests) {
+      try flags.append(b.allocator, "-fvisibility=hidden");
+    }
 
     return flags.toOwnedSlice(b.allocator);
 }
