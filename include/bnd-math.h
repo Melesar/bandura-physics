@@ -33,9 +33,11 @@ static inline float bnd_v3_len(bnd_v3 x) {
 static inline bnd_v3 bnd_v3_normalize(bnd_v3 x) {
   float l = bnd_v3_len(x);
   if (l < EPSILON) {
-
+    return x;
   }
-  return l > EPSILON ? bnd_v3_scale(x, 1.0 / l) : x;
+
+  float t = 1.0 / l;
+  return (bnd_v3){ x.x * t, x.y * t, x.z * t };
 }
 
 static inline bnd_v3 bnd_v3_sub(bnd_v3 x, bnd_v3 y) {

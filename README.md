@@ -29,7 +29,7 @@ Bandura is a traditional Ukrainian [musical instrument](https://en.wikipedia.org
 * **No dependencies**. The library itself is self-contained, so no third-party code is included.
 * **Data-oriented**. The data layout inside the engine allows for efficient CPU cache utilization, enabling high performance.
 * **Cross-platform**. Works on Linux and MacOS. Should work on Windows too, but is not actively tested there.
-* **Easy to use**. Include `bandura.h` for the core API and `bnd-math.h` for convenience math helpers, then link against the shared library.
+* **Easy to use**. Include `bandura.h` for the core API and link against the static library. You may also include `bnd-math.h` for convenient math helpers if you need them.
 * **Rigidbody physics simulation**. Allows for dynamic simulations with different shapes, including primitives, compounds and triangular meshes. Supports forces, impulses, rotations and joints.
 * **Impulse-based collision resolution**. Objects respond to the collisions based on their mass, shape and collision velocity.
 
@@ -37,14 +37,28 @@ Bandura is a traditional Ukrainian [musical instrument](https://en.wikipedia.org
 
 ### Requirements
 
-Bandura uses [Zig](https://ziglang.org) as a build system. Currently supported version is `0.15.2`
+To build Bandura directly, you only need [CMake](https://cmake.org) and a C compiler.
+
+If you only want to use Bandura inside your own CMake game project, you usually do not need to install it separately. You can vendor the repository and add it with `add_subdirectory(...)`.
 
 #### Building the library itself
 
 ```bash
-zig build --release=fast -Dinclude-demos=false
+cmake -S . -B build
+cmake --build build
 ```
-This will put the shared library file and the header files `bandura.h` and `bnd-math.h` into `zig-out` directory within the current directory. If you want the files to be installed into a different location, add `--prefix=<destination>` option to the command above.
+
+By default, this builds Bandura in `Release` mode and produces a static library.
+
+If you want to install the library and public headers somewhere on your system:
+
+```bash
+cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/your/install/path
+cmake --build build
+cmake --install build
+```
+
+That installs the library together with `bandura.h` and `bnd-math.h`.
 
 #### Building the demos
 
@@ -57,9 +71,9 @@ git submodule update --init
 Then build the library and all demos at once:
 
 ```bash
-zig build
+cmake -S . -B build -DBANDURA_BUILD_DEMOS=ON
+cmake --build build
 ```
-Executables will be installed into `zig-out/bin` by default.
 
 ## Using the library
 
