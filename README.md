@@ -17,6 +17,7 @@ Bandura is a traditional Ukrainian [musical instrument](https://en.wikipedia.org
   * [Using meshes as body shapes](#using-meshes-as-body-shapes)
   * [Querying the physics world](#querying-the-physics-world)
   * [Reacting to collisions](#reacting-to-collisions)
+* [Handle simulation timesteps](#handle-simulation-timesteps)
 * [Bring your own...](#bring-your-own)
   * [Math](#math)
   * [Memory allocator](#memory-allocator)
@@ -400,6 +401,55 @@ while (bnd_event_next(world, &enumerator)) {
 
 // To stop receiving collision events:
 bnd_event_unsubscribe(world, b.handle, BND_EVENT_COLLISION);
+```
+
+## Handling simulation time steps
+
+For physics simulations, it's very important to correctly handle the time steps. In particular I'm referring to the `dt` parameter in the `bnd_simulate` function. For the simulation
+to be stable and accurate, this should not only be small enough, but also consistent across frames. That's why it's generally not a good idea to use a regular delta time for that: while that 
+might be small and consistent _most of the time_, sometimes the game may stutter. In this case the delta time goes up and the physics simulation explodes.
+
+Because of that, physics engines are usually run on a _fixed time step_ - independent of the regular rendering and gameplay one. This way you not only get stable and smooth simulation, but also get to control the duration of this time step. In general, it's a tradeoff between the simulation quality and performance. If you pick a very small step, you get high quality of simulation, but you will have to run it more often, putting more load on the CPU. Increase the step - and the load will ease out, but the simulation might become less stable. As always, it's about finding the right balance for your particular scenario.
+
+Here is an example of the game loop with physics simulation on a fixed time step:
+
+```c
+// 60 times per second is a good starting point.
+static float physics_time_step = 1.0 / 60;
+
+int main() {
+  float delta_time = 0;
+  float accumulator = 0;
+
+  bnd_world *world = bnd_init(bnd_default_config());
+
+  while(game_running()) {
+    // Your normal game logic running on raw delta time.
+    process_inputs(delta_time);
+    update_gameplay(delta_time);
+
+    accumulator += delta_time;
+    int sim_count = (int) (accumulator / physics_time_step);
+
+    // It's a good idea to bound the number of simulations per frame.
+    // Otherwise it might go into a death spiral after large stutters.
+    if (sim_count > 10) {
+      sim_count = 10;
+    }
+
+    // Physics simulation might run multiple times per frame or once per a couple of frames.
+    for (int i = 0; i < sim_count; ++i) {
+      bnd_simulate(world, physics_time_step);
+    }
+
+    accumulator -= sim_count * physics_time_step;
+    delta_time = get_delta_time();
+  }
+
+  bnd_teardown(world);
+
+  return 0;
+}
 ```
 
 ## Bring your own...
