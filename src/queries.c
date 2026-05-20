@@ -349,7 +349,7 @@ bool bnd_raycast_closest(const bnd_world *world, bnd_ray ray, bnd_raycast_hit *c
   closest_hit->distance = FLT_MAX;
 
   bnd_raycast_hit hit;
-  raycast_context ctxs[] = { begin_raycast(world, BND_DYNAMIC), begin_raycast(world, BND_STATIC) };
+  raycast_context ctxs[] = { begin_raycast(world, BND_BODY_DYNAMIC), begin_raycast(world, BND_BODY_STATIC) };
 
   for (count_t i = 0; i < 2; ++i) {
     while(next_raycast(&ctxs[i], ray, &hit)) {
@@ -368,7 +368,7 @@ count_t bnd_raycast_multiple(const bnd_world *world, bnd_ray ray, bnd_raycast_hi
   }
 
   count_t num_hits = 0;
-  raycast_context ctxs[] = { begin_raycast(world, BND_DYNAMIC), begin_raycast(world, BND_STATIC) };
+  raycast_context ctxs[] = { begin_raycast(world, BND_BODY_DYNAMIC), begin_raycast(world, BND_BODY_STATIC) };
 
   for (count_t i = 0; i < 2; ++i) {
     while(next_raycast(&ctxs[i], ray, &hits[num_hits])) {
@@ -445,13 +445,13 @@ count_t bnd_overlap(const bnd_world *world, bnd_v3 origin, float radius, bnd_bod
     return 0;
   }
 
-  count_t overlap_count = overlap_typed(world, origin, radius, overlaps, max_overlaps, BND_DYNAMIC);
+  count_t overlap_count = overlap_typed(world, origin, radius, overlaps, max_overlaps, BND_BODY_DYNAMIC);
   if (overlap_count == max_overlaps) {
     return overlap_count;
   }
 
   max_overlaps -= overlap_count;
-  overlap_count += overlap_typed(world, origin, radius, overlaps + overlap_count, max_overlaps, BND_STATIC);
+  overlap_count += overlap_typed(world, origin, radius, overlaps + overlap_count, max_overlaps, BND_BODY_STATIC);
 
   return overlap_count;
 }

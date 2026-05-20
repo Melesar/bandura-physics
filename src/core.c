@@ -318,5 +318,5 @@ void raise_error_debug(bnd_error_type type, void *data, const char *template, ..
 }
 
 void notify_handle_invalid(bnd_body_handle handle) {
-  raise_error(BND_ERROR_BODY_HANDLE_INVALID, NULL, "Body handle %d (%s) is invalid. Perhaps the body has been removed", handle.index, handle.type == BND_DYNAMIC ? "dynamic" : "static");
+  raise_error(BND_ERROR_BODY_HANDLE_INVALID, NULL, "Body handle %d (%s) is invalid. Perhaps the body has been removed", handle.index, handle.type == BND_BODY_DYNAMIC ? "dynamic" : "static");
 }

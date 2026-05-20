@@ -17,6 +17,7 @@ const COMMON_FLAGS = &.{
 const Options = struct {
     target: ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
+    linkage: std.builtin.LinkMode,
     profiling: bool,
     installTests: bool,
     includeDemos: bool,
@@ -25,6 +26,7 @@ const Options = struct {
         return .{
             .target = b.standardTargetOptions(.{}),
             .optimize = b.standardOptimizeOption(.{}),
+            .linkage = b.option(std.builtin.LinkMode, "linkage", "Linkage mode") orelse std.builtin.LinkMode.static,
             .profiling = b.option(bool, "profiling", "Enable profiling") orelse false,
             .installTests = b.option(bool, "install-tests", "Install tests binary") orelse false,
             .includeDemos = b.option(bool, "include-demos", "Build demo projects") orelse true,
@@ -133,7 +135,7 @@ fn build_bandura(b: *std.Build, options: Options, withTests: bool) !*std.Build.S
 
     const banduraLib = b.addLibrary(.{
         .name = "bandura",
-        .linkage = .dynamic,
+        .linkage = options.linkage,
         .root_module = banduraModule,
     });
 
@@ -247,6 +249,12 @@ fn libraryFlags(b: *std.Build, options: Options, withTests: bool) ![]const []con
     var flags = try compilerFlags(b, options.target.result, options.optimize);
     if (options.profiling)
         try flags.append(b.allocator, "-DBND_PROFILING");
+
+    if (options.linkage == .dynamic) {
+        try flags.append(b.allocator, "-DBND_BUILD_DLL");
+    } else {
+        try flags.append(b.allocator, "-DBND_STATIC");
+    }
 
     if (withTests) {
       try flags.append(b.allocator, "-DBND_TESTS");

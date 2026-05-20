@@ -9,7 +9,7 @@ static bnd_event make_collision_event(const bnd_world *world, bnd_body_type type
     .point = c->point,
     .normal = c->normal,
     .depth = c->depth,
-    .body_a = make_body_handle(world, BND_DYNAMIC, c->index_a),
+    .body_a = make_body_handle(world, BND_BODY_DYNAMIC, c->index_a),
     .body_b = make_body_handle(world, type, c->index_b),
   }}};
 }
@@ -35,14 +35,14 @@ void contacts_generate(bnd_world *world) {
 
   count_t dynamic_count = 0;
   dynamic_count += collisions_detect_dynamic(world);
-  emit_collision_events(world, BND_DYNAMIC, 0, dynamic_count);
+  emit_collision_events(world, BND_BODY_DYNAMIC, 0, dynamic_count);
 
   dynamic_count += joints_generate_dynamic(world);
 
   world->contacts.dynamic_count = dynamic_count;
 
   collisions_detect_static(world);
-  emit_collision_events(world, BND_STATIC, world->contacts.dynamic_count, world->contacts.count);
+  emit_collision_events(world, BND_BODY_STATIC, world->contacts.dynamic_count, world->contacts.count);
 
   joints_generate_static(world);
 

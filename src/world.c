@@ -187,7 +187,7 @@ static void awaken_body(bnd_world *world, count_t index) {
 
   dynamics->motion_avgs[index] = 2.0 * world->config.simulation.sleep_threshold;
 
-  swap_bodies(world, BND_DYNAMIC, index, dynamics->awake_count);
+  swap_bodies(world, BND_BODY_DYNAMIC, index, dynamics->awake_count);
   dynamics->awake_count += 1;
 }
 
@@ -227,7 +227,7 @@ static void update_awake_statuses(bnd_world *world, float dt) {
       break;
     }
 
-    swap_bodies(world, BND_DYNAMIC, left, right);
+    swap_bodies(world, BND_BODY_DYNAMIC, left, right);
   }
 
   for (count_t i = awake_count - 1; i >= left && i != (count_t)-1; --i) {
@@ -237,7 +237,7 @@ static void update_awake_statuses(bnd_world *world, float dt) {
 
     count_t target_index = awake_count - 1;
     if (i != target_index) {
-      swap_bodies(world, BND_DYNAMIC, i, target_index);
+      swap_bodies(world, BND_BODY_DYNAMIC, i, target_index);
     }
 
     dynamics->velocities[target_index] = dynamics->angular_momenta[target_index] = bnd_v3_zero();
@@ -250,7 +250,7 @@ static void update_awake_statuses(bnd_world *world, float dt) {
 
     count_t target_index = awake_count;
     if (i != target_index)
-      swap_bodies(world, BND_DYNAMIC, i, target_index);
+      swap_bodies(world, BND_BODY_DYNAMIC, i, target_index);
 
     awake_count += 1;
   }
@@ -291,10 +291,10 @@ static void calculate_compound_shape_dynamic(const bnd_world *world, bnd_body_sh
 
 common_data *as_common(bnd_world *world, bnd_body_type type) {
   switch (type) {
-    case BND_DYNAMIC:
+    case BND_BODY_DYNAMIC:
       return (common_data *)&world->dynamics;
 
-    case BND_STATIC:
+    case BND_BODY_STATIC:
       return (common_data *)&world->statics;
 
     default:
@@ -460,7 +460,7 @@ static count_t insert_new_dynamic_body(bnd_world *world) {
 }
 
 static bnd_body_handle add_primitive_body_static(bnd_world *world, bnd_body_shape shape) {
-  common_data *data = as_common(world, BND_STATIC);
+  common_data *data = as_common(world, BND_BODY_STATIC);
   REALLOCATE_IF_NEEDED(data, false, world->allocator)
 
   count_t index = data->count++;
@@ -473,7 +473,7 @@ static bnd_body_handle add_primitive_body_static(bnd_world *world, bnd_body_shap
   world->generation += 1;
   world->statics.dirty = true;
 
-  return make_body_handle(world, BND_STATIC, index);
+  return make_body_handle(world, BND_BODY_STATIC, index);
 }
 
 static bnd_body_handle add_primitive_body_dynamic(bnd_world *world, bnd_body_shape shape, float mass) {
@@ -491,7 +491,7 @@ static bnd_body_handle add_primitive_body_dynamic(bnd_world *world, bnd_body_sha
 
   world->generation += 1;
 
-  return make_body_handle(world, BND_DYNAMIC, index);
+  return make_body_handle(world, BND_BODY_DYNAMIC, index);
 }
 
 void bnd_add_plane(bnd_world *world, bnd_v3 point, bnd_v3 normal) {
@@ -526,7 +526,7 @@ bnd_body_handle bnd_add_cylinder_dynamic(bnd_world *world, float mass, float rad
 bnd_body_handle bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, count_t shapes_count) {
   shape_dimension_bracket bracket = get_shapes_bracket(shapes_count);
 
-  common_data *data = as_common(world, BND_STATIC);
+  common_data *data = as_common(world, BND_BODY_STATIC);
   REALLOCATE_IF_NEEDED(data, false, world->allocator)
 
   count_t index = data->count++;
@@ -539,7 +539,7 @@ bnd_body_handle bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *s
   world->generation += 1;
   world->statics.dirty = true;
 
-  return make_body_handle(world, BND_STATIC, index);
+  return make_body_handle(world, BND_BODY_STATIC, index);
 }
 
 bnd_body_handle bnd_add_compound_body_dynamic(bnd_world *world, bnd_body_shape *shapes, float *masses, count_t shapes_count) {
@@ -561,7 +561,7 @@ bnd_body_handle bnd_add_compound_body_dynamic(bnd_world *world, bnd_body_shape *
 
   world->generation += 1;
 
-  return make_body_handle(world, BND_DYNAMIC, index);
+  return make_body_handle(world, BND_BODY_DYNAMIC, index);
 }
 
 bnd_body_handle bnd_add_mesh_dynamic(bnd_world *world, float mass, bnd_mesh_handle mesh) {
@@ -586,7 +586,7 @@ void bnd_remove_body(bnd_world *world, bnd_body_handle handle) {
   body_shapes shapes = data->shapes[index];
   shapes_clear_slot(world, shapes.bracket, shapes.offset);
 
-  if (handle.type == BND_DYNAMIC) {
+  if (handle.type == BND_BODY_DYNAMIC) {
     count_t body_count = data->count;
     count_t awake_count = world->dynamics.awake_count;
 
@@ -625,7 +625,7 @@ void bnd_remove_body(bnd_world *world, bnd_body_handle handle) {
 }
 
 void bnd_apply_force(bnd_world *world, bnd_body_handle handle, bnd_v3 force) {
-  if (handle.type != BND_DYNAMIC) {
+  if (handle.type != BND_BODY_DYNAMIC) {
     return;
   }
 
@@ -642,7 +642,7 @@ void bnd_apply_force(bnd_world *world, bnd_body_handle handle, bnd_v3 force) {
 }
 
 void bnd_apply_force_at(bnd_world *world, bnd_body_handle handle, bnd_v3 force, bnd_v3 position) {
-  if (handle.type != BND_DYNAMIC)
+  if (handle.type != BND_BODY_DYNAMIC)
     return;
 
   if (!bnd_handle_valid(world, handle)) {
@@ -664,7 +664,7 @@ void bnd_apply_force_at(bnd_world *world, bnd_body_handle handle, bnd_v3 force, 
 }
 
 void bnd_apply_impulse(bnd_world *world, bnd_body_handle handle, bnd_v3 impulse) {
-  if (handle.type != BND_DYNAMIC)
+  if (handle.type != BND_BODY_DYNAMIC)
     return;
 
   if (!bnd_handle_valid(world, handle)) {
@@ -680,7 +680,7 @@ void bnd_apply_impulse(bnd_world *world, bnd_body_handle handle, bnd_v3 impulse)
 }
 
 void bnd_apply_impulse_at(bnd_world *world, bnd_body_handle handle, bnd_v3 impulse, bnd_v3 position) {
-  if (handle.type != BND_DYNAMIC)
+  if (handle.type != BND_BODY_DYNAMIC)
     return;
 
   if (!bnd_handle_valid(world, handle)) {
@@ -778,7 +778,7 @@ bnd_aabb bnd_get_bounding_box(const bnd_world *world, bnd_body_handle handle) {
 }
 
 bnd_v3 bnd_get_velocity(const bnd_world *world, bnd_body_handle handle) {
-  if (handle.type != BND_DYNAMIC) {
+  if (handle.type != BND_BODY_DYNAMIC) {
     return bnd_v3_zero();
   }
 
@@ -792,7 +792,7 @@ bnd_v3 bnd_get_velocity(const bnd_world *world, bnd_body_handle handle) {
 }
 
 bnd_v3 bnd_get_angular_velocity(const bnd_world *world, bnd_body_handle handle) {
-  if (handle.type != BND_DYNAMIC) {
+  if (handle.type != BND_BODY_DYNAMIC) {
     return bnd_v3_zero();
   }
 
@@ -811,7 +811,7 @@ bnd_v3 bnd_get_angular_velocity(const bnd_world *world, bnd_body_handle handle) 
 }
 
 bnd_v3 bnd_get_angular_momentum(const bnd_world *world, bnd_body_handle handle) {
-  if (handle.type != BND_DYNAMIC) {
+  if (handle.type != BND_BODY_DYNAMIC) {
     return bnd_v3_zero();
   }
 
@@ -847,7 +847,7 @@ void bnd_set_rotation(bnd_world *world, bnd_body_handle handle, bnd_quat rotatio
 }
 
 void bnd_set_velocity(bnd_world *world, bnd_body_handle handle, bnd_v3 velocity) {
-  if (handle.type != BND_DYNAMIC) {
+  if (handle.type != BND_BODY_DYNAMIC) {
     return;
   }
 
@@ -861,7 +861,7 @@ void bnd_set_velocity(bnd_world *world, bnd_body_handle handle, bnd_v3 velocity)
 }
 
 void bnd_set_angular_momentum(bnd_world *world, bnd_body_handle handle, bnd_v3 angular_momentum) {
-  if (handle.type != BND_DYNAMIC) {
+  if (handle.type != BND_BODY_DYNAMIC) {
     return;
   }
 
@@ -878,13 +878,13 @@ count_t bnd_get_contacts(const bnd_world *world, bnd_contact *contacts, count_t 
   count_t count = world->contacts.count < max_contacts ? world->contacts.count : max_contacts;
   for (count_t i = 0; i < count; ++i) {
     contact full_contact = world->contacts.values[i];
-    bnd_body_type type = i < world->contacts.dynamic_count ? BND_DYNAMIC : BND_STATIC;
+    bnd_body_type type = i < world->contacts.dynamic_count ? BND_BODY_DYNAMIC : BND_BODY_STATIC;
 
     contacts[i] = (bnd_contact){
       .point = full_contact.point,
       .normal = full_contact.normal,
       .depth = full_contact.depth,
-      .body_a = make_body_handle(world, BND_DYNAMIC, full_contact.index_a),
+      .body_a = make_body_handle(world, BND_BODY_DYNAMIC, full_contact.index_a),
       .body_b = make_body_handle(world, type, full_contact.index_b)
     };
   }
@@ -934,7 +934,7 @@ static void update_aabbs(bnd_world *world) {
     return;
   }
 
-  common_data *statics = as_common(world, BND_STATIC);
+  common_data *statics = as_common(world, BND_BODY_STATIC);
   for (count_t i = 0; i < statics->count; ++i) {
     calculate_aabb(world, statics, i);
   }
@@ -1012,7 +1012,7 @@ void bnd_simulate(bnd_world *world, float dt) {
 }
 
 void bnd_put_to_sleep(bnd_world *world, bnd_body_handle handle) {
-  if (handle.type != BND_DYNAMIC) {
+  if (handle.type != BND_BODY_DYNAMIC) {
     return;
   }
 
@@ -1029,7 +1029,7 @@ void bnd_put_to_sleep(bnd_world *world, bnd_body_handle handle) {
 
   count_t target_index = dynamics->awake_count > 0 ? dynamics->awake_count - 1 : 0;
   if (index != target_index) {
-    swap_bodies(world, BND_DYNAMIC, index, target_index);
+    swap_bodies(world, BND_BODY_DYNAMIC, index, target_index);
   }
 
   dynamics->awake_count -= 1;
@@ -1039,7 +1039,7 @@ void bnd_put_to_sleep(bnd_world *world, bnd_body_handle handle) {
 }
 
 void bnd_awaken_body(bnd_world *world, bnd_body_handle handle) {
-  if (handle.type != BND_DYNAMIC)
+  if (handle.type != BND_BODY_DYNAMIC)
     return;
 
   count_t index = handle_to_inner_index(world, handle);
@@ -1054,7 +1054,7 @@ void bnd_awaken_body(bnd_world *world, bnd_body_handle handle) {
 
   count_t target_index = dynamics->awake_count > 0 ? dynamics->awake_count - 1 : 0;
   if (index != target_index) {
-    swap_bodies(world, BND_DYNAMIC, index, target_index);
+    swap_bodies(world, BND_BODY_DYNAMIC, index, target_index);
   }
 
   dynamics->motion_avgs[target_index] = 2.0 * world->config.simulation.sleep_threshold;
@@ -1100,7 +1100,7 @@ static void swap_bodies(bnd_world *world, bnd_body_type type, count_t index_a, c
   SWAP_COMMON(event_link, event_links)
   SWAP_COMMON(count_t, inner_lookup)
 
-  if (type == BND_DYNAMIC) {
+  if (type == BND_BODY_DYNAMIC) {
     SWAP_DYNAMIC(float, inv_masses)
     SWAP_DYNAMIC(bnd_v3, velocities)
     SWAP_DYNAMIC(bnd_v3, angular_momenta)

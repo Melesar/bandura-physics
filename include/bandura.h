@@ -62,8 +62,8 @@ typedef void* (*bnd_realloc_fn)(void *ptr, uint64_t alignment, uint64_t old_size
 typedef void  (*bnd_free_fn)(void *ptr, uint64_t size);
 
 typedef enum {
-  BND_DYNAMIC,
-  BND_STATIC,
+  BND_BODY_DYNAMIC,
+  BND_BODY_STATIC,
 } bnd_body_type;
 
 typedef enum {

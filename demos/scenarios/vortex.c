@@ -97,7 +97,7 @@ static void collect_grounded_bodies(const bnd_world *world) {
     bnd_contact contact = contacts_buffer[i];
 
     // Looking for collisions with the ground, which is static
-    if (contact.body_b.type != BND_STATIC)
+    if (contact.body_b.type != BND_BODY_STATIC)
       continue;
 
     count_t n;
@@ -261,7 +261,7 @@ void scenario_simulate(bnd_world *world, float dt) {
   collect_grounded_bodies(world);
 
   bnd_body_enumerator_typed enumerator;
-  bnd_enumerate_bodies_typed(world, BND_DYNAMIC, &enumerator);
+  bnd_enumerate_bodies_typed(world, BND_BODY_DYNAMIC, &enumerator);
 
   while (bnd_body_next_typed(world, &enumerator)) {
     if (!is_grounded(enumerator.handle))

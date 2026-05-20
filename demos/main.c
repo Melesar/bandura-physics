@@ -258,8 +258,8 @@ void register_mesh_for_rendering(bnd_mesh_handle handle, Mesh mesh) {
 
 static void draw_physics_bodies() {
   if (master_widget_state.draw_bodies) {
-    draw_physics_bodies_typed(BND_DYNAMIC);
-    draw_physics_bodies_typed(BND_STATIC);
+    draw_physics_bodies_typed(BND_BODY_DYNAMIC);
+    draw_physics_bodies_typed(BND_BODY_STATIC);
   }
 }
 

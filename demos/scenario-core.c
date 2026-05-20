@@ -72,8 +72,8 @@ static void draw_bounding_boxes_typed(const bnd_world *world, bnd_body_type type
 }
 
 void draw_bounding_boxes(const bnd_world *world) {
-  draw_bounding_boxes_typed(world, BND_DYNAMIC, ORANGE);
-  draw_bounding_boxes_typed(world, BND_STATIC, GREEN);
+  draw_bounding_boxes_typed(world, BND_BODY_DYNAMIC, ORANGE);
+  draw_bounding_boxes_typed(world, BND_BODY_STATIC, GREEN);
 }
 
 static bnd_v3 joint_attachment_point(const bnd_world *world, bnd_joint j, count_t index) {
