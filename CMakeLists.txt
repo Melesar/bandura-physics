@@ -43,6 +43,10 @@ target_compile_options(bandura PRIVATE
 )
 target_compile_definitions(bandura PRIVATE
   $<$<CONFIG:Debug>:BND_DEBUG>
+  $<$<BOOL:${BANDURA_BUILD_SHARED}>:BND_BUILD_DLL>
+)
+target_compile_definitions(bandura PUBLIC
+  $<$<NOT:$<BOOL:${BANDURA_BUILD_SHARED}>>:BND_STATIC>
 )
 
 install(TARGETS bandura

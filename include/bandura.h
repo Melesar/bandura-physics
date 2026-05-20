@@ -5,9 +5,19 @@
 #include <stdint.h>
 
 #if defined(_WIN32)
-  #define BNDAPI __declspec(dllexport)
+  #if defined(BND_STATIC)
+    #define BNDAPI
+  #elif defined(BND_BUILD_DLL)
+    #define BNDAPI __declspec(dllexport)
+  #else
+    #define BNDAPI __declspec(dllimport)
+  #endif
 #else
-  #define BNDAPI __attribute((visibility("default")))
+  #if defined(BND_STATIC)
+    #define BNDAPI
+  #else
+    #define BNDAPI __attribute__((visibility("default")))
+  #endif
 #endif
 
 #if !defined(BND_CUSTOM_VEC3)
