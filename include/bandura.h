@@ -237,6 +237,10 @@ typedef struct {
   bnd_event e;
 } bnd_event_enumerator;
 
+#if defined(__cplusplus)
+extern "C" {            // Prevents name mangling of functions
+#endif
+
 BNDAPI bnd_config bnd_default_config();
 BNDAPI count_t bnd_required_memory(const bnd_config *config);
 
@@ -314,5 +318,9 @@ BNDAPI count_t bnd_raycast_multiple(const bnd_world *world, bnd_ray ray, bnd_ray
 BNDAPI count_t bnd_overlap(const bnd_world *world, bnd_v3 origin, float radius, bnd_body_handle *overlaps, count_t max_overlaps);
 
 BNDAPI void bnd_teardown(bnd_world *world);
+
+#if defined(__cplusplus)
+}            // Ends the extern "C" block
+#endif
 
 #endif
