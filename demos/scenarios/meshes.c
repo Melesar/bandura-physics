@@ -34,22 +34,22 @@ void scenario_setup_scene(bnd_world *world) {
   bnd_body_handle b;
   if (imported_meshes[0].success) {
     b = bnd_add_mesh_dynamic(world, 5, imported_meshes[0].mesh);
-    bnd_set_position(world, b, vec3(1.5, 7, 0));
+    bnd_set_position(world, b, (bnd_v3){1.5, 7, 0});
   }
 
   if (imported_meshes[1].success) {
     b = bnd_add_mesh_dynamic(world, 5, imported_meshes[1].mesh);
-    bnd_set_position(world, b, vec3(-1, 7, 0));
+    bnd_set_position(world, b, (bnd_v3){-1, 7, 0});
   }
 
   if (imported_meshes[2].success) {
     b = bnd_add_mesh_dynamic(world, 5, imported_meshes[2].mesh);
-    bnd_set_position(world, b, vec3(3, 7, 0));
+    bnd_set_position(world, b, (bnd_v3){3, 7, 0});
   }
 
   if (imported_meshes[3].success) {
     b = bnd_add_mesh_static(world, imported_meshes[3].mesh);
-    bnd_set_position(world, b, vec3(-5, 7, 0));
+    bnd_set_position(world, b, (bnd_v3){-5, 7, 0});
   }
 }
 

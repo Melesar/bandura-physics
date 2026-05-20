@@ -38,7 +38,7 @@ static bnd_body_handle shoot_projectile(bnd_world *world) {
   float incline = random_next_float() * max_inclination;
   float azimuth = random_next_float() * 2 * PI;
 
-  bnd_v3 direction = vec3(sinf(incline) * cosf(azimuth), cosf(incline), sinf(incline) * sinf(azimuth));
+  bnd_v3 direction = (bnd_v3){sinf(incline) * cosf(azimuth), cosf(incline), sinf(incline) * sinf(azimuth)};
   float impulse = min_impulse + (max_impulse - min_impulse) * random_next_float();
 
   bnd_apply_impulse(world, projectile, bnd_v3_scale(direction, impulse));
@@ -50,7 +50,7 @@ static bnd_body_handle shoot_projectile(bnd_world *world) {
 }
 
 static void add_ground_tile(bnd_world *world, bnd_v3 anchor, bnd_v3 direction, bnd_v3 size) {
-  bnd_v3 center = bnd_v3_add(anchor, vec3(direction.x * size.x * 0.5, direction.y * size.y * 0.5, direction.z * size.z * 0.5));
+  bnd_v3 center = bnd_v3_add(anchor, (bnd_v3){direction.x * size.x * 0.5, direction.y * size.y * 0.5, direction.z * size.z * 0.5});
   bnd_body_handle b = bnd_add_box_static(world, size);
   bnd_set_position(world, b, center);
 }
@@ -69,7 +69,7 @@ void scenario_configure(program_config *config, bnd_config *physics_config) {
 
 void scenario_initialize(bnd_world *world) {
   sphere_radius = 2;
-  arena_size = vec3(60, 0.25, 65);
+  arena_size = (bnd_v3){60, 0.25, 65};
   projectile_interval = 1;
 
   max_inclination = PI * 0.25;

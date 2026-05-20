@@ -3,6 +3,7 @@
 
 #include "bandura.h"
 
+#define EPSILON 0.000001f
 #define EPHEMERAL_BODIES_COUNT 4
 #define DEFAULT_VERTEX_PER_MESH 512
 #define DEFAULT_FACE_PER_MESH 256

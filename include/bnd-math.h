@@ -4,14 +4,8 @@
 #include "bandura.h"
 #include <math.h>
 
-#define EPSILON 0.000001f
-
-// TODO get rid of these defines
-#define vec3(x, y, z) ((bnd_v3){ x, y, z })
-#define quat(x, y, z, w) ((bnd_quat){ x, y, z, w })
-
 static inline bnd_v3 bnd_v3_cross(bnd_v3 x, bnd_v3 y) {
-  return vec3(x.y * y.z - x.z * y.y, x.z * y.x - x.x * y.z, x.x * y.y - x.y * y.x);
+  return (bnd_v3){x.y * y.z - x.z * y.y, x.z * y.x - x.x * y.z, x.x * y.y - x.y * y.x};
 }
 
 static inline float bnd_v3_dot(bnd_v3 x, bnd_v3 y) {
@@ -19,11 +13,11 @@ static inline float bnd_v3_dot(bnd_v3 x, bnd_v3 y) {
 }
 
 static inline bnd_v3 bnd_v3_add(bnd_v3 x, bnd_v3 y) {
-  return vec3(x.x + y.x, x.y + y.y, x.z + y.z);
+  return (bnd_v3){x.x + y.x, x.y + y.y, x.z + y.z};
 }
 
 static inline bnd_v3 bnd_v3_scale(bnd_v3 x, float y) {
-  return vec3(x.x * y, x.y * y, x.z * y);
+  return (bnd_v3){x.x * y, x.y * y, x.z * y};
 }
 
 static inline float bnd_v3_len(bnd_v3 x) {
@@ -32,7 +26,7 @@ static inline float bnd_v3_len(bnd_v3 x) {
 
 static inline bnd_v3 bnd_v3_normalize(bnd_v3 x) {
   float l = bnd_v3_len(x);
-  if (l < EPSILON) {
+  if (l < 0.000001f) {
     return x;
   }
 
@@ -41,7 +35,7 @@ static inline bnd_v3 bnd_v3_normalize(bnd_v3 x) {
 }
 
 static inline bnd_v3 bnd_v3_sub(bnd_v3 x, bnd_v3 y) {
-  return vec3(x.x - y.x, x.y - y.y, x.z - y.z);
+  return (bnd_v3){x.x - y.x, x.y - y.y, x.z - y.z};
 }
 
 static inline float bnd_v3_lensqr(bnd_v3 x) {
@@ -65,23 +59,23 @@ static inline float bnd_v3_distancesqr(bnd_v3 x, bnd_v3 y) {
 }
 
 static inline bnd_v3 bnd_v3_zero() {
-  return vec3(0, 0, 0);
+  return (bnd_v3){0, 0, 0};
 }
 
 static inline bnd_v3 bnd_v3_one() {
-  return vec3(1, 1, 1);
+  return (bnd_v3){1, 1, 1};
 }
 
 static inline bnd_v3 bnd_v3_up() {
-  return vec3(0, 1, 0);
+  return (bnd_v3){0, 1, 0};
 }
 
 static inline bnd_v3 bnd_v3_right() {
-  return vec3(1, 0, 0);
+  return (bnd_v3){1, 0, 0};
 }
 
 static inline bnd_v3 bnd_v3_forward() {
-  return vec3(0, 0, 1);
+  return (bnd_v3){0, 0, 1};
 }
 
 static inline bnd_v3 bnd_v3_rotate(bnd_v3 v, bnd_quat q) {
@@ -105,7 +99,7 @@ static inline bnd_v3 bnd_v3_rotate(bnd_v3 v, bnd_quat q) {
 }
 
 static inline bnd_v3 bnd_v3_negate(bnd_v3 x) {
-  return vec3(-x.x, -x.y, -x.z);
+  return (bnd_v3){-x.x, -x.y, -x.z};
 }
 
 static inline bnd_v3 bnd_v3_barycentric(bnd_v3 p, bnd_v3 a, bnd_v3 b, bnd_v3 c) {
@@ -125,23 +119,23 @@ static inline bnd_v3 bnd_v3_barycentric(bnd_v3 p, bnd_v3 a, bnd_v3 b, bnd_v3 c) 
   float z = (d00 * d21 - d01 * d20) / denom;
   float x = 1.0f - z - y;
 
-  return vec3(x, y, z);
+  return (bnd_v3){x, y, z};
 }
 
 static inline bnd_v3 bnd_v3_min(bnd_v3 a, bnd_v3 b) {
-  return vec3(fminf(a.x, b.x), fminf(a.y, b.y), fminf(a.z, b.z));
+  return (bnd_v3){fminf(a.x, b.x), fminf(a.y, b.y), fminf(a.z, b.z)};
 }
 
 static inline bnd_v3 bnd_v3_max(bnd_v3 a, bnd_v3 b) {
-  return vec3(fmaxf(a.x, b.x), fmaxf(a.y, b.y), fmaxf(a.z, b.z));
+  return (bnd_v3){fmaxf(a.x, b.x), fmaxf(a.y, b.y), fmaxf(a.z, b.z)};
 }
 
 static inline bnd_quat bnd_qadd(bnd_quat x, bnd_quat y) {
-  return quat(x.x + y.x, x.y + y.y, x.z + y.z, x.w + y.w);
+  return (bnd_quat){x.x + y.x, x.y + y.y, x.z + y.z, x.w + y.w};
 }
 
 static inline bnd_quat bnd_qscale(bnd_quat x, float y) {
-  return quat(x.x * y, x.y * y, x.z * y, x.w * y);
+  return (bnd_quat){x.x * y, x.y * y, x.z * y, x.w * y};
 }
 
 static inline bnd_quat bnd_qmul(bnd_quat x, bnd_quat y) {
@@ -184,7 +178,7 @@ static inline bnd_quat bnd_qinvert(bnd_quat x) {
 }
 
 static inline bnd_quat bnd_qidentity() {
-  return quat(0, 0, 0, 1);
+  return (bnd_quat){0, 0, 0, 1};
 }
 
 bnd_m3 bnd_m3_identity();

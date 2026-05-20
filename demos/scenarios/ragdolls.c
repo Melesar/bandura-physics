@@ -11,8 +11,8 @@ bool widget_collapsed;
 
 void scenario_configure(program_config *config, bnd_config *physics_config) {
   config->window_title = "Ragdolls";
-  config->camera_position = vec3(0, 5, -10);
-  config->camera_target = vec3(0, 2, 10);
+  config->camera_position = (bnd_v3){0, 5, -10};
+  config->camera_target = (bnd_v3){0, 2, 10};
 }
 
 void scenario_initialize(bnd_world *world) { }
@@ -24,16 +24,16 @@ void scenario_setup_scene(bnd_world *world) {
 
   bnd_body_shape ramp_shapes[] = {
       (bnd_body_shape){
-          .type = BND_BOX, .box = {.size = vec3(1, 10, 1)}, .offset = vec3(0, 5, 0), .rotation = bnd_qidentity()},
+        .type = BND_BOX, .box = {.size = (bnd_v3){1, 10, 1}}, .offset = (bnd_v3){0, 5, 0}, .rotation = bnd_qidentity()},
       (bnd_body_shape){
-          .type = BND_BOX, .box = {.size = vec3(3, 1, 1)}, .offset = vec3(1, 10, 0), .rotation = bnd_qidentity()},
+        .type = BND_BOX, .box = {.size = (bnd_v3){3, 1, 1}}, .offset = (bnd_v3){1, 10, 0}, .rotation = bnd_qidentity()},
   };
 
   bnd_body_handle ramp = bnd_add_compound_body_static(world, ramp_shapes, 2);
   bnd_set_position(world, ramp, (bnd_v3) { 5, 0, 5 });
 
-  hanging_doll = ragdoll_create(world, vec3(8, 5, 5));
-  bnd_add_joint(world, ramp, hanging_doll[RIGHT_LOWER_ARM], vec3(3, 10, 0), vec3(0, -0.6, 0), 0.05);
+  hanging_doll = ragdoll_create(world, (bnd_v3){8, 5, 5});
+  bnd_add_joint(world, ramp, hanging_doll[RIGHT_LOWER_ARM], (bnd_v3){3, 10, 0}, (bnd_v3){0, -0.6, 0}, 0.05);
 }
 
 void scenario_handle_input(bnd_world *world, Camera *camera) {
