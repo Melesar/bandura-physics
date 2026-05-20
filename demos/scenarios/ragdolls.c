@@ -29,11 +29,11 @@ void scenario_setup_scene(bnd_world *world) {
           .type = BND_BOX, .box = {.size = vec3(3, 1, 1)}, .offset = vec3(1, 10, 0), .rotation = bnd_qidentity()},
   };
 
-  bnd_body ramp = bnd_add_compound_body_static(world, ramp_shapes, 2);
-  *ramp.position = vec3(5, 0, 5);
+  bnd_body_handle ramp = bnd_add_compound_body_static(world, ramp_shapes, 2);
+  bnd_set_position(world, ramp, (bnd_v3) { 5, 0, 5 });
 
   hanging_doll = ragdoll_create(world, vec3(8, 5, 5));
-  bnd_add_joint(world, ramp.handle, hanging_doll[RIGHT_LOWER_ARM], vec3(3, 10, 0), vec3(0, -0.6, 0), 0.05);
+  bnd_add_joint(world, ramp, hanging_doll[RIGHT_LOWER_ARM], vec3(3, 10, 0), vec3(0, -0.6, 0), 0.05);
 }
 
 void scenario_handle_input(bnd_world *world, Camera *camera) {

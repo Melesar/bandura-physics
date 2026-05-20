@@ -62,14 +62,14 @@ static bnd_v3 random_scatter_position(float min_height, float max_height) {
   };
 }
 
-static void scatter_dynamic_body(bnd_world *world, bnd_body b, float min_height, float max_height) {
-  *b.position = random_scatter_position(min_height, max_height);
-  *b.rotation = QuaternionFromEuler(random_range(-0.35f, 0.35f), random_range(0.0f, 2.0f * PI), random_range(-0.35f, 0.35f));
-  *b.angular_momentum = (bnd_v3){
+static void scatter_dynamic_body(bnd_world *world, bnd_body_handle b, float min_height, float max_height) {
+  bnd_set_position(world, b, random_scatter_position(min_height, max_height));
+  bnd_set_rotation(world, b, QuaternionFromEuler(random_range(-0.35f, 0.35f), random_range(0.0f, 2.0f * PI), random_range(-0.35f, 0.35f)));
+  bnd_set_angular_momentum(world, b, (bnd_v3){
     random_range(-2.5f, 2.5f),
     random_range(-2.5f, 2.5f),
     random_range(-2.5f, 2.5f),
-  };
+  });
 }
 
 static bnd_v3 random_upward_cone_direction(float cone_angle) {
@@ -145,14 +145,14 @@ void scenario_setup_scene(bnd_world *world) {
   bnd_add_plane(world, bnd_v3_zero(), bnd_v3_up());
 
   if (cone_mesh.success) {
-    bnd_body cone = bnd_add_mesh_dynamic(world, 5, cone_mesh.mesh);
+    bnd_body_handle cone = bnd_add_mesh_dynamic(world, 5, cone_mesh.mesh);
     scatter_dynamic_body(world, cone, 2, 7);
   }
 
   for (int i = 0; i < 15; ++i) {
     float radius = random_range(0.3f, 0.75f);
     float mass = random_range(1.2f, 4.8f);
-    bnd_body sphere = bnd_add_sphere_dynamic(world, mass, radius);
+    bnd_body_handle sphere = bnd_add_sphere_dynamic(world, mass, radius);
     scatter_dynamic_body(world, sphere, 1.0f, 5.0f);
   }
 
@@ -163,7 +163,7 @@ void scenario_setup_scene(bnd_world *world) {
       random_range(0.5f, 1.6f),
     };
     float mass = random_range(1.8f, 5.8f);
-    bnd_body box = bnd_add_box_dynamic(world, mass, size);
+    bnd_body_handle box = bnd_add_box_dynamic(world, mass, size);
     scatter_dynamic_body(world, box, 1.0f, 5.0f);
   }
 
@@ -181,7 +181,7 @@ void scenario_setup_scene(bnd_world *world) {
     float hammer_masses[] = { 2.0f, 3.2f };
 
     for (int i = 0; i < 10; ++i) {
-      bnd_body hammer = bnd_add_compound_body_dynamic(world, hammer_shapes, hammer_masses, 2);
+      bnd_body_handle hammer = bnd_add_compound_body_dynamic(world, hammer_shapes, hammer_masses, 2);
       scatter_dynamic_body(world, hammer, 2.0f, 6.0f);
     }
   }
@@ -203,7 +203,7 @@ void scenario_setup_scene(bnd_world *world) {
     };
     float dumbbell_masses[] = { 1.6f, 2.0f, 2.0f };
 
-    bnd_body dumbbell = bnd_add_compound_body_dynamic(world, dumbbell_shapes, dumbbell_masses, 3);
+    bnd_body_handle dumbbell = bnd_add_compound_body_dynamic(world, dumbbell_shapes, dumbbell_masses, 3);
     scatter_dynamic_body(world, dumbbell, 2.0f, 6.0f);
   }
 
@@ -241,13 +241,13 @@ void scenario_setup_scene(bnd_world *world) {
     float stickman_masses[] = { 2.1f, 1.2f, 1.0f, 0.8f, 0.8f, 0.25f, 0.25f };
 
     for (int i = 0; i < 5; i++) {
-      bnd_body stickman = bnd_add_compound_body_dynamic(world, stickman_shapes, stickman_masses, 7);
+      bnd_body_handle stickman = bnd_add_compound_body_dynamic(world, stickman_shapes, stickman_masses, 7);
       scatter_dynamic_body(world, stickman, 2.0f, 6.0f);
     }
   }
 
-  bnd_body cylinder = bnd_add_cylinder_static(world, 2, 5);
-  *cylinder.position = (bnd_v3){ 0, 2.5, 0 };
+  bnd_body_handle cylinder = bnd_add_cylinder_static(world, 2, 5);
+  bnd_set_position(world, cylinder, (bnd_v3){ 0, 2.5, 0 });
 
   vorticies[0] = vortex_create((bnd_v3){ 0, 0, -8 }, 20, 1);
   vorticies[1] = vortex_create((bnd_v3){ 8, 0, 5 }, 10, 1.5);

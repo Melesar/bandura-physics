@@ -30,9 +30,9 @@ void scenario_setup_scene(bnd_world *world) {
   };
   float masses[] = { 5.0, 3.0, 1.0 };
 
-  bnd_body b = bnd_add_compound_body_dynamic(world, shapes, masses, 2);
-  *b.position = (bnd_v3){ 0, 10, 0 };
-  *b.angular_momentum = (bnd_v3){ 0, 0, 36 };
+  bnd_body_handle b = bnd_add_compound_body_dynamic(world, shapes, masses, 2);
+  bnd_set_position(world, b, (bnd_v3){ 0, 10, 0 });
+  bnd_set_angular_momentum(world, b, (bnd_v3){ 0, 0, 36 });
 
   shapes[0] = (bnd_body_shape){ .type = BND_CYLINDER,
     .cylinder = { .radius = 0.3, .height = 3 },
@@ -51,8 +51,8 @@ void scenario_setup_scene(bnd_world *world) {
   masses[2] = 5;
 
   b = bnd_add_compound_body_dynamic(world, shapes, masses, 3);
-  *b.position = (bnd_v3){ 15, 10, 0 };
-  *b.angular_momentum = (bnd_v3){ 0, 50, 0 };
+  bnd_set_position(world, b, (bnd_v3){ 15, 10, 0 });
+  bnd_set_angular_momentum(world, b, (bnd_v3){ 0, 50, 0 });
 }
 
 void scenario_handle_input(bnd_world *world, Camera *camera) {
@@ -60,11 +60,11 @@ void scenario_handle_input(bnd_world *world, Camera *camera) {
   if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
     bnd_v3 direction = bnd_v3_normalize(bnd_v3_sub(camera->target, camera->position));
 
-    bnd_body ball = bnd_add_sphere_dynamic(world, 3, 0.7);
-    *ball.position = bnd_v3_add(camera->position, direction);
+    bnd_body_handle ball = bnd_add_sphere_dynamic(world, 3, 0.7);
+    bnd_set_position(world, ball, bnd_v3_add(camera->position, direction));
 
-    bnd_apply_impulse(world, ball.handle, bnd_v3_scale(direction, 70));
-    bnd_awaken_body(world, ball.handle);
+    bnd_apply_impulse(world, ball, bnd_v3_scale(direction, 70));
+    bnd_awaken_body(world, ball);
   }
 }
 

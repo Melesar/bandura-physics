@@ -31,25 +31,25 @@ void scenario_initialize(bnd_world *world) {
 void scenario_setup_scene(bnd_world *world) {
   bnd_add_plane(world, bnd_v3_zero(), bnd_v3_up());
 
-  bnd_body b;
+  bnd_body_handle b;
   if (imported_meshes[0].success) {
     b = bnd_add_mesh_dynamic(world, 5, imported_meshes[0].mesh);
-    *b.position = vec3(1.5, 7, 0);
+    bnd_set_position(world, b, vec3(1.5, 7, 0));
   }
 
   if (imported_meshes[1].success) {
     b = bnd_add_mesh_dynamic(world, 5, imported_meshes[1].mesh);
-    *b.position = vec3(-1, 7, 0);
+    bnd_set_position(world, b, vec3(-1, 7, 0));
   }
 
   if (imported_meshes[2].success) {
     b = bnd_add_mesh_dynamic(world, 5, imported_meshes[2].mesh);
-    *b.position = vec3(3, 7, 0);
+    bnd_set_position(world, b, vec3(3, 7, 0));
   }
 
   if (imported_meshes[3].success) {
     b = bnd_add_mesh_static(world, imported_meshes[3].mesh);
-    *b.position = vec3(-5, 7, 0);
+    bnd_set_position(world, b, vec3(-5, 7, 0));
   }
 }
 

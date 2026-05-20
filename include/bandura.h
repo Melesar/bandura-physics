@@ -142,15 +142,6 @@ typedef struct {
 } bnd_body_handle;
 
 typedef struct {
-  bnd_v3 *position;
-  bnd_quat *rotation;
-  bnd_v3 *velocity;
-  bnd_v3 *angular_momentum;
-
-  bnd_body_handle handle;
-} bnd_body;
-
-typedef struct {
   bnd_v3 point;
   bnd_v3 normal;
   float distance;
@@ -245,16 +236,16 @@ BNDAPI bnd_world *bnd_init_with_allocator(bnd_config config, bnd_allocator alloc
 BNDAPI void bnd_register_error_callback(bnd_error_callback callback);
 
 BNDAPI void bnd_add_plane(bnd_world *world, bnd_v3 point, bnd_v3 normal);
-BNDAPI bnd_body bnd_add_box_dynamic(bnd_world *world, float mass, bnd_v3 size);
-BNDAPI bnd_body bnd_add_box_static(bnd_world *world, bnd_v3 size);
-BNDAPI bnd_body bnd_add_sphere_dynamic(bnd_world *world, float mass, float radius);
-BNDAPI bnd_body bnd_add_sphere_static(bnd_world *world, float radius);
-BNDAPI bnd_body bnd_add_cylinder_static(bnd_world *world, float radius, float height);
-BNDAPI bnd_body bnd_add_cylinder_dynamic(bnd_world *world, float mass, float radius, float height);
-BNDAPI bnd_body bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, count_t shapes_count);
-BNDAPI bnd_body bnd_add_compound_body_dynamic(bnd_world *world, bnd_body_shape *shapes, float *masses, count_t shapes_count);
-BNDAPI bnd_body bnd_add_mesh_dynamic(bnd_world *world, float mass, bnd_mesh_handle mesh);
-BNDAPI bnd_body bnd_add_mesh_static(bnd_world *world, bnd_mesh_handle mesh);
+BNDAPI bnd_body_handle bnd_add_box_dynamic(bnd_world *world, float mass, bnd_v3 size);
+BNDAPI bnd_body_handle bnd_add_box_static(bnd_world *world, bnd_v3 size);
+BNDAPI bnd_body_handle bnd_add_sphere_dynamic(bnd_world *world, float mass, float radius);
+BNDAPI bnd_body_handle bnd_add_sphere_static(bnd_world *world, float radius);
+BNDAPI bnd_body_handle bnd_add_cylinder_static(bnd_world *world, float radius, float height);
+BNDAPI bnd_body_handle bnd_add_cylinder_dynamic(bnd_world *world, float mass, float radius, float height);
+BNDAPI bnd_body_handle bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, count_t shapes_count);
+BNDAPI bnd_body_handle bnd_add_compound_body_dynamic(bnd_world *world, bnd_body_shape *shapes, float *masses, count_t shapes_count);
+BNDAPI bnd_body_handle bnd_add_mesh_dynamic(bnd_world *world, float mass, bnd_mesh_handle mesh);
+BNDAPI bnd_body_handle bnd_add_mesh_static(bnd_world *world, bnd_mesh_handle mesh);
 
 BNDAPI void bnd_remove_body(bnd_world *world, bnd_body_handle handle);
 
@@ -284,10 +275,12 @@ BNDAPI bnd_aabb bnd_get_bounding_box(const bnd_world *world, bnd_body_handle);
 BNDAPI bnd_v3 bnd_get_velocity(const bnd_world *world, bnd_body_handle handle);
 BNDAPI bnd_v3 bnd_get_angular_velocity(const bnd_world *world, bnd_body_handle handle);
 BNDAPI bnd_v3 bnd_get_angular_momentum(const bnd_world *world, bnd_body_handle handle);
-BNDAPI bnd_m3 bnd_get_inertia(const bnd_world *world, bnd_body_handle handle);
-BNDAPI bnd_m3 bnd_get_base_inertia(const bnd_world *world, bnd_body_handle handle);
-BNDAPI float bnd_get_motion_avg(const bnd_world *world, bnd_body_handle handle);
 BNDAPI count_t bnd_get_contacts(const bnd_world *world, bnd_contact *contacts, count_t max_contacts);
+
+BNDAPI void bnd_set_position(bnd_world *world, bnd_body_handle handle, bnd_v3 position);
+BNDAPI void bnd_set_rotation(bnd_world *world, bnd_body_handle handle, bnd_quat rotation);
+BNDAPI void bnd_set_velocity(bnd_world *world, bnd_body_handle handle, bnd_v3 velocity);
+BNDAPI void bnd_set_angular_momentum(bnd_world *world, bnd_body_handle handle, bnd_v3 angular_momentum);
 
 BNDAPI void bnd_event_subscribe(bnd_world *world, bnd_body_handle body, bnd_event_type type);
 BNDAPI void bnd_event_unsubscribe(bnd_world *world, bnd_body_handle body, bnd_event_type type);

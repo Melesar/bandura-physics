@@ -96,10 +96,10 @@ int main() {
   bnd_add_plane(world, bnd_v3_zero(), bnd_v3_up());
 
   // Add a sphere with mass 5 and radius 1.
-  bnd_body sphere = bnd_add_sphere_dynamic(world, 5, 1);
+  bnd_body_handle sphere = bnd_add_sphere_dynamic(world, 5, 1);
 
   // Lift it up above the ground.
-  *sphere.position = vec3(0, 5, 0);
+  bnd_set_position(world, sphere, (bnd_v3) {0, 5, 0});
 
   // Simulate for 1 second.
   for (int i = 0; i < 120; ++i) {
@@ -116,17 +116,15 @@ int main() {
 Rigidbodies in Bandura can be of two types: **dynamic** and **static**. As the naming suggests, the former can move and respond to collisions, while the latter serve as static environment. Primitive shapes expose both variants, for example:
 
 ```c
-bnd_body bnd_add_box_dynamic(bnd_world *world, float mass, bnd_v3 size);
-bnd_body bnd_add_box_static(bnd_world *world, bnd_v3 size);
-bnd_body bnd_add_sphere_dynamic(bnd_world *world, float mass, float radius);
-bnd_body bnd_add_sphere_static(bnd_world *world, float radius);
+bnd_body_handle bnd_add_box_dynamic(bnd_world *world, float mass, bnd_v3 size);
+bnd_body_handle bnd_add_box_static(bnd_world *world, bnd_v3 size);
+bnd_body_handle bnd_add_sphere_dynamic(bnd_world *world, float mass, float radius);
+bnd_body_handle bnd_add_sphere_static(bnd_world *world, float radius);
 ```
 
 Note that the static version doesn't require to specify mass, since static objects are treated as having _infinite_ mass.
 
-The returned value `bnd_body` can be used to set initial state of the object: position and rotation, as well as velocity and angular momentum in case of dynamic bodies.
-
-> NOTE: `bnd_body` is meant to be used _immediately_ after body creation and not be stored anywhere. The pointers it provides may be invalidated during the `bnd_simulate` call.
+The returned value `bnd_body_handle` is a reference to a created body. Use it to interact with it, update or read its data.
 
 ```c
 #include "bandura.h"
@@ -136,14 +134,12 @@ int main() {
   // ...
 
   // Add a static box and set it's position. The rotation will be initialized to identity.
-  bnd_body static_box = bnd_add_box_static(world, vec3(10, 2, 3));
-  *static_box.position = vec3(0, 1, 0);
+  bnd_body_handle static_box = bnd_add_box_static(world, (bnd_v3){10, 2, 3});
+  bnd_set_position(world, static_box, (bnd_v3){0, 1, 0});
 
-  bnd_body dynamic_sphere = bnd_add_sphere_dynamic(world, 5, 1);
-  *dynamic_sphere.position = vec3(5, 10, 5);
-
-  // Add an upward velocity to the dynamic sphere. For the static box this pointer will be NULL.
-  *dynamic_sphere.velocity = vec3(0, 5, 0);
+  bnd_body_handle dynamic_sphere = bnd_add_sphere_dynamic(world, 5, 1);
+  bnd_set_position(world, dynamic_sphere, (bnd_v3){5, 10, 5});
+  bnd_set_velocity(world, dynamic_sphere, (bnd_v3){0, 5, 0});
 }
 ```
 
@@ -176,15 +172,13 @@ Bandura also supports combining multiple primitive shapes into a single body. Th
   float masses[] = { 3, 5, 5 }
 
   // As a last parameter the function takes the number of shapes in the arrays.
-  bnd_body dumbell = bnd_add_compound_body_dynamic(world, shapes, masses, 3);
-  *dumbell.position = vec3(15, 10, 0);
+  bnd_body_handle dumbell = bnd_add_compound_body_dynamic(world, shapes, masses, 3);
+  bnd_set_position(world, dumbell, (bnd_v3){15, 10, 0});
 ```
 
 ### Referencing bodies
 
-Apart from the initial body state, `bnd_body` also provides `bnd_body_handle handle` field. This value should be used to access the body across its entire lifetime and can be stored after the body creation. 
-
-`bnd_body_handle` can be used to:
+Using `bnd_body_handle` from spawning functions you can:
 
 1) **Apply forces, torques and impulses to the body**
 
@@ -196,22 +190,26 @@ bnd_body_handle sphere_handle;
 int main() {
   // ...
  
-  bnd_body sphere = bnd_add_sphere_dynamic(world, 5, 1);
-
-  // Store the handle in the global variable.
-  sphere_handle = sphere.handle;
+  sphere_handle = bnd_add_sphere_dynamic(world, 5, 1);
 
   // ... 
 
   // Apply an upward impulse to the sphere using the previously stored handle.
-  bnd_apply_impulse(world, sphere_handle, vec3(0, 10, 0));
+  bnd_apply_impulse(world, sphere_handle, (bnd_v3){0, 10, 0});
 }
 ```
-2) **Querying body's properties**
+2) **Querying and updating body's properties**
 
 ```c
 bnd_v3 sphere_position = bnd_get_position(world, sphere_handle);
 bnd_v3 sphere_velocity = bnd_get_velocity(world, sphere_handle);
+
+bnd_v3 position_delta = bnd_scale(sphere_velocity, delta_time);
+bnd_v3 new_position = bnd_add(sphere_position, position_delta);
+
+// This is only to showcase the engine's capability.
+// Setting position and velocity of the bodies directly may lead to unrealistic behaviour. Use with caution.
+bnd_set_position(world, sphere_handle, new_position);
 ```
 
 3) **Removing the body**
@@ -229,73 +227,73 @@ After the body is removed, its corresponding handle is invalidated. You can alwa
 Bandura supports imposing constraints on the bodies, so that they cannot move further apart than some specified distance. This can be used, for example, to create ragdolls:
 
 ```c
-  bnd_body head = bnd_add_sphere_dynamic(world, 3, 0.4);
-  *head.position = vec3(0, 5, 0);
+  bnd_body_handle head = bnd_add_sphere_dynamic(world, 3, 0.4);
+  bnd_set_position(world, head, (bnd_v3){0, 5, 0});
 
-  bnd_body torso = bnd_add_cylinder_dynamic(world, 25, 0.3, 1.0);
-  *torso.position = vec3(0, 4, 0);
+  bnd_body_handle torso = bnd_add_cylinder_dynamic(world, 25, 0.3, 1.0);
+  bnd_set_position(world, torso, (bnd_v3){0, 4, 0});
 
-  bnd_body pelvis = bnd_add_cylinder_dynamic(world, 20, 0.25, 1.0);
-  *pelvis.position = vec3(0, 3, 0);
+  bnd_body_handle pelvis = bnd_add_cylinder_dynamic(world, 20, 0.25, 1.0);
+  bnd_set_position(world, pelvis, (bnd_v3){0, 3, 0});
 
-  bnd_body left_upper_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2);
-  *left_upper_leg.position = vec3(0.23, 1.8, -0.2);
-  *left_upper_leg.rotation = (bnd_quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) };
+  bnd_body_handle left_upper_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2);
+  bnd_set_position(world, left_upper_leg, (bnd_v3){0.23, 1.8, -0.2});
+  bnd_set_rotation(world, left_upper_leg, (bnd_quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) });
 
-  bnd_body left_lower_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2);
-  *left_lower_leg.position = vec3(0.23, 0.6, -0.2);
-  *left_lower_leg.rotation = (bnd_quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) };
+  bnd_body_handle left_lower_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2);
+  bnd_set_position(world, left_lower_leg, (bnd_v3){0.23, 0.6, -0.2});
+  bnd_set_rotation(world, left_lower_leg, (bnd_quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) });
 
-  bnd_body right_upper_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2);
-  *right_upper_leg.position = vec3(-0.23, 1.8, 0);
+  bnd_body_handle right_upper_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2);
+  bnd_set_position(world, right_upper_leg, (bnd_v3){-0.23, 1.8, 0});
 
-  bnd_body right_lower_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2);
-  *right_lower_leg.position = vec3(-0.23, 0.6, 0);
+  bnd_body_handle right_lower_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2);
+  bnd_set_position(world, right_lower_leg, (bnd_v3){-0.23, 0.6, 0});
 
-  bnd_body left_upper_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2);
-  *left_upper_arm.position = vec3(0.4, 3.9, -0.4);
-  *left_upper_arm.rotation = (bnd_quat) { sinf(PI / 10), 0, 0, cosf(PI / 10) };
+  bnd_body_handle left_upper_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2);
+  bnd_set_position(world, left_upper_arm, (bnd_v3){0.4, 3.9, -0.4});
+  bnd_set_rotation(world, left_upper_arm, (bnd_quat) { sinf(PI / 10), 0, 0, cosf(PI / 10) });
 
-  bnd_body left_lower_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2);
-  *left_lower_arm.position = vec3(0.43, 3.37, -1.45);
-  *left_lower_arm.rotation = (bnd_quat) { sinf(PI / 4), 0, 0, cosf(PI / 12) };
+  bnd_body_handle left_lower_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2);
+  bnd_set_position(world, left_lower_arm, (bnd_v3){0.43, 3.37, -1.45});
+  bnd_set_rotation(world, left_lower_arm, (bnd_quat) { sinf(PI / 4), 0, 0, cosf(PI / 12) });
 
-  bnd_body right_upper_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2);
-  *right_upper_arm.position = vec3(-0.43, 3.8, 0);
+  bnd_body_handle right_upper_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2);
+  bnd_set_position(world, right_upper_arm, (bnd_v3){-0.43, 3.8, 0});
 
-  bnd_body right_lower_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2);
-  *right_lower_arm.position = vec3(-0.43, 2.63, -0.3);
-  *right_lower_arm.rotation = (bnd_quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) };
+  bnd_body_handle right_lower_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2);
+  bnd_set_position(world, right_lower_arm, (bnd_v3){-0.43, 2.63, -0.3});
+  bnd_set_rotation(world, right_lower_arm, (bnd_quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) });
 
   const float joint_margin = 0.1;
 
-  bnd_add_joint(world, head.handle, torso.handle, vec3(0, -0.4, 0), vec3(0, 0.5, 0), joint_margin);
-  bnd_add_joint(world, torso.handle, pelvis.handle, vec3(0, -0.5, 0), vec3(0, 0.5, 0), joint_margin);
+  bnd_add_joint(world, head, torso, (bnd_v3){0, -0.4, 0}, (bnd_v3){0, 0.5, 0}, joint_margin);
+  bnd_add_joint(world, torso, pelvis, (bnd_v3){0, -0.5, 0}, (bnd_v3){0, 0.5, 0}, joint_margin);
 
-  bnd_add_joint(world, torso.handle, left_upper_arm.handle, vec3(0.3, 0.45, 0), vec3(-0.1, 0.6, 0), joint_margin);
-  bnd_add_joint(world, left_upper_arm.handle, left_lower_arm.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0), joint_margin);
+  bnd_add_joint(world, torso, left_upper_arm, (bnd_v3){0.3, 0.45, 0}, (bnd_v3){-0.1, 0.6, 0}, joint_margin);
+  bnd_add_joint(world, left_upper_arm, left_lower_arm, (bnd_v3){0, -0.6, 0}, (bnd_v3){0, 0.6, 0}, joint_margin);
 
-  bnd_add_joint(world, torso.handle, right_upper_arm.handle, vec3(-0.3, 0.45, 0), vec3(0.1, 0.6, 0), joint_margin);
-  bnd_add_joint(world, right_upper_arm.handle, right_lower_arm.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0), joint_margin);
+  bnd_add_joint(world, torso, right_upper_arm, (bnd_v3){-0.3, 0.45, 0}, (bnd_v3){0.1, 0.6, 0}, joint_margin);
+  bnd_add_joint(world, right_upper_arm, right_lower_arm, (bnd_v3){0, -0.6, 0}, (bnd_v3){0, 0.6, 0}, joint_margin);
 
-  bnd_add_joint(world, pelvis.handle, left_upper_leg.handle, vec3(0.23, -0.5, 0), vec3(0, 0.6, 0), joint_margin);
-  bnd_add_joint(world, left_upper_leg.handle, left_lower_leg.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0), joint_margin);
+  bnd_add_joint(world, pelvis, left_upper_leg, (bnd_v3){0.23, -0.5, 0}, (bnd_v3){0, 0.6, 0}, joint_margin);
+  bnd_add_joint(world, left_upper_leg, left_lower_leg, (bnd_v3){0, -0.6, 0}, (bnd_v3){0, 0.6, 0}, joint_margin);
 
-  bnd_add_joint(world, pelvis.handle, right_upper_leg.handle, vec3(-0.23, -0.5, 0), vec3(0, 0.6, 0), joint_margin);
-  bnd_add_joint(world, right_upper_leg.handle, right_lower_leg.handle, vec3(0, -0.6, 0), vec3(0, 0.6, 0), joint_margin);
+  bnd_add_joint(world, pelvis, right_upper_leg, (bnd_v3){-0.23, -0.5, 0}, (bnd_v3){0, 0.6, 0}, joint_margin);
+  bnd_add_joint(world, right_upper_leg, right_lower_leg, (bnd_v3){0, -0.6, 0}, (bnd_v3){0, 0.6, 0}, joint_margin);
 
   bnd_body_handle ragdoll[11];
-  ragdoll[0] = head.handle;
-  ragdoll[1] = torso.handle;
-  ragdoll[2] = pelvis.handle;
-  ragdoll[3] = left_upper_arm.handle;
-  ragdoll[4] = left_lower_arm.handle;
-  ragdoll[5] = right_upper_arm.handle;
-  ragdoll[6] = right_lower_arm.handle;
-  ragdoll[7] = left_upper_leg.handle;
-  ragdoll[8] = left_lower_leg.handle;
-  ragdoll[9] = right_upper_leg.handle;
-  ragdoll[10] = right_lower_leg.handle;
+  ragdoll[0] = head;
+  ragdoll[1] = torso;
+  ragdoll[2] = pelvis;
+  ragdoll[3] = left_upper_arm;
+  ragdoll[4] = left_lower_arm;
+  ragdoll[5] = right_upper_arm;
+  ragdoll[6] = right_lower_arm;
+  ragdoll[7] = left_upper_leg;
+  ragdoll[8] = left_lower_leg;
+  ragdoll[9] = right_upper_leg;
+  ragdoll[10] = right_lower_leg;
 ```
 
 ### Using meshes as body shapes
@@ -352,7 +350,7 @@ bnd_error bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, bnd_mesh_
 
 ```c
 // `mesh_handle` is received from `bnd_import_mesh`
-bnd_body mesh_body = bnd_add_mesh_dynamic(world, 5, mesh_handle);
+bnd_body_handle mesh_body = bnd_add_mesh_dynamic(world, 5, mesh_handle);
 // At this point it's just a regular body. You can change it's position or rotation, store its handle, apply forces, etc.
 ```
 
@@ -382,8 +380,8 @@ to the origin. They are not guaranteed to be the closest.
 It's possible to subscribe to collision events for the particular body and react to them in your code:
 
 ```c
-bnd_body b = bnd_add_sphere_dynamic(world, 5, 0.5);
-*b.position = vec3(0, 5, 0);
+bnd_body_handle b = bnd_add_sphere_dynamic(world, 5, 0.5);
+bnd_set_position(world, b, (bnd_v3){0, 5, 0});
 
 // Makes the engine report collision events for this body during the simulation.
 bnd_event_subscribe(world, b.handle, BND_EVENT_COLLISION);
@@ -514,8 +512,8 @@ int main() {
     return 1;
   }
 
-  bnd_body sphere = bnd_add_sphere_dynamic(world, 4, 2);
-  if (!bnd_handle_valid(world, sphere.handle)) {
+  bnd_body_handle sphere = bnd_add_sphere_dynamic(world, 4, 2);
+  if (!bnd_handle_valid(world, sphere)) {
     // With custom allocator, body addition may fail if you provide insufficient memory capacity in the config
     // and don't specify the realloc function.
   }

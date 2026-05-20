@@ -51,35 +51,34 @@ void scenario_initialize(bnd_world *world) {
 void scenario_setup_scene(bnd_world *world) {
   bnd_add_plane(world, bnd_v3_zero(), bnd_v3_up());
 
-  bnd_body big_box = bnd_add_box_static(world, (bnd_v3){ 10, 3, 1 });
-  *big_box.position = (bnd_v3){ 0, 1.5, -5 };
+  bnd_body_handle big_box = bnd_add_box_static(world, (bnd_v3){ 10, 3, 1 });
+  bnd_set_position(world, big_box, (bnd_v3){ 0, 1.5, -5 });
 
   big_box = bnd_add_box_static(world, (bnd_v3){ 10, 3, 1 });
-  *big_box.position = (bnd_v3){ 0, 1.5, 5 };
+  bnd_set_position(world, big_box, (bnd_v3){ 0, 1.5, 5 });
 
   big_box = bnd_add_box_static(world, (bnd_v3){ 1, 3, 10 });
-  *big_box.position = (bnd_v3){ -7, 1.5, 0 };
+  bnd_set_position(world, big_box, (bnd_v3){ -7, 1.5, 0 });
 
   big_box = bnd_add_cylinder_static(world, 1, 3);
-  *big_box.position = (bnd_v3){ 0, 1.5, 0 };
+  bnd_set_position(world, big_box, (bnd_v3){ 0, 1.5, 0 });
 }
 
 void scenario_simulate(bnd_world *world, float dt) { bnd_simulate(world, dt); }
 
 void scenario_handle_input(bnd_world *world, Camera *cam) {
   if (IsKeyPressed(KEY_X)) {
-    bnd_body big_box = bnd_add_box_dynamic(world, 10, (bnd_v3){ 1.3, 1.3, 1.3 });
-    *big_box.position = (bnd_v3){ 0, 7, 0 };
-    *big_box.angular_momentum = (bnd_v3){ 1, 1, 1 };
+    bnd_body_handle big_box = bnd_add_box_dynamic(world, 10, (bnd_v3){ 1.3, 1.3, 1.3 });
+    bnd_set_position(world, big_box, (bnd_v3){ 0, 7, 0 });
+    bnd_set_angular_momentum(world, big_box, (bnd_v3){ 1, 1, 1 });
   }
 
   if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
     bnd_v3 direction = Vector3Normalize(Vector3Subtract(cam->target, cam->position));
 
-    bnd_body ball = bnd_add_sphere_dynamic(world, 3, 0.7);
-    *ball.position = bnd_v3_add(cam->position, direction);
-
-    bnd_apply_impulse(world, ball.handle, bnd_v3_scale(direction, 70));
+    bnd_body_handle ball = bnd_add_sphere_dynamic(world, 3, 0.7);
+    bnd_set_position(world, ball, bnd_v3_add(cam->position, direction));
+    bnd_apply_impulse(world, ball, bnd_v3_scale(direction, 70));
   }
 
   if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
