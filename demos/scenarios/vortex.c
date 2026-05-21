@@ -92,26 +92,26 @@ static bnd_v3 random_upward_cone_direction(float cone_angle) {
 static void collect_grounded_bodies(const bnd_world *world) {
   memset(grounded_bodies_lookup, 0, GROUNDED_BODIES_BUFFER_SIZE * sizeof(uint64_t));
 
-  count_t contacts_count = bnd_get_contacts(world, contacts_buffer, MAX_CONTACTS);
-  for (count_t i = 0; i < contacts_count; ++i) {
+  uint32_t contacts_count = bnd_get_contacts(world, contacts_buffer, MAX_CONTACTS);
+  for (uint32_t i = 0; i < contacts_count; ++i) {
     bnd_contact contact = contacts_buffer[i];
 
     // Looking for collisions with the ground, which is static
     if (contact.body_b.type != BND_BODY_STATIC)
       continue;
 
-    count_t n;
+    uint32_t n;
     bnd_body_shape *shapes = bnd_get_shapes(world, contact.body_b, &n);
 
     // The ground is a plane.
     if (shapes[0].type != BND_PLANE)
       continue;
 
-    count_t grounded_body_index = contact.body_a.index;
+    uint32_t grounded_body_index = contact.body_a.index;
 
     assert(grounded_body_index < GROUNDED_BODIES_BUFFER_SIZE * 64);
 
-    count_t element_index = grounded_body_index / 64;
+    uint32_t element_index = grounded_body_index / 64;
     uint64_t bit_mask = (uint64_t)1 << (grounded_body_index % 64);
 
     grounded_bodies_lookup[element_index] |= bit_mask;
@@ -119,7 +119,7 @@ static void collect_grounded_bodies(const bnd_world *world) {
 }
 
 static bool is_grounded(bnd_body_handle handle) {
-  count_t element_index = handle.index / 64;
+  uint32_t element_index = handle.index / 64;
   uint64_t bit_mask = (uint64_t)1 << (handle.index % 64);
 
   return (grounded_bodies_lookup[element_index] & bit_mask) != 0;
@@ -269,7 +269,7 @@ void scenario_simulate(bnd_world *world, float dt) {
 
     bnd_v3 position = bnd_get_position(world, enumerator.handle);
 
-    for (count_t i = 0; i < VORTEX_COUNT; ++i) {
+    for (uint32_t i = 0; i < VORTEX_COUNT; ++i) {
       vortex v = vorticies[i];
       float pull_force = force_falloff(v, position);
       bnd_v3 offset = bnd_v3_sub(v.position, position);
@@ -291,7 +291,7 @@ void scenario_draw_scene(bnd_world *world) {
   Color vortex_fill_color = (Color){ 0x7d, 0xe3, 0xff, 0x90 };
   Color vortex_ring_color = (Color){ 0x7d, 0xe3, 0xff, 0xff };
 
-  for (count_t i = 0; i < VORTEX_COUNT; ++i) {
+  for (uint32_t i = 0; i < VORTEX_COUNT; ++i) {
     vortex v = vorticies[i];
     bnd_v3 center = v.position;
     center.y = 0.04f;

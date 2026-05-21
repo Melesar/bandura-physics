@@ -67,7 +67,7 @@ Material materials[20];
 Mesh meshes[20];
 render_mesh render_meshes[20];
 
-count_t render_mesh_index = 0;
+uint32_t render_mesh_index = 0;
 bool edit_mode = false;
 bool simulation_running = true;
 bool step_forward = false;
@@ -192,7 +192,7 @@ static void draw_physics_bodies_typed(bnd_body_type type) {
     bnd_v3 position = bnd_get_position(world, enumerator.handle);
     bnd_quat rotation = bnd_get_rotation(world, enumerator.handle);
 
-    count_t shapes_count;
+    uint32_t shapes_count;
     bnd_body_shape *shapes = bnd_get_shapes(world, enumerator.handle, &shapes_count);
 
     Matrix scale;
@@ -200,7 +200,7 @@ static void draw_physics_bodies_typed(bnd_body_type type) {
         MatrixMultiply(QuaternionToMatrix(rotation), MatrixTranslate(position.x, position.y, position.z));
     Material material = materials[enumerator.handle.index % 20];
 
-    for (count_t k = 0; k < shapes_count; ++k) {
+    for (uint32_t k = 0; k < shapes_count; ++k) {
       bnd_body_shape shape = shapes[k];
       Matrix shape_transform = MatrixMultiply(QuaternionToMatrix(shape.rotation),
           MatrixTranslate(shape.offset.x, shape.offset.y, shape.offset.z));
@@ -223,7 +223,7 @@ static void draw_physics_bodies_typed(bnd_body_type type) {
           break;
 
         case BND_MESH:
-          for (count_t i = 0; i < render_mesh_index; ++i) {
+          for (uint32_t i = 0; i < render_mesh_index; ++i) {
             render_mesh rm = render_meshes[i];
             if (rm.handle == shape.mesh) {
               DrawMesh(rm.mesh, material, full_transform);
@@ -244,7 +244,7 @@ void register_mesh_for_rendering(bnd_mesh_handle handle, Mesh mesh) {
     return;
   }
 
-  for (count_t i = 0; i < render_mesh_index; ++i) {
+  for (uint32_t i = 0; i < render_mesh_index; ++i) {
     if (render_meshes[i].handle == handle) {
       return;
     }

@@ -33,6 +33,8 @@
     return (bnd_error) { BND_ERROR_OUT_OF_MEMORY, "Allocator.realloc failed to re-allocate buffer" }; \
   }
 
+typedef uint32_t count_t;
+
 typedef struct {
   bnd_v3 point;
   bnd_v3 normal;

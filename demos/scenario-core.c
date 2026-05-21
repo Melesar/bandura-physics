@@ -76,7 +76,7 @@ void draw_bounding_boxes(const bnd_world *world) {
   draw_bounding_boxes_typed(world, BND_BODY_STATIC, GREEN);
 }
 
-static bnd_v3 joint_attachment_point(const bnd_world *world, bnd_joint j, count_t index) {
+static bnd_v3 joint_attachment_point(const bnd_world *world, bnd_joint j, uint32_t index) {
   bnd_v3 position = bnd_get_position(world, j.bodies[index]);
   bnd_quat rotation = bnd_get_rotation(world, j.bodies[index]);
 
@@ -91,16 +91,16 @@ void physics_draw_collisions(const bnd_world *world) {
 #define max_count 50
 
   bnd_contact contacts[max_count];
-  count_t count = bnd_get_contacts(world, contacts, max_count);
+  uint32_t count = bnd_get_contacts(world, contacts, max_count);
 
-  for (count_t i = 0; i < count; ++i) {
+  for (uint32_t i = 0; i < count; ++i) {
     bnd_contact contact = contacts[i];
 
     draw_arrow(contact.point, Vector3Scale(contact.normal, 0.2), RED);
   }
 
   const bnd_joint *joints = bnd_get_joints(world, &count);
-  for (count_t i = 0; i < count; ++i) {
+  for (uint32_t i = 0; i < count; ++i) {
     bnd_v3 p1 = joint_attachment_point(world, joints[i], 0);
     bnd_v3 p2 = joint_attachment_point(world, joints[i], 1);
 

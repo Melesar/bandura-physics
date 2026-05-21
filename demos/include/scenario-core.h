@@ -95,7 +95,7 @@ void ui_end_area();
 void ui_label(char *label);
 void ui_label_bool(const char *lable, bool value);
 void ui_label_float(char *label, float value);
-void ui_label_int(const char *label, count_t value);
+void ui_label_int(const char *label, uint32_t value);
 void ui_label_v3(const char *label, bnd_v3 value);
 void ui_label_stat(const char *label, float value);
 void ui_label_matrix(const char *label, bnd_m3 value);
@@ -107,7 +107,7 @@ void ui_value_float(const char *label, float *value, float min_value, float max_
 bool ui_button(const char *text);
 
 void ui_checkbox(const char *label, bool *is_checked);
-bool ui_dropdown(const char *label, char **values, count_t values_count, count_t *selected, bool *active);
+bool ui_dropdown(const char *label, char **values, uint32_t values_count, uint32_t *selected, bool *active);
 
 Clay_Color ui_text_color(int control);
 

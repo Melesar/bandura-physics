@@ -369,7 +369,7 @@ void ui_label_float(char *label, float value) {
 
 void ui_label_string(char *label, char *value) { ui_value_label(label, clay_from_string(value)); }
 
-void ui_label_int(const char *label, count_t value) {
+void ui_label_int(const char *label, uint32_t value) {
   char *v = arena_alloc(80);
   snprintf(v, 80, "%d", value);
   Clay_String vs = {.chars = v, .length = strlen(v), .isStaticallyAllocated = false};
@@ -386,9 +386,9 @@ void ui_label_matrix(const char *label, bnd_m3 value) {
     CLAY(CLAY_SID(clay_string_concat(label, "matrix")),
          {.layout = {.layoutDirection = CLAY_TOP_TO_BOTTOM, .padding = CLAY_PADDING_ALL(3), .childGap = 5}}) {
       float *rows[] = {&value.m0[0], &value.m1[0], &value.m2[0]};
-      for (count_t i = 0; i < 3; ++i) {
+      for (uint32_t i = 0; i < 3; ++i) {
         CLAY(CLAY_SIDI(clay_string_concat(label, "row"), i + 1), {.layout = {.childGap = 5}}) {
-          for (count_t j = 0; j < 3; ++j) {
+          for (uint32_t j = 0; j < 3; ++j) {
             char *s = arena_alloc(32);
             snprintf(s, 32, "%.2f", rows[i][j]);
 
@@ -432,7 +432,7 @@ void ui_checkbox(const char *label, bool *is_checked) {
   }
 }
 
-bool ui_dropdown(const char *label, char **values, count_t values_count, count_t *selected, bool *active) {
+bool ui_dropdown(const char *label, char **values, uint32_t values_count, uint32_t *selected, bool *active) {
   bool result = false;
   CLAY(CLAY_SID(clay_string_concat(label, "dropdown")), {.layout = {
                                                              .sizing = clay_container_sizing(),
@@ -465,7 +465,7 @@ bool ui_dropdown(const char *label, char **values, count_t values_count, count_t
                            .offset = {.y = 5}},
               .border = {.width = {1, 1, 1, 1, 1}, .color = clay_element_color(DROPDOWNBOX, BORDER, STATE_NORMAL)},
               .layout = {.layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = {.width = CLAY_SIZING_FIT(120, INT_MAX)}}}) {
-          for (count_t i = 0; i < values_count; ++i) {
+          for (uint32_t i = 0; i < values_count; ++i) {
             CLAY(CLAY_SIDI(clay_string_concat(label, "dropdown_item"), i),
                  {.layout = {.childAlignment = {.x = CLAY_ALIGN_X_CENTER}, .sizing = clay_container_sizing()},
                   .backgroundColor = clay_element_color(DROPDOWNBOX, BASE, clay_gui_state())}) {

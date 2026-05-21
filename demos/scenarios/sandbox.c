@@ -20,7 +20,7 @@ bnd_body_handle tracked;
 
 imported_mesh cone_mesh;
 bnd_body_handle projectiles[128];
-count_t active_projectile_count;
+uint32_t active_projectile_count;
 
 static float random_next_float() {
   return (float) GetRandomValue(0, 1024) / 1024;
@@ -92,7 +92,7 @@ void scenario_setup_scene(bnd_world *world) {
   add_ground_tile(world, (bnd_v3){0, 0, sphere_radius}, (bnd_v3){0, 0, 1}, (bnd_v3){2 * sphere_radius, arena_size.y, arena_size.z * 0.5 - sphere_radius});
   add_ground_tile(world, (bnd_v3){0, 0, -sphere_radius}, (bnd_v3){0, 0, -1}, (bnd_v3){2 * sphere_radius, arena_size.y, arena_size.z * 0.5 - sphere_radius});
 
-  for (count_t i = 0; i < 6; i++) {
+  for (uint32_t i = 0; i < 6; i++) {
     bnd_body_handle box = bnd_add_box_dynamic(world, 5, bnd_v3_one());
     bnd_set_position(world, box, (bnd_v3){-sphere_radius - 15, 0.5 + i, sphere_radius + 7});
     bnd_put_to_sleep(world, box);
@@ -106,14 +106,14 @@ void scenario_setup_scene(bnd_world *world) {
   bnd_set_position(world, bnd_add_box_static(world, (bnd_v3){0.25, 3, 5}), (bnd_v3){-3, 1.5, -sphere_radius - 15});
   bnd_set_position(world, bnd_add_box_static(world, (bnd_v3){6, 3, 0.25}), (bnd_v3){0, 1.5, -sphere_radius - 17.5});
 
-  for (count_t i = 0; i < 25; ++i) {
+  for (uint32_t i = 0; i < 25; ++i) {
     bnd_body_handle s = bnd_add_sphere_dynamic(world, 3, 0.5);
     bnd_set_position(world, s, (bnd_v3){GetRandomValue(-2, 2), 2.0 * (i / 5), -sphere_radius - 13.5 + GetRandomValue(1, 4)});
   }
 
   if (cone_mesh.success) {
-    for (count_t i = 0; i < 4; ++i) {
-      for (count_t j = 0; j < 4; ++j) {
+    for (uint32_t i = 0; i < 4; ++i) {
+      for (uint32_t j = 0; j < 4; ++j) {
         bnd_body_handle cone = bnd_add_mesh_dynamic(world, 10, cone_mesh.mesh);
         bnd_set_position(world, cone, (bnd_v3){sphere_radius + 10 + i * 5, 5, j * 5});
       }
@@ -147,9 +147,9 @@ void scenario_simulate(bnd_world *world, float dt) {
       bnd_remove_body(world, projectiles[i]);
 
       bnd_body_handle overlaps[5];
-      count_t overlap_count = bnd_overlap(world, pos, explosion_radius, overlaps, 5);
+      uint32_t overlap_count = bnd_overlap(world, pos, explosion_radius, overlaps, 5);
 
-      for (count_t j = 0; j < overlap_count; ++j) {
+      for (uint32_t j = 0; j < overlap_count; ++j) {
         bnd_v3 body_pos = bnd_get_position(world, overlaps[j]);
         bnd_apply_impulse(world, overlaps[j], bnd_v3_scale(bnd_v3_normalize(bnd_v3_sub(body_pos, pos)), explosion_impulse));
       }

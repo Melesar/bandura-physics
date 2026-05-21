@@ -62,7 +62,7 @@ void scenario_draw_scene(bnd_world *world) {}
 void scenario_build_ui(bnd_world *world) {}
 
 void scenario_teardown() {
-  for (count_t i = 0; i < 4; ++i) {
+  for (uint32_t i = 0; i < 4; ++i) {
     UnloadMesh(rl_meshes[i]);
   }
 }

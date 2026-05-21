@@ -365,9 +365,9 @@ Here is an example of simulating an "explosion" using an overlap:
 
 ```c
   bnd_body_handle overlaps[5];
-  count_t overlap_count = bnd_overlap(world, pos, explosion_radius, overlaps, 5); // Last parameter specifies the maximum overlap count.
+  uint32_t overlap_count = bnd_overlap(world, pos, explosion_radius, overlaps, 5); // Last parameter specifies the maximum overlap count.
 
-  for (count_t i = 0; i < overlap_count; ++i) {
+  for (uint32_t i = 0; i < overlap_count; ++i) {
     bnd_v3 body_pos = bnd_get_position(world, overlaps[i]);
     bnd_apply_impulse(world, overlaps[i], bnd_v3_scale(bnd_v3_normalize(bnd_v3_sub(body_pos, pos)), explosion_impulse));
   }

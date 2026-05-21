@@ -92,7 +92,7 @@ void scenario_handle_input(bnd_world *world, Camera *cam) {
 
     bnd_raycast_hit raycast_hit;
     if (bnd_raycast_closest(world, ray, &raycast_hit)) {
-      count_t num_shapes;
+      uint32_t num_shapes;
       bnd_body_shape *shapes = bnd_get_shapes(world, raycast_hit.body, &num_shapes);
 
       if (num_shapes > 0 && shapes[0].type != BND_PLANE) {
