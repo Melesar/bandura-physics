@@ -32,7 +32,7 @@ static bnd_body_handle shoot_projectile(bnd_world *world) {
     return (bnd_body_handle) { 0 };
   }
 
-  bnd_body_handle projectile = bnd_add_sphere_dynamic(world, 1, 0.5);
+  bnd_body_handle projectile = bnd_add_sphere_dynamic(world, 1, 0.5).value;
   bnd_set_position(world, projectile, (bnd_v3){0, sphere_radius + 1, 0});
 
   float incline = random_next_float() * max_inclination;
@@ -51,7 +51,7 @@ static bnd_body_handle shoot_projectile(bnd_world *world) {
 
 static void add_ground_tile(bnd_world *world, bnd_v3 anchor, bnd_v3 direction, bnd_v3 size) {
   bnd_v3 center = bnd_v3_add(anchor, (bnd_v3){direction.x * size.x * 0.5, direction.y * size.y * 0.5, direction.z * size.z * 0.5});
-  bnd_body_handle b = bnd_add_box_static(world, size);
+  bnd_body_handle b = bnd_add_box_static(world, size).value;
   bnd_set_position(world, b, center);
 }
 
@@ -93,28 +93,28 @@ void scenario_setup_scene(bnd_world *world) {
   add_ground_tile(world, (bnd_v3){0, 0, -sphere_radius}, (bnd_v3){0, 0, -1}, (bnd_v3){2 * sphere_radius, arena_size.y, arena_size.z * 0.5 - sphere_radius});
 
   for (uint32_t i = 0; i < 6; i++) {
-    bnd_body_handle box = bnd_add_box_dynamic(world, 5, bnd_v3_one());
+    bnd_body_handle box = bnd_add_box_dynamic(world, 5, bnd_v3_one()).value;
     bnd_set_position(world, box, (bnd_v3){-sphere_radius - 15, 0.5 + i, sphere_radius + 7});
     bnd_put_to_sleep(world, box);
   }
 
-  bnd_set_position(world, bnd_add_box_static(world, (bnd_v3){0.25, 5, arena_size.z}), (bnd_v3){arena_size.x * 0.5, 2.5, 0});
-  bnd_set_position(world, bnd_add_box_static(world, (bnd_v3){arena_size.x, 5, 0.2}), (bnd_v3){0, 2.5, -arena_size.z * 0.5});
-  bnd_set_position(world, bnd_add_box_static(world, (bnd_v3){0.25, 5, arena_size.z}), (bnd_v3){-arena_size.x * 0.5, 2.5, 0});
+  bnd_set_position(world, bnd_add_box_static(world, (bnd_v3){0.25, 5, arena_size.z}).value, (bnd_v3){arena_size.x * 0.5, 2.5, 0});
+  bnd_set_position(world, bnd_add_box_static(world, (bnd_v3){arena_size.x, 5, 0.2}).value, (bnd_v3){0, 2.5, -arena_size.z * 0.5});
+  bnd_set_position(world, bnd_add_box_static(world, (bnd_v3){0.25, 5, arena_size.z}).value, (bnd_v3){-arena_size.x * 0.5, 2.5, 0});
 
-  bnd_set_position(world, bnd_add_box_static(world, (bnd_v3){0.25, 3, 5}), (bnd_v3){3, 1.5, -sphere_radius - 15});
-  bnd_set_position(world, bnd_add_box_static(world, (bnd_v3){0.25, 3, 5}), (bnd_v3){-3, 1.5, -sphere_radius - 15});
-  bnd_set_position(world, bnd_add_box_static(world, (bnd_v3){6, 3, 0.25}), (bnd_v3){0, 1.5, -sphere_radius - 17.5});
+  bnd_set_position(world, bnd_add_box_static(world, (bnd_v3){0.25, 3, 5}).value, (bnd_v3){3, 1.5, -sphere_radius - 15});
+  bnd_set_position(world, bnd_add_box_static(world, (bnd_v3){0.25, 3, 5}).value, (bnd_v3){-3, 1.5, -sphere_radius - 15});
+  bnd_set_position(world, bnd_add_box_static(world, (bnd_v3){6, 3, 0.25}).value, (bnd_v3){0, 1.5, -sphere_radius - 17.5});
 
   for (uint32_t i = 0; i < 25; ++i) {
-    bnd_body_handle s = bnd_add_sphere_dynamic(world, 3, 0.5);
+    bnd_body_handle s = bnd_add_sphere_dynamic(world, 3, 0.5).value;
     bnd_set_position(world, s, (bnd_v3){GetRandomValue(-2, 2), 2.0 * (i / 5), -sphere_radius - 13.5 + GetRandomValue(1, 4)});
   }
 
   if (cone_mesh.success) {
     for (uint32_t i = 0; i < 4; ++i) {
       for (uint32_t j = 0; j < 4; ++j) {
-        bnd_body_handle cone = bnd_add_mesh_dynamic(world, 10, cone_mesh.mesh);
+        bnd_body_handle cone = bnd_add_mesh_dynamic(world, 10, cone_mesh.mesh).value;
         bnd_set_position(world, cone, (bnd_v3){sphere_radius + 10 + i * 5, 5, j * 5});
       }
     }
@@ -139,9 +139,9 @@ void scenario_simulate(bnd_world *world, float dt) {
 
   for (int i = active_projectile_count - 1; i >= 0; --i) {
     bnd_event_enumerator enumerator;
-    bnd_v3 pos = bnd_get_position(world, projectiles[i]);
+    bnd_v3 pos = bnd_get_position(world, projectiles[i]).value;
 
-    bool any_collisions = bnd_event_enumerate(world, projectiles[i], &enumerator);
+    bool any_collisions = bnd_event_enumerate(world, projectiles[i], &enumerator).value;
     bool fallen = pos.y < -2;
     if (any_collisions || fallen) {
       bnd_remove_body(world, projectiles[i]);
@@ -150,7 +150,7 @@ void scenario_simulate(bnd_world *world, float dt) {
       uint32_t overlap_count = bnd_overlap(world, pos, explosion_radius, overlaps, 5);
 
       for (uint32_t j = 0; j < overlap_count; ++j) {
-        bnd_v3 body_pos = bnd_get_position(world, overlaps[j]);
+        bnd_v3 body_pos = bnd_get_position(world, overlaps[j]).value;
         bnd_apply_impulse(world, overlaps[j], bnd_v3_scale(bnd_v3_normalize(bnd_v3_sub(body_pos, pos)), explosion_impulse));
       }
 

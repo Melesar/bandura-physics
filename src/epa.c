@@ -579,7 +579,6 @@ void epa_get_contact(const collision_detection_context *ctx, const simplex *simp
   PROFILE_FUNCTION
 
   if (!polytope_from_simplex(pt, simplex)) {
-    raise_error_debug(BND_ERROR_INVALID_POLYTOPE, (void *) simplex, "Invalid simplex");
     epa_invalid_contact(simplex->points[0], contact);
     return;
   }

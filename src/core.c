@@ -3,19 +3,25 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define MAX_MESSAGE_SIZE 512
 
 #define INVOKE(invocation) \
   e = invocation; \
   if (e.type != BND_OK) { \
+    bnd_teardown(world); \
     return e; \
   }
 
-const count_t max_body_index = (count_t)~0 >> 9;
+#define ALLOC(buffer, size) \
+  buffer = allocator.malloc(4, size); \
+  if (buffer == NULL) { \
+    bnd_teardown(world); \
+    return (bnd_error){ BND_ERROR_OUT_OF_MEMORY, "Allocator.malloc  to allocate memory" }; \
+  }
 
-char error_message_buffer[MAX_MESSAGE_SIZE];
-bnd_error_callback error_callback = NULL;
+const count_t max_body_index = (count_t)~0 >> 9;
 
 static void *std_malloc(uint64_t alignment, uint64_t size) {
   return malloc(size);
@@ -35,10 +41,6 @@ bnd_allocator bnd_default_allocator() {
     .realloc = std_realloc,
     .free = std_free,
   };
-}
-
-void bnd_register_error_callback(bnd_error_callback callback) {
-  error_callback = callback;
 }
 
 count_t bnd_required_memory(const bnd_config *config) {
@@ -174,15 +176,9 @@ static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allo
   world->allocator = allocator;
   world->config = config;
 
-  bnd_error error = init_commons((common_data *)&world->dynamics, config.memory.dynamics_capacity, allocator);
-  if (error.type != BND_OK) {
-    return error;
-  }
-
-  error = init_commons((common_data *)&world->statics, config.memory.statics_capacity, allocator);
-  if (error.type != BND_OK) {
-    return error;
-  }
+  bnd_error e;
+  INVOKE(init_commons((common_data *)&world->dynamics, config.memory.dynamics_capacity, allocator))
+  INVOKE(init_commons((common_data *)&world->statics, config.memory.statics_capacity, allocator))
 
   const count_t vectors = sizeof(bnd_v3) * (config.memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT);
   const count_t floats = sizeof(float) * (config.memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT);
@@ -190,23 +186,22 @@ static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allo
 
   world->statics.dirty = false;
 
-  ALLOC_BUFFER4(world->dynamics.forces, vectors);
-  ALLOC_BUFFER4(world->dynamics.torques, vectors);
-  ALLOC_BUFFER4(world->dynamics.impulses, vectors);
-  ALLOC_BUFFER4(world->dynamics.angular_impulses, vectors);
-  ALLOC_BUFFER4(world->dynamics.accelerations, vectors);
+  ALLOC(world->dynamics.forces, vectors);
+  ALLOC(world->dynamics.torques, vectors);
+  ALLOC(world->dynamics.impulses, vectors);
+  ALLOC(world->dynamics.angular_impulses, vectors);
+  ALLOC(world->dynamics.accelerations, vectors);
 
-  ALLOC_BUFFER4(world->dynamics.inv_masses, floats);
-  ALLOC_BUFFER4(world->dynamics.velocities, vectors);
-  ALLOC_BUFFER4(world->dynamics.angular_momenta, vectors);
-  ALLOC_BUFFER4(world->dynamics.inv_inertia_tensors, matrices);
-  ALLOC_BUFFER4(world->dynamics.inv_intertias, matrices);
-  ALLOC_BUFFER4(world->dynamics.motion_avgs, floats);
+  ALLOC(world->dynamics.inv_masses, floats);
+  ALLOC(world->dynamics.velocities, vectors);
+  ALLOC(world->dynamics.angular_momenta, vectors);
+  ALLOC(world->dynamics.inv_inertia_tensors, matrices);
+  ALLOC(world->dynamics.inv_intertias, matrices);
+  ALLOC(world->dynamics.motion_avgs, floats);
 
   world->dynamics.awake_count = 0;
   world->generation = 0;
 
-  bnd_error e;
   INVOKE(contacts_init(world))
   INVOKE(joints_init(world))
   INVOKE(shapes_init(world))
@@ -223,24 +218,26 @@ bnd_world *bnd_init(bnd_config config) {
   bnd_allocator allocator = bnd_default_allocator();
   bnd_world *world = allocator.malloc(8, sizeof(bnd_world));
 
+  // The error is ignored here intentionally. With default allocator it *should not* fail, so we'd rather
+  // provide a cleaner API by betting on a happy path.
   bnd_init_internal(world, config, allocator);
   return world;
 }
 
-bnd_world *bnd_init_with_allocator(bnd_config config, bnd_allocator allocator, bnd_error *error) {
+bnd_result_world bnd_init_with_allocator(bnd_config config, bnd_allocator allocator) {
   if (allocator.malloc == NULL) {
-    *error = (bnd_error){BND_ERROR_INVALID_ALLOCATOR, "Allocator must define a malloc function"};
-    return NULL;
+    return BND_RESULT_ERR(world, BND_ERROR_INVALID_ALLOCATOR, "Allocator must define a malloc function");
   }
 
   bnd_world *world = allocator.malloc(8, sizeof(bnd_world));
   if (world == NULL) {
-    *error = OOM_ERROR;
-    return NULL;
+    return BND_RESULT_ERR(world, OOM_ERROR.type, OOM_ERROR.message);
   }
 
-  *error = bnd_init_internal(world, config, allocator);
-  return error->type == BND_OK ? world : NULL;
+  memset(world, 0, sizeof(bnd_world));
+
+  bnd_error e = bnd_init_internal(world, config, allocator);
+  return (bnd_result_world) { e, world };
 }
 
 void bnd_teardown(bnd_world *world) {
@@ -278,45 +275,4 @@ void bnd_teardown(bnd_world *world) {
 
 count_t ephemeral_body_index(const common_data *data) {
   return data->capacity;
-}
-
-char *format_error(const char *template, ...) {
-  va_list list;
-  va_start(list, template);
-  vsnprintf(error_message_buffer, MAX_MESSAGE_SIZE, template, list);
-  va_end(list);
-
-  return error_message_buffer;
-}
-
-void raise_error(bnd_error_type type, void *data, const char *template, ...) {
-  if (error_callback == NULL) {
-    return;
-  }
-
-  va_list list;
-  va_start(list, template);
-  vsnprintf(error_message_buffer, MAX_MESSAGE_SIZE, template, list);
-  va_end(list);
-
-  error_callback(type, error_message_buffer, data);
-}
-
-void raise_error_debug(bnd_error_type type, void *data, const char *template, ...) {
-#if defined(BND_DEBUG)
-  if (error_callback == NULL) {
-    return;
-  }
-
-  va_list list;
-  va_start(list, template);
-  vsnprintf(error_message_buffer, MAX_MESSAGE_SIZE, template, list);
-  va_end(list);
-
-  error_callback(type, error_message_buffer, data);
-#endif
-}
-
-void notify_handle_invalid(bnd_body_handle handle) {
-  raise_error(BND_ERROR_BODY_HANDLE_INVALID, NULL, "Body handle %d (%s) is invalid. Perhaps the body has been removed", handle.index, handle.type == BND_BODY_DYNAMIC ? "dynamic" : "static");
 }

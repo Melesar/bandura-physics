@@ -39,7 +39,6 @@ count_t bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle 
 
   bnd_error e = resize_if_needed(world->allocator, joints);
   if (e.type != BND_OK) {
-    raise_error(e.type, NULL, e.message);
     return ~0;
   }
 

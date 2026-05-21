@@ -99,7 +99,6 @@ bnd_error contacts_ensure_capacity(bnd_world *world, count_t additional_count) {
 contact *contacts_new_default(bnd_world *world, count_t body_a, count_t body_b) {
   bnd_error e = contacts_ensure_capacity(world, 1);
   if (e.type != BND_OK) {
-    raise_error(e.type, NULL, e.message);
     return NULL;
   }
 

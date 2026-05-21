@@ -31,10 +31,6 @@ typedef struct {
 imported_mesh cone_mesh;
 vortex vorticies[VORTEX_COUNT];
 
-static void on_error(bnd_error_type error, char *message, void *data) {
-  TraceLog(LOG_ERROR, message);
-}
-
 static vortex vortex_create(bnd_v3 pos, float pull_force, float kick_radius) {
   return (vortex){
     .position = pos, .kick_radius = kick_radius, .kick_cone_angle = PI / 4.0f, .impulse = 70, .pull_force = pull_force
@@ -100,8 +96,8 @@ static void collect_grounded_bodies(const bnd_world *world) {
     if (contact.body_b.type != BND_BODY_STATIC)
       continue;
 
-    uint32_t n;
-    bnd_body_shape *shapes = bnd_get_shapes(world, contact.body_b, &n);
+    bnd_body_shape shapes[1];
+    bnd_get_shapes(world, contact.body_b, shapes, 1);
 
     // The ground is a plane.
     if (shapes[0].type != BND_PLANE)
@@ -135,7 +131,6 @@ void scenario_configure(program_config *config, bnd_config *physics_config) {
 }
 
 void scenario_initialize(bnd_world *world) {
-  bnd_register_error_callback(on_error);
   SetRandomSeed(33);
 
   cone_mesh.success = import_raylib_mesh(world, GenMeshCone(1, 3, 16), &cone_mesh.mesh);
@@ -145,14 +140,14 @@ void scenario_setup_scene(bnd_world *world) {
   bnd_add_plane(world, bnd_v3_zero(), bnd_v3_up());
 
   if (cone_mesh.success) {
-    bnd_body_handle cone = bnd_add_mesh_dynamic(world, 5, cone_mesh.mesh);
+    bnd_body_handle cone = bnd_add_mesh_dynamic(world, 5, cone_mesh.mesh).value;
     scatter_dynamic_body(world, cone, 2, 7);
   }
 
   for (int i = 0; i < 15; ++i) {
     float radius = random_range(0.3f, 0.75f);
     float mass = random_range(1.2f, 4.8f);
-    bnd_body_handle sphere = bnd_add_sphere_dynamic(world, mass, radius);
+    bnd_body_handle sphere = bnd_add_sphere_dynamic(world, mass, radius).value;
     scatter_dynamic_body(world, sphere, 1.0f, 5.0f);
   }
 
@@ -163,7 +158,7 @@ void scenario_setup_scene(bnd_world *world) {
       random_range(0.5f, 1.6f),
     };
     float mass = random_range(1.8f, 5.8f);
-    bnd_body_handle box = bnd_add_box_dynamic(world, mass, size);
+    bnd_body_handle box = bnd_add_box_dynamic(world, mass, size).value;
     scatter_dynamic_body(world, box, 1.0f, 5.0f);
   }
 
@@ -181,7 +176,7 @@ void scenario_setup_scene(bnd_world *world) {
     float hammer_masses[] = { 2.0f, 3.2f };
 
     for (int i = 0; i < 10; ++i) {
-      bnd_body_handle hammer = bnd_add_compound_body_dynamic(world, hammer_shapes, hammer_masses, 2);
+      bnd_body_handle hammer = bnd_add_compound_body_dynamic(world, hammer_shapes, hammer_masses, 2).value;
       scatter_dynamic_body(world, hammer, 2.0f, 6.0f);
     }
   }
@@ -203,7 +198,7 @@ void scenario_setup_scene(bnd_world *world) {
     };
     float dumbbell_masses[] = { 1.6f, 2.0f, 2.0f };
 
-    bnd_body_handle dumbbell = bnd_add_compound_body_dynamic(world, dumbbell_shapes, dumbbell_masses, 3);
+    bnd_body_handle dumbbell = bnd_add_compound_body_dynamic(world, dumbbell_shapes, dumbbell_masses, 3).value;
     scatter_dynamic_body(world, dumbbell, 2.0f, 6.0f);
   }
 
@@ -241,12 +236,12 @@ void scenario_setup_scene(bnd_world *world) {
     float stickman_masses[] = { 2.1f, 1.2f, 1.0f, 0.8f, 0.8f, 0.25f, 0.25f };
 
     for (int i = 0; i < 5; i++) {
-      bnd_body_handle stickman = bnd_add_compound_body_dynamic(world, stickman_shapes, stickman_masses, 7);
+      bnd_body_handle stickman = bnd_add_compound_body_dynamic(world, stickman_shapes, stickman_masses, 7).value;
       scatter_dynamic_body(world, stickman, 2.0f, 6.0f);
     }
   }
 
-  bnd_body_handle cylinder = bnd_add_cylinder_static(world, 2, 5);
+  bnd_body_handle cylinder = bnd_add_cylinder_static(world, 2, 5).value;
   bnd_set_position(world, cylinder, (bnd_v3){ 0, 2.5, 0 });
 
   vorticies[0] = vortex_create((bnd_v3){ 0, 0, -8 }, 20, 1);
@@ -267,7 +262,7 @@ void scenario_simulate(bnd_world *world, float dt) {
     if (!is_grounded(enumerator.handle))
       continue;
 
-    bnd_v3 position = bnd_get_position(world, enumerator.handle);
+    bnd_v3 position = bnd_get_position(world, enumerator.handle).value;
 
     for (uint32_t i = 0; i < VORTEX_COUNT; ++i) {
       vortex v = vorticies[i];

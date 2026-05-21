@@ -189,18 +189,18 @@ static void draw_physics_bodies_typed(bnd_body_type type) {
   bnd_enumerate_bodies_typed(world, type, &enumerator);
 
   while (bnd_body_next_typed(world, &enumerator)) {
-    bnd_v3 position = bnd_get_position(world, enumerator.handle);
-    bnd_quat rotation = bnd_get_rotation(world, enumerator.handle);
+    bnd_v3 position = bnd_get_position(world, enumerator.handle).value;
+    bnd_quat rotation = bnd_get_rotation(world, enumerator.handle).value;
 
-    uint32_t shapes_count;
-    bnd_body_shape *shapes = bnd_get_shapes(world, enumerator.handle, &shapes_count);
+    bnd_body_shape shapes[16];
+    bnd_result_u32 shapes_count = bnd_get_shapes(world, enumerator.handle, shapes, 16);
 
     Matrix scale;
     Matrix transform =
         MatrixMultiply(QuaternionToMatrix(rotation), MatrixTranslate(position.x, position.y, position.z));
     Material material = materials[enumerator.handle.index % 20];
 
-    for (uint32_t k = 0; k < shapes_count; ++k) {
+    for (uint32_t k = 0; k < shapes_count.value; ++k) {
       bnd_body_shape shape = shapes[k];
       Matrix shape_transform = MatrixMultiply(QuaternionToMatrix(shape.rotation),
           MatrixTranslate(shape.offset.x, shape.offset.y, shape.offset.z));
@@ -394,16 +394,17 @@ static void init_physics(const program_config *program_config) {
   if (program_config->custom_malloc == NULL) {
     world = bnd_init(config);
   } else {
-    bnd_error e;
-    world = bnd_init_with_allocator(config, (bnd_allocator) {
+    bnd_result_world result = bnd_init_with_allocator(config, (bnd_allocator) {
       program_config->custom_malloc,
       program_config->custom_realloc,
       program_config->custom_free
-    }, &e);
+    });
 
-    if (e.type != BND_OK) {
-      TraceLog(LOG_FATAL, "Failed to initialize the world: %s", e.message);
+    if (result.error.type != BND_OK) {
+      TraceLog(LOG_FATAL, "Failed to initialize the world: %s", result.error.message);
     }
+
+    world = result.value;
   }
 }
 

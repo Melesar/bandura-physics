@@ -12,7 +12,8 @@ const COMMON_FLAGS = &.{
   "-Werror=incompatible-pointer-types",
   "-Werror=pointer-type-mismatch",
   "-Werror=return-type",
-  "-Wno-unused-parameter" };
+  "-Wno-unused-parameter",
+  "-Wno-braced-scalar-init"};
 
 const Options = struct {
     target: ResolvedTarget,

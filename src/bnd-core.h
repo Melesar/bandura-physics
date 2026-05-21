@@ -11,6 +11,26 @@
 #define OK (bnd_error){BND_OK, NULL}
 #define OOM_ERROR (bnd_error){BND_ERROR_OUT_OF_MEMORY, "Allocator.malloc failed to allocate memory"}
 
+#define PROPAGATE_ERROR3(error, suffix) \
+  bnd_error e_##suffix = error; \
+  if (e_##suffix.type != BND_OK) { \
+    return e_##suffix; \
+  }
+#define PROPAGATE_ERROR2(error, suffix) PROPAGATE_ERROR3(error, suffix)
+#define PROPAGATE_ERROR(error) PROPAGATE_ERROR2(error, __LINE__)
+
+#define PROPAGATE_RESULT3(suffix, error, error_suffix) \
+  bnd_error e_##error_suffix = error; \
+  if (e_##error_suffix.type != BND_OK) { \
+    return BND_RESULT_ERR2(suffix, e_##error_suffix); \
+  }
+#define PROPAGATE_RESULT2(suffix, error, error_suffix) PROPAGATE_RESULT3(suffix, error, error_suffix)
+#define PROPAGATE_RESULT(suffix, error) PROPAGATE_RESULT2(suffix, error, __LINE__)
+
+#define BND_RESULT_OK(suffix, value) (bnd_result_##suffix) { OK, value }
+#define BND_RESULT_ERR(suffix, error_type, message) (bnd_result_##suffix) { (bnd_error) { error_type, message }, { 0 } }
+#define BND_RESULT_ERR2(suffix, error) (bnd_result_##suffix) { error, { 0 } }
+
 #define ALLOC_BUFFER1(buffer, capacity) ALLOC_BUFFER(buffer, 1, capacity)
 #define ALLOC_BUFFER2(buffer, capacity) ALLOC_BUFFER(buffer, 2, capacity)
 #define ALLOC_BUFFER4(buffer, capacity) ALLOC_BUFFER(buffer, 4, capacity)
@@ -240,11 +260,6 @@ typedef bnd_v3 (*support_func)(const shape_context *, bnd_v3);
 
 bnd_allocator bnd_default_allocator();
 
-char *format_error(const char *template, ...);
-void raise_error(bnd_error_type type, void *data, const char *template, ...);
-void raise_error_debug(bnd_error_type type, void *data, const char *template, ...);
-void notify_handle_invalid(bnd_body_handle handle);
-
 bnd_body_handle make_body_handle(const bnd_world *world, bnd_body_type type, count_t index);
 count_t handle_to_inner_index(const bnd_world *world, bnd_body_handle handle);
 
@@ -288,7 +303,7 @@ bnd_error events_init(bnd_world *world);
 void events_teardown(bnd_world *world);
 void events_reset(bnd_world *world);
 bool events_subscribed(const common_data *data, count_t index, bnd_event_type event_type);
-void events_push(bnd_world *world, common_data *data, count_t index, bnd_event event);
+bnd_error events_push(bnd_world *world, common_data *data, count_t index, bnd_event event);
 
 bnd_quat integrate_rotation_midpoint(bnd_quat rotation, bnd_v3 angular_momentum, bnd_m3 base_inv_inertia, float dt);
 bool gjk_check_intersection(const bnd_world *world, const collision_detection_context *ctx, simplex *simplex);

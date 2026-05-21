@@ -40,7 +40,6 @@ typedef struct {
 } bnd_m3;
 #endif
 
-
 typedef enum {
   BND_OK,
   BND_ERROR_NO_SPACE_AVAILABLE,
@@ -53,8 +52,6 @@ typedef enum {
   // Debug mode errors
   BND_ERROR_INVALID_POLYTOPE,
 } bnd_error_type;
-
-typedef void (*bnd_error_callback)(bnd_error_type error_type, char *error_message, void *error_data);
 
 typedef void* (*bnd_malloc_fn)(uint64_t alignment, uint64_t size);
 typedef void* (*bnd_realloc_fn)(void *ptr, uint64_t alignment, uint64_t old_size, uint64_t new_size);
@@ -214,6 +211,22 @@ typedef struct {
 
 typedef struct bnd_world_t bnd_world;
 
+#define BND_RESULT_TYPE(suffix, type) \
+  typedef struct { \
+    bnd_error error; \
+    type value; \
+  } bnd_result_##suffix;
+
+BND_RESULT_TYPE(world, bnd_world*)
+BND_RESULT_TYPE(v3, bnd_v3)
+BND_RESULT_TYPE(quat, bnd_quat)
+BND_RESULT_TYPE(aabb, bnd_aabb)
+BND_RESULT_TYPE(u32, uint32_t)
+BND_RESULT_TYPE(bool, bool)
+BND_RESULT_TYPE(handle, bnd_body_handle)
+
+#undef BND_RESULT_TYPE
+
 typedef struct {
   bnd_body_handle handle;
   uint32_t generation;
@@ -244,35 +257,33 @@ BNDAPI bnd_config bnd_default_config();
 BNDAPI uint32_t bnd_required_memory(const bnd_config *config);
 
 BNDAPI bnd_world *bnd_init(bnd_config config);
-BNDAPI bnd_world *bnd_init_with_allocator(bnd_config config, bnd_allocator allocator, bnd_error *error);
+BNDAPI bnd_result_world bnd_init_with_allocator(bnd_config config, bnd_allocator allocator);
 
-BNDAPI void bnd_register_error_callback(bnd_error_callback callback);
+BNDAPI bnd_error bnd_add_plane(bnd_world *world, bnd_v3 point, bnd_v3 normal);
+BNDAPI bnd_result_handle bnd_add_box_dynamic(bnd_world *world, float mass, bnd_v3 size);
+BNDAPI bnd_result_handle bnd_add_box_static(bnd_world *world, bnd_v3 size);
+BNDAPI bnd_result_handle bnd_add_sphere_dynamic(bnd_world *world, float mass, float radius);
+BNDAPI bnd_result_handle bnd_add_sphere_static(bnd_world *world, float radius);
+BNDAPI bnd_result_handle bnd_add_cylinder_static(bnd_world *world, float radius, float height);
+BNDAPI bnd_result_handle bnd_add_cylinder_dynamic(bnd_world *world, float mass, float radius, float height);
+BNDAPI bnd_result_handle bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, uint32_t shapes_count);
+BNDAPI bnd_result_handle bnd_add_compound_body_dynamic(bnd_world *world, bnd_body_shape *shapes, float *masses, uint32_t shapes_count);
+BNDAPI bnd_result_handle bnd_add_mesh_dynamic(bnd_world *world, float mass, bnd_mesh_handle mesh);
+BNDAPI bnd_result_handle bnd_add_mesh_static(bnd_world *world, bnd_mesh_handle mesh);
 
-BNDAPI void bnd_add_plane(bnd_world *world, bnd_v3 point, bnd_v3 normal);
-BNDAPI bnd_body_handle bnd_add_box_dynamic(bnd_world *world, float mass, bnd_v3 size);
-BNDAPI bnd_body_handle bnd_add_box_static(bnd_world *world, bnd_v3 size);
-BNDAPI bnd_body_handle bnd_add_sphere_dynamic(bnd_world *world, float mass, float radius);
-BNDAPI bnd_body_handle bnd_add_sphere_static(bnd_world *world, float radius);
-BNDAPI bnd_body_handle bnd_add_cylinder_static(bnd_world *world, float radius, float height);
-BNDAPI bnd_body_handle bnd_add_cylinder_dynamic(bnd_world *world, float mass, float radius, float height);
-BNDAPI bnd_body_handle bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, uint32_t shapes_count);
-BNDAPI bnd_body_handle bnd_add_compound_body_dynamic(bnd_world *world, bnd_body_shape *shapes, float *masses, uint32_t shapes_count);
-BNDAPI bnd_body_handle bnd_add_mesh_dynamic(bnd_world *world, float mass, bnd_mesh_handle mesh);
-BNDAPI bnd_body_handle bnd_add_mesh_static(bnd_world *world, bnd_mesh_handle mesh);
-
-BNDAPI void bnd_remove_body(bnd_world *world, bnd_body_handle handle);
+BNDAPI bnd_error bnd_remove_body(bnd_world *world, bnd_body_handle handle);
 
 BNDAPI uint32_t bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_v3 contact_offset_a,
                           bnd_v3 contact_offset_b, float max_distance);
 BNDAPI void bnd_remove_joint(bnd_world *world, uint32_t id);
 BNDAPI const bnd_joint *bnd_get_joints(const bnd_world *world, uint32_t *count);
 
-BNDAPI void bnd_apply_force(bnd_world *world, bnd_body_handle handle, bnd_v3 force);
-BNDAPI void bnd_apply_force_at(bnd_world *world, bnd_body_handle handle, bnd_v3 force, bnd_v3 position);
-BNDAPI void bnd_apply_impulse(bnd_world *world, bnd_body_handle handle, bnd_v3 impulse);
-BNDAPI void bnd_apply_impulse_at(bnd_world *world, bnd_body_handle handle, bnd_v3 impulse, bnd_v3 position);
+BNDAPI bnd_error bnd_apply_force(bnd_world *world, bnd_body_handle handle, bnd_v3 force);
+BNDAPI bnd_error bnd_apply_force_at(bnd_world *world, bnd_body_handle handle, bnd_v3 force, bnd_v3 position);
+BNDAPI bnd_error bnd_apply_impulse(bnd_world *world, bnd_body_handle handle, bnd_v3 impulse);
+BNDAPI bnd_error bnd_apply_impulse_at(bnd_world *world, bnd_body_handle handle, bnd_v3 impulse, bnd_v3 position);
 
-BNDAPI bool bnd_handle_valid(const bnd_world *world, bnd_body_handle handle);
+BNDAPI bnd_error bnd_handle_valid(const bnd_world *world, bnd_body_handle handle);
 
 BNDAPI uint32_t bnd_body_count(const bnd_world *world, bnd_body_type type);
 BNDAPI uint32_t bnd_awake_count(const bnd_world *world);
@@ -281,25 +292,25 @@ BNDAPI uint32_t bnd_collisions_count(const bnd_world *world);
 BNDAPI bnd_config *bnd_edit_config(bnd_world *world);
 BNDAPI bnd_world_stats bnd_stats(const bnd_world *world);
 
-BNDAPI bnd_v3 bnd_get_position(const bnd_world *world, bnd_body_handle handle);
-BNDAPI bnd_quat bnd_get_rotation(const bnd_world *world, bnd_body_handle handle);
-BNDAPI bnd_body_shape *bnd_get_shapes(const bnd_world *world, bnd_body_handle handle, uint32_t *count);
-BNDAPI bnd_aabb bnd_get_bounding_box(const bnd_world *world, bnd_body_handle);
-BNDAPI bnd_v3 bnd_get_velocity(const bnd_world *world, bnd_body_handle handle);
-BNDAPI bnd_v3 bnd_get_angular_velocity(const bnd_world *world, bnd_body_handle handle);
-BNDAPI bnd_v3 bnd_get_angular_momentum(const bnd_world *world, bnd_body_handle handle);
+BNDAPI bnd_result_v3 bnd_get_position(const bnd_world *world, bnd_body_handle handle);
+BNDAPI bnd_result_quat bnd_get_rotation(const bnd_world *world, bnd_body_handle handle);
+BNDAPI bnd_result_u32 bnd_get_shapes(const bnd_world *world, bnd_body_handle handle, bnd_body_shape *shapes, uint32_t max_shapes);
+BNDAPI bnd_result_aabb bnd_get_bounding_box(const bnd_world *world, bnd_body_handle);
+BNDAPI bnd_result_v3 bnd_get_velocity(const bnd_world *world, bnd_body_handle handle);
+BNDAPI bnd_result_v3 bnd_get_angular_velocity(const bnd_world *world, bnd_body_handle handle);
+BNDAPI bnd_result_v3 bnd_get_angular_momentum(const bnd_world *world, bnd_body_handle handle);
 BNDAPI uint32_t bnd_get_contacts(const bnd_world *world, bnd_contact *contacts, uint32_t max_contacts);
 
-BNDAPI void bnd_set_position(bnd_world *world, bnd_body_handle handle, bnd_v3 position);
-BNDAPI void bnd_set_rotation(bnd_world *world, bnd_body_handle handle, bnd_quat rotation);
-BNDAPI void bnd_set_velocity(bnd_world *world, bnd_body_handle handle, bnd_v3 velocity);
-BNDAPI void bnd_set_angular_momentum(bnd_world *world, bnd_body_handle handle, bnd_v3 angular_momentum);
+BNDAPI bnd_error bnd_set_position(bnd_world *world, bnd_body_handle handle, bnd_v3 position);
+BNDAPI bnd_error bnd_set_rotation(bnd_world *world, bnd_body_handle handle, bnd_quat rotation);
+BNDAPI bnd_error bnd_set_velocity(bnd_world *world, bnd_body_handle handle, bnd_v3 velocity);
+BNDAPI bnd_error bnd_set_angular_momentum(bnd_world *world, bnd_body_handle handle, bnd_v3 angular_momentum);
 
-BNDAPI void bnd_event_subscribe(bnd_world *world, bnd_body_handle body, bnd_event_type type);
-BNDAPI void bnd_event_unsubscribe(bnd_world *world, bnd_body_handle body, bnd_event_type type);
-BNDAPI void bnd_event_unsubscribe_all(bnd_world *world, bnd_body_handle body);
-BNDAPI bool bnd_event_any(bnd_world *world, bnd_body_handle body);
-BNDAPI bool bnd_event_enumerate(bnd_world *world, bnd_body_handle body, bnd_event_enumerator *enumerator);
+BNDAPI bnd_error bnd_event_subscribe(bnd_world *world, bnd_body_handle body, bnd_event_type type);
+BNDAPI bnd_error bnd_event_unsubscribe(bnd_world *world, bnd_body_handle body, bnd_event_type type);
+BNDAPI bnd_error bnd_event_unsubscribe_all(bnd_world *world, bnd_body_handle body);
+BNDAPI bnd_result_bool bnd_event_any(bnd_world *world, bnd_body_handle body);
+BNDAPI bnd_result_bool bnd_event_enumerate(bnd_world *world, bnd_body_handle body, bnd_event_enumerator *enumerator);
 BNDAPI bool bnd_event_next(bnd_world *world, bnd_event_enumerator *enumerator);
 
 BNDAPI bnd_error bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, bnd_mesh_handle *handle, bnd_v3 *center_of_mass);
@@ -308,8 +319,8 @@ BNDAPI void bnd_enumerate_bodies_typed(const bnd_world *world, bnd_body_type typ
 BNDAPI bool bnd_body_next_typed(const bnd_world *world, bnd_body_enumerator_typed *enumerator);
 
 BNDAPI void bnd_simulate(bnd_world *world, float dt);
-BNDAPI void bnd_awaken_body(bnd_world *world, bnd_body_handle handle);
-BNDAPI void bnd_put_to_sleep(bnd_world *world, bnd_body_handle handle);
+BNDAPI bnd_error bnd_awaken_body(bnd_world *world, bnd_body_handle handle);
+BNDAPI bnd_error bnd_put_to_sleep(bnd_world *world, bnd_body_handle handle);
 BNDAPI void bnd_reset_world(bnd_world *world);
 
 BNDAPI bool bnd_raycast_closest(const bnd_world *world, bnd_ray ray, bnd_raycast_hit *closest_hit);

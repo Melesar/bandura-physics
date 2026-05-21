@@ -12,19 +12,20 @@
 #define INVALID_INDEX ((count_t)~0)
 #define INVALID_HANDLE (bnd_body_handle) { 0, 0, INVALID_INDEX }
 
+#define ASSERT_BODY_DYNAMIC(handle) \
+  if (handle.type != BND_BODY_DYNAMIC) { \
+    return (bnd_error) { BND_ERROR_BODY_HANDLE_INVALID , "Operation is not valid for static bodies" }; \
+  }
+
 #define REALLOCATE_IF_NEEDED(data, is_dynamic, allocator) \
   if ((data)->count + 1 > (data)->capacity) { \
     if (allocator.realloc == NULL) { \
-      const char *s1 = is_dynamic ? "Dynamic" : "Static"; \
-      const char *s2 = is_dynamic ? "dynamics" : "static"; \
-      raise_error(BND_ERROR_NO_SPACE_AVAILABLE, NULL, "%s bodies count exceeds capacity and Allocator.realloc is NULL. Increase %s_capacity in bnd_config or provide a realloc function in the allocator.", s1, s2); \
-      return INVALID_HANDLE; \
+      return (bnd_result_handle) { (bnd_error) { BND_ERROR_NO_SPACE_AVAILABLE, "Bodies count exceeds capacity and Allocator.realloc is NULL. Increase capacity in bnd_config or provide a realloc function in the allocator" }, INVALID_HANDLE }; \
     } \
     \
-    bnd_error e = realloc_data(data, allocator, is_dynamic); \
-    if (e.type != BND_OK) { \
-      raise_error(e.type, NULL, e.message); \
-      return INVALID_HANDLE; \
+    bnd_error e_realloc = realloc_data(data, allocator, is_dynamic); \
+    if (e_realloc.type != BND_OK) { \
+      return (bnd_result_handle) { e_realloc, INVALID_HANDLE }; \
     } \
   }
 
@@ -459,7 +460,7 @@ static count_t insert_new_dynamic_body(bnd_world *world) {
   return index;
 }
 
-static bnd_body_handle add_primitive_body_static(bnd_world *world, bnd_body_shape shape) {
+static bnd_result_handle add_primitive_body_static(bnd_world *world, bnd_body_shape shape) {
   common_data *data = as_common(world, BND_BODY_STATIC);
   REALLOCATE_IF_NEEDED(data, false, world->allocator)
 
@@ -473,10 +474,10 @@ static bnd_body_handle add_primitive_body_static(bnd_world *world, bnd_body_shap
   world->generation += 1;
   world->statics.dirty = true;
 
-  return make_body_handle(world, BND_BODY_STATIC, index);
+  return BND_RESULT_OK(handle, make_body_handle(world, BND_BODY_STATIC, index));
 }
 
-static bnd_body_handle add_primitive_body_dynamic(bnd_world *world, bnd_body_shape shape, float mass) {
+static bnd_result_handle add_primitive_body_dynamic(bnd_world *world, bnd_body_shape shape, float mass) {
   dynamic_bodies *data = &world->dynamics;
   REALLOCATE_IF_NEEDED((common_data *)data, true, world->allocator)
 
@@ -491,39 +492,43 @@ static bnd_body_handle add_primitive_body_dynamic(bnd_world *world, bnd_body_sha
 
   world->generation += 1;
 
-  return make_body_handle(world, BND_BODY_DYNAMIC, index);
+  return BND_RESULT_OK(handle, make_body_handle(world, BND_BODY_DYNAMIC, index));
 }
 
-void bnd_add_plane(bnd_world *world, bnd_v3 point, bnd_v3 normal) {
-  bnd_body_handle plane = add_primitive_body_static(world, (bnd_body_shape){ .type = BND_PLANE, .plane = { .normal = normal }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() });
-  world->statics.positions[handle_to_inner_index(world, plane)] = point;
+bnd_error bnd_add_plane(bnd_world *world, bnd_v3 point, bnd_v3 normal) {
+  bnd_result_handle plane = add_primitive_body_static(world, (bnd_body_shape){ .type = BND_PLANE, .plane = { .normal = normal }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() });
+  if (plane.error.type != BND_OK) {
+    world->statics.positions[handle_to_inner_index(world, plane.value)] = point;
+  }
+
+  return plane.error;
 }
 
-bnd_body_handle bnd_add_box_dynamic(bnd_world *world, float mass, bnd_v3 size) {
+bnd_result_handle bnd_add_box_dynamic(bnd_world *world, float mass, bnd_v3 size) {
   return add_primitive_body_dynamic(world, (bnd_body_shape){ .type = BND_BOX, .box = { .size = size }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() }, mass);
 }
 
-bnd_body_handle bnd_add_box_static(bnd_world *world, bnd_v3 size) {
+bnd_result_handle bnd_add_box_static(bnd_world *world, bnd_v3 size) {
   return add_primitive_body_static(world, (bnd_body_shape){ .type = BND_BOX, .box = { .size = size }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() });
 }
 
-bnd_body_handle bnd_add_sphere_dynamic(bnd_world *world, float mass, float radius) {
+bnd_result_handle bnd_add_sphere_dynamic(bnd_world *world, float mass, float radius) {
   return add_primitive_body_dynamic(world, (bnd_body_shape){ .type = BND_SPHERE, .sphere = { .radius = radius }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() }, mass);
 }
 
-bnd_body_handle bnd_add_sphere_static(bnd_world *world, float radius) {
+bnd_result_handle bnd_add_sphere_static(bnd_world *world, float radius) {
   return add_primitive_body_static(world, (bnd_body_shape) { .type = BND_SPHERE, .sphere = { .radius = radius }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() });
 }
 
-bnd_body_handle bnd_add_cylinder_static(bnd_world *world, float radius, float height) {
+bnd_result_handle bnd_add_cylinder_static(bnd_world *world, float radius, float height) {
   return add_primitive_body_static(world, (bnd_body_shape){ .type = BND_CYLINDER, .cylinder = { .radius = radius, .height = height }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() });
 }
 
-bnd_body_handle bnd_add_cylinder_dynamic(bnd_world *world, float mass, float radius, float height) {
+bnd_result_handle bnd_add_cylinder_dynamic(bnd_world *world, float mass, float radius, float height) {
   return add_primitive_body_dynamic(world, (bnd_body_shape){ .type = BND_CYLINDER, .cylinder = { .radius = radius, .height = height }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() }, mass);
 }
 
-bnd_body_handle bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, count_t shapes_count) {
+bnd_result_handle bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, count_t shapes_count) {
   shape_dimension_bracket bracket = get_shapes_bracket(shapes_count);
 
   common_data *data = as_common(world, BND_BODY_STATIC);
@@ -539,10 +544,10 @@ bnd_body_handle bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *s
   world->generation += 1;
   world->statics.dirty = true;
 
-  return make_body_handle(world, BND_BODY_STATIC, index);
+  return BND_RESULT_OK(handle, make_body_handle(world, BND_BODY_STATIC, index));
 }
 
-bnd_body_handle bnd_add_compound_body_dynamic(bnd_world *world, bnd_body_shape *shapes, float *masses, count_t shapes_count) {
+bnd_result_handle bnd_add_compound_body_dynamic(bnd_world *world, bnd_body_shape *shapes, float *masses, count_t shapes_count) {
   dynamic_bodies *data = &world->dynamics;
   REALLOCATE_IF_NEEDED((common_data *) data, true, world->allocator)
 
@@ -561,22 +566,19 @@ bnd_body_handle bnd_add_compound_body_dynamic(bnd_world *world, bnd_body_shape *
 
   world->generation += 1;
 
-  return make_body_handle(world, BND_BODY_DYNAMIC, index);
+  return BND_RESULT_OK(handle, make_body_handle(world, BND_BODY_DYNAMIC, index));
 }
 
-bnd_body_handle bnd_add_mesh_dynamic(bnd_world *world, float mass, bnd_mesh_handle mesh) {
+bnd_result_handle bnd_add_mesh_dynamic(bnd_world *world, float mass, bnd_mesh_handle mesh) {
   return add_primitive_body_dynamic(world, (bnd_body_shape){ .type = BND_MESH, .mesh = mesh, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() }, mass);
 }
 
-bnd_body_handle bnd_add_mesh_static(bnd_world *world, bnd_mesh_handle mesh) {
+bnd_result_handle bnd_add_mesh_static(bnd_world *world, bnd_mesh_handle mesh) {
   return add_primitive_body_static(world, (bnd_body_shape){ .type = BND_MESH, .mesh = mesh, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() });
 }
 
-void bnd_remove_body(bnd_world *world, bnd_body_handle handle) {
-  if (!bnd_handle_valid(world, handle)) {
-    notify_handle_invalid(handle);
-    return;
-  }
+bnd_error bnd_remove_body(bnd_world *world, bnd_body_handle handle) {
+  PROPAGATE_ERROR(bnd_handle_valid(world, handle))
 
   common_data *data = as_common(world, handle.type);
   data->generations[handle.index] += 1;
@@ -622,33 +624,28 @@ void bnd_remove_body(bnd_world *world, bnd_body_handle handle) {
   }
 
   world->generation += 1;
+
+  return OK;
 }
 
-void bnd_apply_force(bnd_world *world, bnd_body_handle handle, bnd_v3 force) {
-  if (handle.type != BND_BODY_DYNAMIC) {
-    return;
-  }
+bnd_error bnd_apply_force(bnd_world *world, bnd_body_handle handle, bnd_v3 force) {
+  ASSERT_BODY_DYNAMIC(handle)
 
-  if (!bnd_handle_valid(world, handle)) {
-    notify_handle_invalid(handle);
-    return;
-  }
+  PROPAGATE_ERROR(bnd_handle_valid(world, handle))
 
   count_t index = handle_to_inner_index(world, handle);
   bnd_v3 prev_force = world->dynamics.forces[index];
   world->dynamics.forces[index] = bnd_v3_add(prev_force, force);
 
   awaken_body(world, index);
+
+  return OK;
 }
 
-void bnd_apply_force_at(bnd_world *world, bnd_body_handle handle, bnd_v3 force, bnd_v3 position) {
-  if (handle.type != BND_BODY_DYNAMIC)
-    return;
+bnd_error bnd_apply_force_at(bnd_world *world, bnd_body_handle handle, bnd_v3 force, bnd_v3 position) {
+  ASSERT_BODY_DYNAMIC(handle)
 
-  if (!bnd_handle_valid(world, handle)) {
-    notify_handle_invalid(handle);
-    return;
-  }
+  PROPAGATE_ERROR(bnd_handle_valid(world, handle))
 
   count_t index = handle_to_inner_index(world, handle);
   bnd_v3 prev_force = world->dynamics.forces[index];
@@ -661,32 +658,28 @@ void bnd_apply_force_at(bnd_world *world, bnd_body_handle handle, bnd_v3 force, 
   world->dynamics.torques[index] = bnd_v3_add(prev_torque, torque);
 
   awaken_body(world, index);
+
+  return OK;
 }
 
-void bnd_apply_impulse(bnd_world *world, bnd_body_handle handle, bnd_v3 impulse) {
-  if (handle.type != BND_BODY_DYNAMIC)
-    return;
+bnd_error bnd_apply_impulse(bnd_world *world, bnd_body_handle handle, bnd_v3 impulse) {
+  ASSERT_BODY_DYNAMIC(handle)
 
-  if (!bnd_handle_valid(world, handle)) {
-    notify_handle_invalid(handle);
-    return;
-  }
+  PROPAGATE_ERROR(bnd_handle_valid(world, handle))
 
   count_t index = handle_to_inner_index(world, handle);
   bnd_v3 prev_impulse = world->dynamics.impulses[index];
   world->dynamics.impulses[index] = bnd_v3_add(prev_impulse, impulse);
 
   awaken_body(world, index);
+
+  return OK;
 }
 
-void bnd_apply_impulse_at(bnd_world *world, bnd_body_handle handle, bnd_v3 impulse, bnd_v3 position) {
-  if (handle.type != BND_BODY_DYNAMIC)
-    return;
+bnd_error bnd_apply_impulse_at(bnd_world *world, bnd_body_handle handle, bnd_v3 impulse, bnd_v3 position) {
+  ASSERT_BODY_DYNAMIC(handle)
 
-  if (!bnd_handle_valid(world, handle)) {
-    notify_handle_invalid(handle);
-    return;
-  }
+  PROPAGATE_ERROR(bnd_handle_valid(world, handle))
 
   count_t index = handle_to_inner_index(world, handle);
   bnd_v3 prev_force = world->dynamics.impulses[index];
@@ -699,15 +692,21 @@ void bnd_apply_impulse_at(bnd_world *world, bnd_body_handle handle, bnd_v3 impul
   world->dynamics.angular_impulses[index] = bnd_v3_add(prev_angular_impulse, angular_impulse);
 
   awaken_body(world, index);
+
+  return OK;
 }
 
-bool bnd_handle_valid(const bnd_world *world, bnd_body_handle handle) {
+bnd_error bnd_handle_valid(const bnd_world *world, bnd_body_handle handle) {
   const common_data *data = as_common_const(world, handle.type);
   if (handle.index == INVALID_INDEX) {
-    return false;
+    return (bnd_error) { BND_ERROR_BODY_HANDLE_INVALID, "Handle doesn't belong to an actual body" };
   }
 
-  return handle.generation == data->generations[handle.index];
+  if (handle.generation != data->generations[handle.index]) {
+    return (bnd_error) { BND_ERROR_BODY_HANDLE_INVALID, "Handle refers to a body that has been removed" };
+  }
+
+  return OK;
 }
 
 bnd_config *bnd_edit_config(bnd_world *world) {
@@ -730,148 +729,123 @@ count_t bnd_collisions_count(const bnd_world *world) {
   return world->contacts.count;
 }
 
-bnd_v3 bnd_get_position(const bnd_world *world, bnd_body_handle handle) {
-  const common_data *data = as_common_const(world, handle.type);
-  if (!bnd_handle_valid(world, handle)) {
-    notify_handle_invalid(handle);
-    return bnd_v3_zero();
-  }
+bnd_result_v3 bnd_get_position(const bnd_world *world, bnd_body_handle handle) {
+  PROPAGATE_RESULT(v3, bnd_handle_valid(world, handle))
 
+  const common_data *data = as_common_const(world, handle.type);
   count_t index = handle_to_inner_index(world, handle);
-  return data->positions[index];
+  return BND_RESULT_OK(v3, data->positions[index]);
 }
 
-bnd_quat bnd_get_rotation(const bnd_world *world, bnd_body_handle handle) {
-  const common_data *data = as_common_const(world, handle.type);
-  if (!bnd_handle_valid(world, handle)) {
-    notify_handle_invalid(handle);
-    return bnd_qidentity();
-  }
+bnd_result_quat bnd_get_rotation(const bnd_world *world, bnd_body_handle handle) {
+  PROPAGATE_RESULT(quat, bnd_handle_valid(world, handle))
 
+  const common_data *data = as_common_const(world, handle.type);
   count_t index = handle_to_inner_index(world, handle);
-  return data->rotations[index];
+  return BND_RESULT_OK(quat, data->rotations[index]);
 }
 
-bnd_body_shape *bnd_get_shapes(const bnd_world *world, bnd_body_handle handle, count_t *count) {
-  const common_data *data = as_common_const(world, handle.type);
-  if (!bnd_handle_valid(world, handle)) {
-    notify_handle_invalid(handle);
-    return NULL;
-  }
+bnd_result_u32 bnd_get_shapes(const bnd_world *world, bnd_body_handle handle, bnd_body_shape *shapes, uint32_t max_shapes) {
+  PROPAGATE_RESULT(u32, bnd_handle_valid(world, handle))
 
-  count_t index = handle_to_inner_index(world, handle);
-  body_shapes shapes = data->shapes[index];
-  *count = shapes.count;
-  return shapes_get(world, shapes);
-}
-
-bnd_aabb bnd_get_bounding_box(const bnd_world *world, bnd_body_handle handle) {
   const common_data *data = as_common_const(world, handle.type);
 
-  if (!bnd_handle_valid(world, handle)) {
-    notify_handle_invalid(handle);
-    return (bnd_aabb){ 0 };
-  }
-
   count_t index = handle_to_inner_index(world, handle);
-  return data->aabbs[index];
+  body_shapes body_shapes = data->shapes[index];
+  bnd_body_shape *inner_shapes = shapes_get(world, body_shapes);
+
+  count_t count = max_shapes >= body_shapes.count ? body_shapes.count : max_shapes;
+  memcpy(shapes, inner_shapes, count * sizeof(bnd_body_shape));
+
+  return BND_RESULT_OK(u32, count);
 }
 
-bnd_v3 bnd_get_velocity(const bnd_world *world, bnd_body_handle handle) {
+bnd_result_aabb bnd_get_bounding_box(const bnd_world *world, bnd_body_handle handle) {
+  PROPAGATE_RESULT(aabb, bnd_handle_valid(world, handle))
+
+  const common_data *data = as_common_const(world, handle.type);
+  count_t index = handle_to_inner_index(world, handle);
+  return BND_RESULT_OK(aabb, data->aabbs[index]);
+}
+
+bnd_result_v3 bnd_get_velocity(const bnd_world *world, bnd_body_handle handle) {
   if (handle.type != BND_BODY_DYNAMIC) {
-    return bnd_v3_zero();
+    return BND_RESULT_OK(v3, bnd_v3_zero());
   }
 
-  if (!bnd_handle_valid(world, handle)) {
-    notify_handle_invalid(handle);
-    return bnd_v3_zero();
-  }
+  PROPAGATE_RESULT(v3, bnd_handle_valid(world, handle))
 
   count_t index = handle_to_inner_index(world, handle);
-  return world->dynamics.velocities[index];
+  return BND_RESULT_OK(v3, world->dynamics.velocities[index]);
 }
 
-bnd_v3 bnd_get_angular_velocity(const bnd_world *world, bnd_body_handle handle) {
+bnd_result_v3 bnd_get_angular_velocity(const bnd_world *world, bnd_body_handle handle) {
   if (handle.type != BND_BODY_DYNAMIC) {
-    return bnd_v3_zero();
+    return BND_RESULT_OK(v3, bnd_v3_zero());
   }
 
   const dynamic_bodies *dynamics = &world->dynamics;
-  if (!bnd_handle_valid(world, handle)) {
-    notify_handle_invalid(handle);
-    return bnd_v3_zero();
-  }
+  PROPAGATE_RESULT(v3, bnd_handle_valid(world, handle))
 
   count_t index = handle_to_inner_index(world, handle);
   bnd_v3 momentum = dynamics->angular_momenta[index];
   bnd_quat rotation = dynamics->rotations[index];
   bnd_m3 inv_inertia = dynamics->inv_inertia_tensors[index];
 
-  return bnd_m3_rotate(momentum, bnd_m3_inertia(inv_inertia, rotation));
+  return BND_RESULT_OK(v3, bnd_m3_rotate(momentum, bnd_m3_inertia(inv_inertia, rotation)));
 }
 
-bnd_v3 bnd_get_angular_momentum(const bnd_world *world, bnd_body_handle handle) {
+bnd_result_v3 bnd_get_angular_momentum(const bnd_world *world, bnd_body_handle handle) {
   if (handle.type != BND_BODY_DYNAMIC) {
-    return bnd_v3_zero();
+    return BND_RESULT_OK(v3, bnd_v3_zero());
   }
 
-  if (!bnd_handle_valid(world, handle)) {
-    notify_handle_invalid(handle);
-    return bnd_v3_zero();
-  }
+  PROPAGATE_RESULT(v3, bnd_handle_valid(world, handle))
 
   count_t index = handle_to_inner_index(world, handle);
-  return world->dynamics.angular_momenta[index];
+  return BND_RESULT_OK(v3, world->dynamics.angular_momenta[index]);
 }
 
-void bnd_set_position(bnd_world *world, bnd_body_handle handle, bnd_v3 position) {
-  if (!bnd_handle_valid(world, handle)) {
-    notify_handle_invalid(handle);
-    return;
-  }
+bnd_error bnd_set_position(bnd_world *world, bnd_body_handle handle, bnd_v3 position) {
+  PROPAGATE_ERROR(bnd_handle_valid(world, handle))
 
   common_data *data = as_common(world, handle.type);
   count_t index = handle_to_inner_index(world, handle);
   data->positions[index] = position;
+
+  return OK;
 }
 
-void bnd_set_rotation(bnd_world *world, bnd_body_handle handle, bnd_quat rotation) {
-  if (!bnd_handle_valid(world, handle)) {
-    notify_handle_invalid(handle);
-    return;
-  }
+bnd_error bnd_set_rotation(bnd_world *world, bnd_body_handle handle, bnd_quat rotation) {
+  PROPAGATE_ERROR(bnd_handle_valid(world, handle))
 
   common_data *data = as_common(world, handle.type);
   count_t index = handle_to_inner_index(world, handle);
   data->rotations[index] = rotation;
+
+  return OK;
 }
 
-void bnd_set_velocity(bnd_world *world, bnd_body_handle handle, bnd_v3 velocity) {
-  if (handle.type != BND_BODY_DYNAMIC) {
-    return;
-  }
+bnd_error bnd_set_velocity(bnd_world *world, bnd_body_handle handle, bnd_v3 velocity) {
+  ASSERT_BODY_DYNAMIC(handle)
 
-  if (!bnd_handle_valid(world, handle)) {
-    notify_handle_invalid(handle);
-    return;
-  }
+  PROPAGATE_ERROR(bnd_handle_valid(world, handle))
 
   count_t index = handle_to_inner_index(world, handle);
   world->dynamics.velocities[index] = velocity;
+
+  return OK;
 }
 
-void bnd_set_angular_momentum(bnd_world *world, bnd_body_handle handle, bnd_v3 angular_momentum) {
-  if (handle.type != BND_BODY_DYNAMIC) {
-    return;
-  }
+bnd_error bnd_set_angular_momentum(bnd_world *world, bnd_body_handle handle, bnd_v3 angular_momentum) {
+  ASSERT_BODY_DYNAMIC(handle)
 
-  if (!bnd_handle_valid(world, handle)) {
-    notify_handle_invalid(handle);
-    return;
-  }
+  PROPAGATE_ERROR(bnd_handle_valid(world, handle))
 
   count_t index = handle_to_inner_index(world, handle);
   world->dynamics.angular_momenta[index] = angular_momentum;
+
+  return OK;
 }
 
 count_t bnd_get_contacts(const bnd_world *world, bnd_contact *contacts, count_t max_contacts) {
@@ -1011,20 +985,15 @@ void bnd_simulate(bnd_world *world, float dt) {
   profiler_end_frame(metadata);
 }
 
-void bnd_put_to_sleep(bnd_world *world, bnd_body_handle handle) {
-  if (handle.type != BND_BODY_DYNAMIC) {
-    return;
-  }
+bnd_error bnd_put_to_sleep(bnd_world *world, bnd_body_handle handle) {
+  ASSERT_BODY_DYNAMIC(handle)
+
+  PROPAGATE_ERROR(bnd_handle_valid(world, handle))
 
   dynamic_bodies *dynamics = &world->dynamics;
-  if (!bnd_handle_valid(world, handle)) {
-    notify_handle_invalid(handle);
-    return;
-  }
-
   count_t index = handle_to_inner_index(world, handle);
   if (index >= dynamics->awake_count) {
-    return;
+    return (bnd_error) { BND_ERROR_BODY_HANDLE_INVALID, "The body is already asleep" };
   }
 
   count_t target_index = dynamics->awake_count > 0 ? dynamics->awake_count - 1 : 0;
@@ -1036,20 +1005,19 @@ void bnd_put_to_sleep(bnd_world *world, bnd_body_handle handle) {
   dynamics->motion_avgs[target_index] = 0;
   dynamics->velocities[target_index] = bnd_v3_zero();
   dynamics->angular_momenta[target_index] = bnd_v3_zero();
+
+  return OK;
 }
 
-void bnd_awaken_body(bnd_world *world, bnd_body_handle handle) {
-  if (handle.type != BND_BODY_DYNAMIC)
-    return;
+bnd_error bnd_awaken_body(bnd_world *world, bnd_body_handle handle) {
+  ASSERT_BODY_DYNAMIC(handle)
+
+  PROPAGATE_ERROR(bnd_handle_valid(world, handle))
 
   count_t index = handle_to_inner_index(world, handle);
   dynamic_bodies *dynamics = &world->dynamics;
-  if (index < dynamics->awake_count || index >= dynamics->count)
-    return;
-
-  if (!bnd_handle_valid(world, handle)) {
-    notify_handle_invalid(handle);
-    return;
+  if (index < dynamics->awake_count || index >= dynamics->count) {
+    return (bnd_error) { BND_ERROR_BODY_HANDLE_INVALID, "The body is already awake" };
   }
 
   count_t target_index = dynamics->awake_count > 0 ? dynamics->awake_count - 1 : 0;
@@ -1059,6 +1027,8 @@ void bnd_awaken_body(bnd_world *world, bnd_body_handle handle) {
 
   dynamics->motion_avgs[target_index] = 2.0 * world->config.simulation.sleep_threshold;
   dynamics->awake_count += 1;
+
+  return OK;
 }
 
 void bnd_reset_world(bnd_world *world) {

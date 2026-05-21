@@ -17,7 +17,8 @@ Bandura is a traditional Ukrainian [musical instrument](https://en.wikipedia.org
   * [Using meshes as body shapes](#using-meshes-as-body-shapes)
   * [Querying the physics world](#querying-the-physics-world)
   * [Reacting to collisions](#reacting-to-collisions)
-* [Handle simulation timesteps](#handle-simulation-timesteps)
+* [Handling errors](#handling-errors)
+* [Handling simulation timesteps](#handling-simulation-timesteps)
 * [Bring your own...](#bring-your-own)
   * [Math](#math)
   * [Memory allocator](#memory-allocator)
@@ -97,7 +98,7 @@ int main() {
   bnd_add_plane(world, bnd_v3_zero(), bnd_v3_up());
 
   // Add a sphere with mass 5 and radius 1.
-  bnd_body_handle sphere = bnd_add_sphere_dynamic(world, 5, 1);
+  bnd_body_handle sphere = bnd_add_sphere_dynamic(world, 5, 1).value;
 
   // Lift it up above the ground.
   bnd_set_position(world, sphere, (bnd_v3) {0, 5, 0});
@@ -117,15 +118,15 @@ int main() {
 Rigidbodies in Bandura can be of two types: **dynamic** and **static**. As the naming suggests, the former can move and respond to collisions, while the latter serve as static environment. Primitive shapes expose both variants, for example:
 
 ```c
-bnd_body_handle bnd_add_box_dynamic(bnd_world *world, float mass, bnd_v3 size);
-bnd_body_handle bnd_add_box_static(bnd_world *world, bnd_v3 size);
-bnd_body_handle bnd_add_sphere_dynamic(bnd_world *world, float mass, float radius);
-bnd_body_handle bnd_add_sphere_static(bnd_world *world, float radius);
+bnd_result_handle bnd_add_box_dynamic(bnd_world *world, float mass, bnd_v3 size);
+bnd_result_handle bnd_add_box_static(bnd_world *world, bnd_v3 size);
+bnd_result_handle bnd_add_sphere_dynamic(bnd_world *world, float mass, float radius);
+bnd_result_handle bnd_add_sphere_static(bnd_world *world, float radius);
 ```
 
 Note that the static version doesn't require to specify mass, since static objects are treated as having _infinite_ mass.
 
-The returned value `bnd_body_handle` is a reference to a created body. Use it to interact with it, update or read its data.
+The returned value `bnd_result_handle` is wrapper around the body handle with an error attached. The actual body handle is stored in its `value` field. The handle can then be used to refer to that body.
 
 ```c
 #include "bandura.h"
@@ -135,10 +136,10 @@ int main() {
   // ...
 
   // Add a static box and set it's position. The rotation will be initialized to identity.
-  bnd_body_handle static_box = bnd_add_box_static(world, (bnd_v3){10, 2, 3});
+  bnd_body_handle static_box = bnd_add_box_static(world, (bnd_v3){10, 2, 3}).value;
   bnd_set_position(world, static_box, (bnd_v3){0, 1, 0});
 
-  bnd_body_handle dynamic_sphere = bnd_add_sphere_dynamic(world, 5, 1);
+  bnd_body_handle dynamic_sphere = bnd_add_sphere_dynamic(world, 5, 1).value;
   bnd_set_position(world, dynamic_sphere, (bnd_v3){5, 10, 5});
   bnd_set_velocity(world, dynamic_sphere, (bnd_v3){0, 5, 0});
 }
@@ -173,7 +174,7 @@ Bandura also supports combining multiple primitive shapes into a single body. Th
   float masses[] = { 3, 5, 5 }
 
   // As a last parameter the function takes the number of shapes in the arrays.
-  bnd_body_handle dumbell = bnd_add_compound_body_dynamic(world, shapes, masses, 3);
+  bnd_body_handle dumbell = bnd_add_compound_body_dynamic(world, shapes, masses, 3).value;
   bnd_set_position(world, dumbell, (bnd_v3){15, 10, 0});
 ```
 
@@ -191,7 +192,7 @@ bnd_body_handle sphere_handle;
 int main() {
   // ...
  
-  sphere_handle = bnd_add_sphere_dynamic(world, 5, 1);
+  sphere_handle = bnd_add_sphere_dynamic(world, 5, 1).value;
 
   // ... 
 
@@ -202,8 +203,8 @@ int main() {
 2) **Querying and updating body's properties**
 
 ```c
-bnd_v3 sphere_position = bnd_get_position(world, sphere_handle);
-bnd_v3 sphere_velocity = bnd_get_velocity(world, sphere_handle);
+bnd_v3 sphere_position = bnd_get_position(world, sphere_handle).value;
+bnd_v3 sphere_velocity = bnd_get_velocity(world, sphere_handle).value;
 
 bnd_v3 position_delta = bnd_scale(sphere_velocity, delta_time);
 bnd_v3 new_position = bnd_add(sphere_position, position_delta);
@@ -228,41 +229,41 @@ After the body is removed, its corresponding handle is invalidated. You can alwa
 Bandura supports imposing constraints on the bodies, so that they cannot move further apart than some specified distance. This can be used, for example, to create ragdolls:
 
 ```c
-  bnd_body_handle head = bnd_add_sphere_dynamic(world, 3, 0.4);
+  bnd_body_handle head = bnd_add_sphere_dynamic(world, 3, 0.4).value;
   bnd_set_position(world, head, (bnd_v3){0, 5, 0});
 
-  bnd_body_handle torso = bnd_add_cylinder_dynamic(world, 25, 0.3, 1.0);
+  bnd_body_handle torso = bnd_add_cylinder_dynamic(world, 25, 0.3, 1.0).value;
   bnd_set_position(world, torso, (bnd_v3){0, 4, 0});
 
-  bnd_body_handle pelvis = bnd_add_cylinder_dynamic(world, 20, 0.25, 1.0);
+  bnd_body_handle pelvis = bnd_add_cylinder_dynamic(world, 20, 0.25, 1.0).value;
   bnd_set_position(world, pelvis, (bnd_v3){0, 3, 0});
 
-  bnd_body_handle left_upper_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2);
+  bnd_body_handle left_upper_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2).value;
   bnd_set_position(world, left_upper_leg, (bnd_v3){0.23, 1.8, -0.2});
   bnd_set_rotation(world, left_upper_leg, (bnd_quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) });
 
-  bnd_body_handle left_lower_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2);
+  bnd_body_handle left_lower_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2).value;
   bnd_set_position(world, left_lower_leg, (bnd_v3){0.23, 0.6, -0.2});
   bnd_set_rotation(world, left_lower_leg, (bnd_quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) });
 
-  bnd_body_handle right_upper_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2);
+  bnd_body_handle right_upper_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2).value;
   bnd_set_position(world, right_upper_leg, (bnd_v3){-0.23, 1.8, 0});
 
-  bnd_body_handle right_lower_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2);
+  bnd_body_handle right_lower_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2).value;
   bnd_set_position(world, right_lower_leg, (bnd_v3){-0.23, 0.6, 0});
 
-  bnd_body_handle left_upper_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2);
+  bnd_body_handle left_upper_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2).value;
   bnd_set_position(world, left_upper_arm, (bnd_v3){0.4, 3.9, -0.4});
   bnd_set_rotation(world, left_upper_arm, (bnd_quat) { sinf(PI / 10), 0, 0, cosf(PI / 10) });
 
-  bnd_body_handle left_lower_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2);
+  bnd_body_handle left_lower_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2).value;
   bnd_set_position(world, left_lower_arm, (bnd_v3){0.43, 3.37, -1.45});
   bnd_set_rotation(world, left_lower_arm, (bnd_quat) { sinf(PI / 4), 0, 0, cosf(PI / 12) });
 
-  bnd_body_handle right_upper_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2);
+  bnd_body_handle right_upper_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2).value;
   bnd_set_position(world, right_upper_arm, (bnd_v3){-0.43, 3.8, 0});
 
-  bnd_body_handle right_lower_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2);
+  bnd_body_handle right_lower_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2).value;
   bnd_set_position(world, right_lower_arm, (bnd_v3){-0.43, 2.63, -0.3});
   bnd_set_rotation(world, right_lower_arm, (bnd_quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) });
 
@@ -351,7 +352,7 @@ bnd_error bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, bnd_mesh_
 
 ```c
 // `mesh_handle` is received from `bnd_import_mesh`
-bnd_body_handle mesh_body = bnd_add_mesh_dynamic(world, 5, mesh_handle);
+bnd_body_handle mesh_body = bnd_add_mesh_dynamic(world, 5, mesh_handle).value;
 // At this point it's just a regular body. You can change it's position or rotation, store its handle, apply forces, etc.
 ```
 
@@ -368,7 +369,7 @@ Here is an example of simulating an "explosion" using an overlap:
   uint32_t overlap_count = bnd_overlap(world, pos, explosion_radius, overlaps, 5); // Last parameter specifies the maximum overlap count.
 
   for (uint32_t i = 0; i < overlap_count; ++i) {
-    bnd_v3 body_pos = bnd_get_position(world, overlaps[i]);
+    bnd_v3 body_pos = bnd_get_position(world, overlaps[i]).value;
     bnd_apply_impulse(world, overlaps[i], bnd_v3_scale(bnd_v3_normalize(bnd_v3_sub(body_pos, pos)), explosion_impulse));
   }
 ```
@@ -381,7 +382,7 @@ to the origin. They are not guaranteed to be the closest.
 It's possible to subscribe to collision events for the particular body and react to them in your code:
 
 ```c
-bnd_body_handle b = bnd_add_sphere_dynamic(world, 5, 0.5);
+bnd_body_handle b = bnd_add_sphere_dynamic(world, 5, 0.5).value;
 bnd_set_position(world, b, (bnd_v3){0, 5, 0});
 
 // Makes the engine report collision events for this body during the simulation.
@@ -402,6 +403,47 @@ while (bnd_event_next(world, &enumerator)) {
 // To stop receiving collision events:
 bnd_event_unsubscribe(world, b.handle, BND_EVENT_COLLISION);
 ```
+
+## Handling errors
+
+Bandura is transparent about the errors happening inside. The idea is that when the user calls a function, they should be able to know that something went wrong the moment it returns. To achieve that, there are several types which represent possible error states:
+
+* `bnd_error` - the most basic one. Contains the type and a message. Generally the error handling pattern looks like this:
+
+```c
+bnd_error e = bnd_set_position(world, body, bnd_v3_zero());
+
+// BND_OK is a value for "no error occured, all good"
+if (e.type != BND_OK) {
+  // When e.type != BND_OK, e.message will contain a user-friendly explanation of what went wrong
+  printf("%s\n", e.message);
+} else {
+  // No errors, proceed normally
+}
+```
+* `bnd_result_*` - this is a family of types which also wrap some value on top of the error. The idea is that is there is no error (`e.type == BND_OK`), you get the value. If there is one, the value is irrelevant. Example:
+
+```c
+bnd_result_v3 result = bnd_get_position(world, body);
+if (result.error.type != BND_OK) {
+  printf("%s\n", result.error.message);
+} else {
+  // Use bnd_result.value to get the actual data when there is no error.
+  bnd_v3 position = result.value;
+}
+```
+
+There are few classes of functions in Bandura that return these error-like objects. They include, but not limited to:
+
+1) Functions for adding bodies:
+  * Return `bnd_result_handle` - wrapper around `bnd_body_handle` + `bnd_error`.
+  * In most cases these functions shouldn't fail, so you can safely use `value` without checking the error. The only way for them to fail is when the internal buffer exceeds its capacity and the engine tries to expand it, but fails. This may happen when the program runs out of memory or when using [custom memory allocators](#memory-allocator). So if you initialize Bandura with `bnd_init` and have some RAM, you shouldn't worry about this.
+2) Functions for getting body data
+  * Return different `bnd_result_*` types based on the function.
+  * These functions can fail when provided a stale `bnd_body_handle`. A handle becomes stale when its body gets removed.
+3) Functions for setting body data or applying forces.
+  * Return `bnd_error`
+  * Fail when provided stale `bnd_body_handle`. Some of them, for example `bnd_set_velocity`, will also fail when called on static bodies.
 
 ## Handling simulation time steps
 
@@ -529,41 +571,23 @@ static void *custom_malloc(uint64_t alignment, uint64_t size) {
   return ptr;
 }
 
-static void on_error(bnd_error_type type, char *message, void *data) {
-  switch (type) {
-    case BND_ERROR_NO_SPACE_AVAILABLE:
-      // Raised when the buffers are full and realloc fuction is not provided.
-      break;
-
-    case BND_ERROR_OUT_OF_MEMORY:
-      // Raised when malloc or realloc return NULL.
-      break;
-
-    case BND_ERROR_INVALID_ALLOCATOR:
-      // Raised when malloc function is NULL.
-      break;
-  }
-}
-
 int main() {
   bnd_config config = bnd_default_config();
   bnd_allocator allocator = { custom_malloc, NULL, NULL };
-  bnd_error error;
-  
-  bnd_register_error_callback(on_error);
 
   size = bnd_required_memory(&config);
   memory = malloc(size);
   offset = 0;
   
-  bnd_world *world = bnd_init_with_allocator(config, allocator, &error);
-  if (error.type != BND_OK) {
+  bnd_result_world world = bnd_init_with_allocator(config, allocator);
+  if (world.error.type != BND_OK) {
     printf("Failed to initialize Bandura: %s\n", error.message);
     return 1;
   }
 
-  bnd_body_handle sphere = bnd_add_sphere_dynamic(world, 4, 2);
-  if (!bnd_handle_valid(world, sphere)) {
+  // bnd_world pointer is stored in world.value
+  bnd_body_handle sphere = bnd_add_sphere_dynamic(world.value, 4, 2);
+  if (!bnd_handle_valid(world.value, sphere)) {
     // With custom allocator, body addition may fail if you provide insufficient memory capacity in the config
     // and don't specify the realloc function.
   }

@@ -213,7 +213,6 @@ static count_t box_plane_collision(bnd_world *world, const collision_detection_c
 
   bnd_error e = contacts_ensure_capacity(world, max_contacts);
   if (e.type != BND_OK) {
-    raise_error(e.type, NULL, e.message);
     return 0;
   }
 

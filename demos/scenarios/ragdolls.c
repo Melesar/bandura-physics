@@ -29,7 +29,7 @@ void scenario_setup_scene(bnd_world *world) {
         .type = BND_BOX, .box = {.size = (bnd_v3){3, 1, 1}}, .offset = (bnd_v3){1, 10, 0}, .rotation = bnd_qidentity()},
   };
 
-  bnd_body_handle ramp = bnd_add_compound_body_static(world, ramp_shapes, 2);
+  bnd_body_handle ramp = bnd_add_compound_body_static(world, ramp_shapes, 2).value;
   bnd_set_position(world, ramp, (bnd_v3) { 5, 0, 5 });
 
   hanging_doll = ragdoll_create(world, (bnd_v3){8, 5, 5});
@@ -50,9 +50,9 @@ void scenario_build_ui(bnd_world *world) {
   if (ui_begin_area("Ragdolls", &widget_collapsed)) {
     for (bone b = HEAD; b < BONE_COUNT; ++b) {
       bnd_body_handle body = hanging_doll[b];
-      float velocity = bnd_v3_len(bnd_get_velocity(world, body));
-      float angular_velocity = bnd_v3_len(bnd_get_angular_velocity(world, body));
-      float angular_momentum = bnd_v3_len(bnd_get_angular_momentum(world, body));
+      float velocity = bnd_v3_len(bnd_get_velocity(world, body).value);
+      float angular_velocity = bnd_v3_len(bnd_get_angular_velocity(world, body).value);
+      float angular_momentum = bnd_v3_len(bnd_get_angular_momentum(world, body).value);
 
       char *bone_name;
       switch (b) {
