@@ -75,8 +75,26 @@ typedef enum {
 } bnd_shape_type;
 
 typedef enum {
+  BND_DEBUG_DRAW_CONTACTS = 1,
+
+  BND_DEBUG_DRAW_SHAPES_DYNAMIC = 2,
+  BND_DEBUG_DRAW_SHAPES_STATIC = 4,
+  BND_DEBUG_DRAW_SHAPES = BND_DEBUG_DRAW_SHAPES_DYNAMIC | BND_DEBUG_DRAW_SHAPES_STATIC,
+
+  BND_DEBUG_DRAW_ALL = ~0,
+} bnd_debug_draw_flags;
+
+typedef enum {
   BND_EVENT_COLLISION = 1,
 } bnd_event_type;
+
+typedef void (*bnd_debug_draw_contact_fn)(bnd_v3 point, bnd_v3 normal, float depth);
+typedef void (*bnd_debug_draw_shape_fn)(bnd_v3 position, bnd_quat rotation, bnd_shape_type type);
+
+typedef struct {
+  bnd_debug_draw_contact_fn draw_contact;
+  bnd_debug_draw_shape_fn draw_shape;
+} bnd_debug_draw_callbacks;
 
 typedef struct {
   bnd_malloc_fn malloc;
@@ -252,7 +270,7 @@ typedef struct {
 } bnd_event_enumerator;
 
 #if defined(__cplusplus)
-extern "C" {            // Prevents name mangling of functions
+extern "C" {
 #endif
 
 BNDAPI bnd_config bnd_default_config();
@@ -327,6 +345,8 @@ BNDAPI void bnd_reset_world(bnd_world *world);
 BNDAPI bool bnd_raycast_closest(const bnd_world *world, bnd_ray ray, bnd_raycast_hit *closest_hit);
 BNDAPI uint32_t bnd_raycast_multiple(const bnd_world *world, bnd_ray ray, bnd_raycast_hit *hits, uint32_t max_hits);
 BNDAPI uint32_t bnd_overlap(const bnd_world *world, bnd_v3 origin, float radius, bnd_body_handle *overlaps, uint32_t max_overlaps);
+
+BNDAPI void bnd_debug_draw(const bnd_world *world, bnd_debug_draw_flags flags, bnd_debug_draw_callbacks callbacks);
 
 BNDAPI void bnd_teardown(bnd_world *world);
 

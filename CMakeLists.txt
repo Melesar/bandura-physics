@@ -38,6 +38,8 @@ target_compile_options(bandura PRIVATE
   -Werror=incompatible-pointer-types
   -Werror=return-type
   -Wno-unused-parameter
+  -Wno-braced-scalar-init
+  -Wno-unused-function
 )
 target_compile_definitions(bandura PRIVATE
   $<$<CONFIG:Debug>:BND_DEBUG>

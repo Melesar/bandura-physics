@@ -137,8 +137,7 @@ void shapes_clear_slot(bnd_world *world, shape_dimension_bracket bracket, count_
 }
 
 body_shapes shapes_write(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes, count_t count) {
-  const count_t max_count = 1 << (BRACKET_COUNT - 1);
-  assert(count <= max_count);
+  assert(count <= (1 << (BRACKET_COUNT - 1)));
 
   if (!shapes_any_slot_available(world, bracket)) {
     shapes_expand_bracket(world, bracket);
