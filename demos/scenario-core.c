@@ -76,41 +76,6 @@ void draw_bounding_boxes(const bnd_world *world) {
   draw_bounding_boxes_typed(world, BND_BODY_STATIC, GREEN);
 }
 
-static bnd_v3 joint_attachment_point(const bnd_world *world, bnd_joint j, uint32_t index) {
-  bnd_v3 position = bnd_get_position(world, j.bodies[index]).value;
-  bnd_quat rotation = bnd_get_rotation(world, j.bodies[index]).value;
-
-  bnd_v3 point = j.relative_contact_positions[index];
-  point = Vector3RotateByQuaternion(point, rotation);
-  point = Vector3Add(point, position);
-
-  return point;
-}
-
-void physics_draw_collisions(const bnd_world *world) {
-#define max_count 50
-
-  bnd_contact contacts[max_count];
-  uint32_t count = bnd_get_contacts(world, contacts, max_count);
-
-  for (uint32_t i = 0; i < count; ++i) {
-    bnd_contact contact = contacts[i];
-
-    draw_arrow(contact.point, Vector3Scale(contact.normal, 0.2), RED);
-  }
-
-  const bnd_joint *joints = bnd_get_joints(world, &count);
-  for (uint32_t i = 0; i < count; ++i) {
-    bnd_v3 p1 = joint_attachment_point(world, joints[i], 0);
-    bnd_v3 p2 = joint_attachment_point(world, joints[i], 1);
-
-    DrawSphere(p1, 0.05, GREEN);
-    DrawSphere(p2, 0.05, BLUE);
-  }
-
-#undef max_count
-}
-
 ragdoll ragdoll_create(bnd_world *world, bnd_v3 position) {
   bnd_body_handle head = bnd_add_sphere_dynamic(world, 3, 0.4).value;
   bnd_set_position(world, head, Vector3Add(position, (Vector3){ 0, 5, 0}));

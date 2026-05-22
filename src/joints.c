@@ -18,10 +18,9 @@ static bnd_error resize_if_needed(bnd_allocator allocator, joints *joints) {
   return OK;
 }
 
-count_t bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_v3 contact_offset_a, bnd_v3 contact_offset_b, float max_distance) {
-  // Two static bodies shouldn't be bound together.
+bnd_result_u32 bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_v3 contact_offset_a, bnd_v3 contact_offset_b, float max_distance) {
   if (body_a.type == BND_BODY_STATIC && body_b.type == BND_BODY_STATIC) {
-    return ~0;
+    return BND_RESULT_ERR(u32, BND_ERROR_INVALID_JOINT, "Two static bodies cannot be bound together");
   }
 
   // Let body_a always be dynamic - same as with contacts.
@@ -37,10 +36,7 @@ count_t bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle 
 
   joints *joints = &world->joints;
 
-  bnd_error e = resize_if_needed(world->allocator, joints);
-  if (e.type != BND_OK) {
-    return ~0;
-  }
+  PROPAGATE_RESULT(u32, resize_if_needed(world->allocator, joints));
 
   count_t last_index = joints->count++;
   bool is_dynamic = body_b.type == BND_BODY_DYNAMIC;
@@ -67,7 +63,7 @@ count_t bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle 
   };
   joints->ids[index] = id;
 
-  return id;
+  return BND_RESULT_OK(u32, id);
 }
 
 void bnd_remove_joint(bnd_world *world, count_t id) {
@@ -86,11 +82,6 @@ void bnd_remove_joint(bnd_world *world, count_t id) {
 
     break;
   }
-}
-
-const bnd_joint *bnd_get_joints(const bnd_world *world, count_t *count) {
-  *count = world->joints.count;
-  return world->joints.values;
 }
 
 static count_t generate_contacts(bnd_world *world, count_t start, count_t end, bool is_dynamic) {

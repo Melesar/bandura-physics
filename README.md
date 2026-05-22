@@ -558,7 +558,7 @@ Here is an example of an arena-type custom allocator. It contains all the memory
 uint8_t *memory;
 uint64_t offset, size;
 
-static void *custom_malloc(uint64_t alignment, uint64_t size) {
+static void *custom_malloc(uint64_t alignment, uint64_t bytes) {
   offset = (offset + alignment - 1) & ~(alignment - 1);
     
   if (offset + bytes > size) {
@@ -586,13 +586,17 @@ int main() {
   }
 
   // bnd_world pointer is stored in world.value
-  bnd_body_handle sphere = bnd_add_sphere_dynamic(world.value, 4, 2);
-  if (!bnd_handle_valid(world.value, sphere)) {
+  bnd_result_handle sphere = bnd_add_sphere_dynamic(world.value, 4, 2);
+  if (sphere.error.type == BND_OK) {
     // With custom allocator, body addition may fail if you provide insufficient memory capacity in the config
     // and don't specify the realloc function.
+    // 
+    // Here you can safely use the sphere's handle: sphere.value
   }
 
   // ...
+
+  bnd_teardown(world.value);
 
   return 0;
 }

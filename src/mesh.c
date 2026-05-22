@@ -7,12 +7,11 @@
 #include <string.h>
 #include <math.h>
 
-
-static bnd_error mesh_validation_error(char *message) {
-  return (bnd_error) { BND_ERROR_MESH_INVALID, message };
+static inline bnd_error mesh_validation_error(char *message) {
+  return (bnd_error) { BND_ERROR_INVALID_MESH, message };
 }
 
-static bnd_error realloc_error() {
+static inline bnd_error realloc_error() {
   return (bnd_error) { BND_ERROR_NO_SPACE_AVAILABLE, "Allocator.realloc failed to re-allocate mesh buffer" };
 }
 

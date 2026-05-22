@@ -281,10 +281,9 @@ static void draw_scene(program_config program_config, Camera camera, Shader shad
     draw_custom_grid(32, 1.0f);
   }
 
-  if (edit_mode)
+  if (edit_mode) {
     draw_gizmos();
-  if (master_widget_state.draw_collisions)
-    physics_draw_collisions(world);
+  }
   if (master_widget_state.draw_bounding_boxes) {
     draw_bounding_boxes(world);
   }

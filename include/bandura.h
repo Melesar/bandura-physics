@@ -45,7 +45,8 @@ typedef enum {
   BND_ERROR_NO_SPACE_AVAILABLE,
   BND_ERROR_OUT_OF_MEMORY,
   BND_ERROR_INVALID_ALLOCATOR,
-  BND_ERROR_MESH_INVALID,
+  BND_ERROR_INVALID_JOINT,
+  BND_ERROR_INVALID_MESH,
   BND_ERROR_MESH_IS_CONCAVE,
   BND_ERROR_BODY_HANDLE_INVALID,
 
@@ -273,10 +274,9 @@ BNDAPI bnd_result_handle bnd_add_mesh_static(bnd_world *world, bnd_mesh_handle m
 
 BNDAPI bnd_error bnd_remove_body(bnd_world *world, bnd_body_handle handle);
 
-BNDAPI uint32_t bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_v3 contact_offset_a,
+BNDAPI bnd_result_u32 bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_v3 contact_offset_a,
                           bnd_v3 contact_offset_b, float max_distance);
 BNDAPI void bnd_remove_joint(bnd_world *world, uint32_t id);
-BNDAPI const bnd_joint *bnd_get_joints(const bnd_world *world, uint32_t *count);
 
 BNDAPI bnd_error bnd_apply_force(bnd_world *world, bnd_body_handle handle, bnd_v3 force);
 BNDAPI bnd_error bnd_apply_force_at(bnd_world *world, bnd_body_handle handle, bnd_v3 force, bnd_v3 position);
