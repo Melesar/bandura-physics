@@ -283,7 +283,7 @@ void total_count_and_time_is_calculated_correctly() {
 
   simulate_frame();
 
-  profiler_end_frame();
+  profiler_end_frame((profiler_frame_metadata){0});
 
   assert(profiler_monitor_read_next_frame(&monitor));
   assert(monitor.samples_available == 48);

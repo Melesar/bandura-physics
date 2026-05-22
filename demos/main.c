@@ -1,4 +1,3 @@
-#include "raylib.h"
 #include "scenario-core.h"
 #include "raygui.h"
 #include "raymath.h"
@@ -38,7 +37,7 @@ void draw_gizmos();
 
 static void draw_custom_grid(int slices, float spacing);
 static void setup_scene(Shader shader);
-static void init_physics();
+static void init_physics(const program_config *program_config);
 static Shader setup_lighting();
 static Camera setup_camera(program_config config);
 static void update_camera(Camera *camera, float deltaTime);
@@ -68,7 +67,7 @@ Material materials[20];
 Mesh meshes[20];
 render_mesh render_meshes[20];
 
-count_t render_mesh_index = 0;
+uint32_t render_mesh_index = 0;
 bool edit_mode = false;
 bool simulation_running = true;
 bool step_forward = false;
@@ -110,7 +109,7 @@ int main(int argc, char **argv) {
   ui_initialize();
   init_debugging();
   init_gizmos();
-  init_physics();
+  init_physics(&program_config);
 
   setup_scene(shader);
   scenario_initialize(world);
@@ -190,43 +189,43 @@ static void draw_physics_bodies_typed(bnd_body_type type) {
   bnd_enumerate_bodies_typed(world, type, &enumerator);
 
   while (bnd_body_next_typed(world, &enumerator)) {
-    v3 position = bnd_get_position(world, enumerator.handle);
-    quat rotation = bnd_get_rotation(world, enumerator.handle);
+    bnd_v3 position = bnd_get_position(world, enumerator.handle).value;
+    bnd_quat rotation = bnd_get_rotation(world, enumerator.handle).value;
 
-    count_t shapes_count;
-    bnd_body_shape *shapes = bnd_get_shapes(world, enumerator.handle, &shapes_count);
+    bnd_body_shape shapes[16];
+    bnd_result_u32 shapes_count = bnd_get_shapes(world, enumerator.handle, shapes, 16);
 
     Matrix scale;
     Matrix transform =
-        MatrixMultiply(QuaternionToMatrix(quat_ray(rotation)), MatrixTranslate(position.x, position.y, position.z));
+        MatrixMultiply(QuaternionToMatrix(rotation), MatrixTranslate(position.x, position.y, position.z));
     Material material = materials[enumerator.handle.index % 20];
 
-    for (count_t k = 0; k < shapes_count; ++k) {
+    for (uint32_t k = 0; k < shapes_count.value; ++k) {
       bnd_body_shape shape = shapes[k];
-      Matrix shape_transform = MatrixMultiply(QuaternionToMatrix(quat_ray(shape.rotation)),
+      Matrix shape_transform = MatrixMultiply(QuaternionToMatrix(shape.rotation),
           MatrixTranslate(shape.offset.x, shape.offset.y, shape.offset.z));
       Matrix full_transform = MatrixMultiply(shape_transform, transform);
 
       switch (shape.type) {
         case BND_BOX:
-          scale = MatrixScale(shape.box.size.x, shape.box.size.y, shape.box.size.z);
+          scale = MatrixScale(shape.value.box.size.x, shape.value.box.size.y, shape.value.box.size.z);
           DrawMesh(meshes[BND_BOX], material, MatrixMultiply(scale, full_transform));
           break;
 
         case BND_SPHERE:
-          scale = MatrixScale(shape.sphere.radius, shape.sphere.radius, shape.sphere.radius);
+          scale = MatrixScale(shape.value.sphere.radius, shape.value.sphere.radius, shape.value.sphere.radius);
           DrawMesh(meshes[BND_SPHERE], material, MatrixMultiply(scale, full_transform));
           break;
 
         case BND_CYLINDER:
-          scale = MatrixScale(shape.cylinder.radius, shape.cylinder.height, shape.cylinder.radius);
+          scale = MatrixScale(shape.value.cylinder.radius, shape.value.cylinder.height, shape.value.cylinder.radius);
           DrawMesh(meshes[BND_CYLINDER], material, MatrixMultiply(scale, full_transform));
           break;
 
         case BND_MESH:
-          for (count_t i = 0; i < render_mesh_index; ++i) {
+          for (uint32_t i = 0; i < render_mesh_index; ++i) {
             render_mesh rm = render_meshes[i];
-            if (rm.handle == shape.mesh) {
+            if (rm.handle == shape.value.mesh) {
               DrawMesh(rm.mesh, material, full_transform);
               break;
             }
@@ -245,7 +244,7 @@ void register_mesh_for_rendering(bnd_mesh_handle handle, Mesh mesh) {
     return;
   }
 
-  for (count_t i = 0; i < render_mesh_index; ++i) {
+  for (uint32_t i = 0; i < render_mesh_index; ++i) {
     if (render_meshes[i].handle == handle) {
       return;
     }
@@ -259,8 +258,8 @@ void register_mesh_for_rendering(bnd_mesh_handle handle, Mesh mesh) {
 
 static void draw_physics_bodies() {
   if (master_widget_state.draw_bodies) {
-    draw_physics_bodies_typed(BND_DYNAMIC);
-    draw_physics_bodies_typed(BND_STATIC);
+    draw_physics_bodies_typed(BND_BODY_DYNAMIC);
+    draw_physics_bodies_typed(BND_BODY_STATIC);
   }
 }
 
@@ -282,10 +281,9 @@ static void draw_scene(program_config program_config, Camera camera, Shader shad
     draw_custom_grid(32, 1.0f);
   }
 
-  if (edit_mode)
+  if (edit_mode) {
     draw_gizmos();
-  if (master_widget_state.draw_collisions)
-    physics_draw_collisions(world);
+  }
   if (master_widget_state.draw_bounding_boxes) {
     draw_bounding_boxes(world);
   }
@@ -333,8 +331,8 @@ static void update_camera(Camera *camera, float deltaTime) {
 
 static Camera setup_camera(program_config program_config) {
   Camera3D camera = { 0 };
-  camera.position = vec_ray(program_config.camera_position);
-  camera.target = vec_ray(program_config.camera_target);
+  camera.position = program_config.camera_position;
+  camera.target = program_config.camera_target;
   camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
   camera.fovy = 45.0f;
   camera.projection = CAMERA_PERSPECTIVE;
@@ -391,8 +389,22 @@ static void reset() {
   scenario_setup_scene(world);
 }
 
-static void init_physics() {
-  world = bnd_init(&config);
+static void init_physics(const program_config *program_config) {
+  if (program_config->custom_malloc == NULL) {
+    world = bnd_init(config);
+  } else {
+    bnd_result_world result = bnd_init_with_allocator(config, (bnd_allocator) {
+      program_config->custom_malloc,
+      program_config->custom_realloc,
+      program_config->custom_free
+    });
+
+    if (result.error.type != BND_OK) {
+      TraceLog(LOG_FATAL, "Failed to initialize the world: %s", result.error.message);
+    }
+
+    world = result.value;
+  }
 }
 
 static void build_ui() {

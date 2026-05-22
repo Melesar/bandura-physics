@@ -3,18 +3,68 @@
 
 #include "bandura.h"
 
+#define EPSILON 0.000001f
 #define EPHEMERAL_BODIES_COUNT 4
+#define DEFAULT_VERTEX_PER_MESH 512
+#define DEFAULT_FACE_PER_MESH 256
+
+#define OK (bnd_error){BND_OK, NULL}
+#define OOM_ERROR (bnd_error){BND_ERROR_OUT_OF_MEMORY, "Allocator.malloc failed to allocate memory"}
+
+#define PROPAGATE_ERROR3(error, suffix) \
+  bnd_error e_##suffix = error; \
+  if (e_##suffix.type != BND_OK) { \
+    return e_##suffix; \
+  }
+#define PROPAGATE_ERROR2(error, suffix) PROPAGATE_ERROR3(error, suffix)
+#define PROPAGATE_ERROR(error) PROPAGATE_ERROR2(error, __LINE__)
+
+#define PROPAGATE_RESULT3(suffix, error, error_suffix) \
+  bnd_error e_##error_suffix = error; \
+  if (e_##error_suffix.type != BND_OK) { \
+    return BND_RESULT_ERR2(suffix, e_##error_suffix); \
+  }
+#define PROPAGATE_RESULT2(suffix, error, error_suffix) PROPAGATE_RESULT3(suffix, error, error_suffix)
+#define PROPAGATE_RESULT(suffix, error) PROPAGATE_RESULT2(suffix, error, __LINE__)
+
+#define BND_RESULT_OK(suffix, value) (bnd_result_##suffix) { OK, value }
+#define BND_RESULT_ERR(suffix, error_type, message) (bnd_result_##suffix) { (bnd_error) { error_type, message }, { 0 } }
+#define BND_RESULT_ERR2(suffix, error) (bnd_result_##suffix) { error, { 0 } }
+
+#define ALLOC_BUFFER1(buffer, capacity) ALLOC_BUFFER(buffer, 1, capacity)
+#define ALLOC_BUFFER2(buffer, capacity) ALLOC_BUFFER(buffer, 2, capacity)
+#define ALLOC_BUFFER4(buffer, capacity) ALLOC_BUFFER(buffer, 4, capacity)
+#define ALLOC_BUFFER8(buffer, capacity) ALLOC_BUFFER(buffer, 8, capacity)
+
+#define REALLOC_BUFFER1(buffer, allocator, element_size, old_size, new_size) REALLOC_BUFFER(buffer, allocator, 1, element_size, old_size, new_size)
+#define REALLOC_BUFFER2(buffer, allocator, element_size, old_size, new_size) REALLOC_BUFFER(buffer, allocator, 2, element_size, old_size, new_size)
+#define REALLOC_BUFFER4(buffer, allocator, element_size, old_size, new_size) REALLOC_BUFFER(buffer, allocator, 4, element_size, old_size, new_size)
+#define REALLOC_BUFFER8(buffer, allocator, element_size, old_size, new_size) REALLOC_BUFFER(buffer, allocator, 8, element_size, old_size, new_size)
+
+#define ALLOC_BUFFER(buffer, alingment, capacity) \
+  buffer = allocator.malloc(alingment, capacity); \
+  if (buffer == NULL) { \
+    return OOM_ERROR; \
+  } \
+
+#define REALLOC_BUFFER(buffer, allocator, alignment, element_size, old_size, new_size) \
+  buffer = allocator.realloc(buffer, alignment, old_size * element_size, element_size * new_size); \
+  if (buffer == NULL) { \
+    return (bnd_error) { BND_ERROR_OUT_OF_MEMORY, "Allocator.realloc failed to re-allocate buffer" }; \
+  }
+
+typedef uint32_t count_t;
 
 typedef struct {
-  v3 point;
-  v3 normal;
+  bnd_v3 point;
+  bnd_v3 normal;
   float depth;
   count_t index_a, index_b;
   float friction, restitution;
 
-  m3 basis;
-  v3 relative_position[2];
-  v3 local_velocity;
+  bnd_m3 basis;
+  bnd_v3 relative_position[2];
+  bnd_v3 local_velocity;
   float desired_delta_velocity;
 } contact;
 
@@ -57,13 +107,13 @@ typedef struct {
 } bnd_mesh;
 
 typedef struct {
-  v3 *verticies;
+  bnd_v3 *verticies;
   uint32_t *indicies;
 
   submesh *submeshes;
   bnd_mesh *meshes;
 
-  m3 *inertias;
+  bnd_m3 *inertias;
   float *volumes;
   bnd_aabb *aabbs;
 
@@ -95,8 +145,8 @@ typedef struct {
   count_t count;                                                                                                       \
   count_t free_count;                                                                                                  \
   count_t first_outer_node;                                                                                            \
-  v3 *positions;                                                                                                       \
-  quat *rotations;                                                                                                     \
+  bnd_v3 *positions;                                                                                                       \
+  bnd_quat *rotations;                                                                                                     \
   body_shapes *shapes;                                                                                                 \
   bnd_aabb *aabbs;                                                                                                     \
   bnd_event_type *event_masks;                                                                                         \
@@ -144,20 +194,20 @@ typedef struct {
   COMMON_FIELDS
 
   // Forces
-  v3 *forces;
-  v3 *torques;
-  v3 *impulses;
-  v3 *angular_impulses;
+  bnd_v3 *forces;
+  bnd_v3 *torques;
+  bnd_v3 *impulses;
+  bnd_v3 *angular_impulses;
 
   // Dynamics
   float *inv_masses;
-  v3 *velocities;
-  v3 *angular_momenta;
-  m3 *inv_inertia_tensors;
+  bnd_v3 *velocities;
+  bnd_v3 *angular_momenta;
+  bnd_m3 *inv_inertia_tensors;
 
   // Derived values.
-  v3 *accelerations;
-  m3 *inv_intertias;
+  bnd_v3 *accelerations;
+  bnd_m3 *inv_intertias;
 
   // Sleeping
   count_t awake_count;
@@ -183,14 +233,15 @@ struct bnd_world_t {
 
   bnd_config config;
   bnd_world_stats stats;
+  bnd_allocator allocator;
 
   count_t generation;
 };
 
 typedef struct {
-  v3 v;
-  v3 v1;
-  v3 v2;
+  bnd_v3 v;
+  bnd_v3 v1;
+  bnd_v3 v2;
 } support_point;
 
 typedef struct {
@@ -205,11 +256,9 @@ typedef struct {
   count_t index;
 } shape_context;
 
-typedef v3 (*support_func)(const shape_context *, v3);
+typedef bnd_v3 (*support_func)(const shape_context *, bnd_v3);
 
-void raise_error(bnd_error type, void *data, const char *template, ...);
-void raise_error_debug(bnd_error type, void *data, const char *template, ...);
-void notify_body_removed(bnd_body_handle handle);
+bnd_allocator bnd_default_allocator();
 
 bnd_body_handle make_body_handle(const bnd_world *world, bnd_body_type type, count_t index);
 count_t handle_to_inner_index(const bnd_world *world, bnd_body_handle handle);
@@ -217,10 +266,10 @@ count_t handle_to_inner_index(const bnd_world *world, bnd_body_handle handle);
 common_data *as_common(bnd_world *world, bnd_body_type type);
 const common_data *as_common_const(const bnd_world *world, bnd_body_type type);
 
-void contacts_init(bnd_world *world);
+bnd_error contacts_init(bnd_world *world);
 void contacts_teardown(bnd_world *world);
 void contacts_reset(bnd_world *world);
-void contacts_ensure_capacity(bnd_world *world, count_t additional_count);
+bnd_error contacts_ensure_capacity(bnd_world *world, count_t additional_count);
 contact *contacts_new_default(bnd_world *world, count_t body_a, count_t body_b);
 void contacts_generate(bnd_world *world);
 void contacts_resolve(bnd_world *world, float dt);
@@ -228,20 +277,21 @@ void contacts_resolve(bnd_world *world, float dt);
 count_t collisions_detect_dynamic(bnd_world *world);
 void collisions_detect_static(bnd_world *world);
 
-void joints_init(bnd_world *world);
+bnd_error joints_init(bnd_world *world);
 void joints_teardown(bnd_world *world);
 void joints_reset(bnd_world *world);
 count_t joints_generate_dynamic(bnd_world *world);
 void joints_generate_static(bnd_world *world);
 
-void meshes_init(bnd_world *world);
+bnd_error meshes_init(bnd_world *world);
 void meshes_teardown(bnd_world *world);
 
-void shapes_init(bnd_world *world);
+bnd_error shapes_init(bnd_world *world);
 void shapes_teardown(bnd_world *world);
 void shapes_reset(bnd_world *world);
+void shapes_get_bracket_properties(const bnd_config *config, count_t bracket_index, count_t *blocks, count_t *shapes, count_t *capacity);
 bool shapes_any_slot_available(const bnd_world *world, shape_dimension_bracket bracket);
-void shapes_expand_bracket(bnd_world *world, shape_dimension_bracket bracket);
+bnd_error shapes_expand_bracket(bnd_world *world, shape_dimension_bracket bracket);
 bool shapes_put_into_empty_slot(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes, count_t shapes_count, count_t *slot_number);
 void shapes_clear_slot(bnd_world *world, shape_dimension_bracket bracket, count_t slot);
 body_shapes shapes_write(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes, count_t count);
@@ -249,28 +299,32 @@ bnd_body_shape *shapes_get(const bnd_world *world, body_shapes shapes);
 
 count_t ephemeral_body_index(const common_data *data);
 
-void events_init(bnd_world *world);
+bnd_error events_init(bnd_world *world);
 void events_teardown(bnd_world *world);
 void events_reset(bnd_world *world);
 bool events_subscribed(const common_data *data, count_t index, bnd_event_type event_type);
-void events_push(bnd_world *world, common_data *data, count_t index, bnd_event event);
+bnd_error events_push(bnd_world *world, common_data *data, count_t index, bnd_event event);
 
-quat integrate_rotation_midpoint(quat rotation, v3 angular_momentum, m3 base_inv_inertia, float dt);
+bnd_quat integrate_rotation_midpoint(bnd_quat rotation, bnd_v3 angular_momentum, bnd_m3 base_inv_inertia, float dt);
 bool gjk_check_intersection(const bnd_world *world, const collision_detection_context *ctx, simplex *simplex);
-void epa_init(const bnd_config *config);
+bnd_error epa_init(bnd_world *world);
 void epa_get_contact(const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact);
-support_point support(const collision_detection_context *ctx, v3 direction);
+support_point support(const collision_detection_context *ctx, bnd_v3 direction);
+uint32_t polytope_memory_size(uint16_t max_nodes);
 
-float distance_to_triangle(v3 from, v3 a, v3 b, v3 c, v3 *closest);
-float distance_to_line_segment(v3 from, v3 a, v3 b, v3 *closest);
+float distance_to_triangle(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_v3 *closest);
+float distance_to_line_segment(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 *closest);
 bool aabb_intersect(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b);
 
-v3 body_center(const shape_context *ctx);
-quat body_rotation(const shape_context *ctx);
+bnd_v3 body_center(const shape_context *ctx);
+bnd_quat body_rotation(const shape_context *ctx);
 
-v3 v3_min(v3 a, v3 b);
-v3 v3_max(v3 a, v3 b);
+bnd_m3 quat_as_matrix(bnd_quat q);
 
-m3 quat_as_matrix(quat q);
-
+bnd_v3 bnd_m3_rotate_inverse(bnd_v3 v, bnd_m3 m);
+bnd_m3 bnd_m3_from_basis(bnd_v3 x, bnd_v3 y, bnd_v3 z);
+bnd_m3 bnd_m3_skew_symmetric(bnd_v3 v);
+bnd_m3 bnd_m3_initial_inertia(bnd_v3 inertia);
+bnd_m3 bnd_m3_inertia(bnd_m3 initial_inertia, bnd_quat rotation);
+bnd_m3 bnd_m3_displacement_inertia(bnd_m3 i0, bnd_v3 offset, float mass);
 #endif

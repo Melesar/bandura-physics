@@ -1,20 +1,13 @@
-#include "bandura.h"
-#include "raylib.h"
 #include "scenario-core.h"
+#include "bnd-math.h"
 
 Mesh rl_meshes[16];
 imported_mesh imported_meshes[4];
 
-static void on_error(bnd_error error, char *message, void *data) {
-  TraceLog(LOG_ERROR, message);
-}
-
 void scenario_configure(program_config *config, bnd_config *physics_config) {
   config->window_title = "Vortex";
-  config->camera_position = (v3){ 22.542, 11.645, 20.752 };
-  config->camera_target = (v3){ 0, 0, 0 };
-
-  bnd_register_error_callback(on_error);
+  config->camera_position = (bnd_v3){ 22.542, 11.645, 20.752 };
+  config->camera_target = (bnd_v3){ 0, 0, 0 };
 }
 
 void scenario_initialize(bnd_world *world) {
@@ -30,27 +23,27 @@ void scenario_initialize(bnd_world *world) {
 }
 
 void scenario_setup_scene(bnd_world *world) {
-  bnd_add_plane(world, zero(), up());
+  bnd_add_plane(world, bnd_v3_zero(), bnd_v3_up());
 
-  bnd_body b;
+  bnd_body_handle b;
   if (imported_meshes[0].success) {
-    b = bnd_add_mesh_dynamic(world, 5, imported_meshes[0].mesh);
-    *b.position = vec3(1.5, 7, 0);
+    b = bnd_add_mesh_dynamic(world, 5, imported_meshes[0].mesh).value;
+    bnd_set_position(world, b, (bnd_v3){1.5, 7, 0});
   }
 
   if (imported_meshes[1].success) {
-    b = bnd_add_mesh_dynamic(world, 5, imported_meshes[1].mesh);
-    *b.position = vec3(-1, 7, 0);
+    b = bnd_add_mesh_dynamic(world, 5, imported_meshes[1].mesh).value;
+    bnd_set_position(world, b, (bnd_v3){-1, 7, 0});
   }
 
   if (imported_meshes[2].success) {
-    b = bnd_add_mesh_dynamic(world, 5, imported_meshes[2].mesh);
-    *b.position = vec3(3, 7, 0);
+    b = bnd_add_mesh_dynamic(world, 5, imported_meshes[2].mesh).value;
+    bnd_set_position(world, b, (bnd_v3){3, 7, 0});
   }
 
   if (imported_meshes[3].success) {
-    b = bnd_add_mesh_static(world, imported_meshes[3].mesh);
-    *b.position = vec3(-5, 7, 0);
+    b = bnd_add_mesh_static(world, imported_meshes[3].mesh).value;
+    bnd_set_position(world, b, (bnd_v3){-5, 7, 0});
   }
 }
 
@@ -63,7 +56,7 @@ void scenario_draw_scene(bnd_world *world) {}
 void scenario_build_ui(bnd_world *world) {}
 
 void scenario_teardown() {
-  for (count_t i = 0; i < 4; ++i) {
+  for (uint32_t i = 0; i < 4; ++i) {
     UnloadMesh(rl_meshes[i]);
   }
 }

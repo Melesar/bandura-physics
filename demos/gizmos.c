@@ -322,9 +322,9 @@ void draw_gizmos() {
     Color y_color = (g.hovered_gizmo == GIZMO_TRANSLATE_Y || g.selected_gizmo == GIZMO_TRANSLATE_Y) ? ORANGE : GREEN;
     Color z_color = (g.hovered_gizmo == GIZMO_TRANSLATE_Z || g.selected_gizmo == GIZMO_TRANSLATE_Z) ? ORANGE : BLUE;
 
-    draw_arrow(ray_vec(*g.pos), (v3){ gizmo_arrow_length, 0, 0 }, x_color);
-    draw_arrow(ray_vec(*g.pos), (v3){ 0, gizmo_arrow_length, 0 }, y_color);
-    draw_arrow(ray_vec(*g.pos), (v3){ 0, 0, gizmo_arrow_length }, z_color);
+    draw_arrow(*g.pos, (bnd_v3){ gizmo_arrow_length, 0, 0 }, x_color);
+    draw_arrow(*g.pos, (bnd_v3){ 0, gizmo_arrow_length, 0 }, y_color);
+    draw_arrow(*g.pos, (bnd_v3){ 0, 0, gizmo_arrow_length }, z_color);
 
     // Draw rotation gizmos
     Color rx_color = (g.hovered_gizmo == GIZMO_ROTATE_X || g.selected_gizmo == GIZMO_ROTATE_X) ? ORANGE : RED;
