@@ -18,7 +18,7 @@ Bandura is a traditional Ukrainian [musical instrument](https://en.wikipedia.org
   * [Querying the physics world](#querying-the-physics-world)
   * [Reacting to collisions](#reacting-to-collisions)
 * [Handling errors](#handling-errors)
-* [Handling simulation timesteps](#handling-simulation-timesteps)
+* [Handling simulation time steps](#handling-simulation-time-steps)
 * [Bring your own...](#bring-your-own)
   * [Math](#math)
   * [Memory allocator](#memory-allocator)
@@ -30,7 +30,7 @@ Bandura is a traditional Ukrainian [musical instrument](https://en.wikipedia.org
 * **Portability**. Written in C99, so it can be used in any project that supports the C ABI.
 * **No dependencies**. The library itself is self-contained, so no third-party code is included.
 * **Data-oriented**. The data layout inside the engine allows for efficient CPU cache utilization, enabling high performance.
-* **Cross-platform**. Works on Linux and MacOS. Should work on Windows too, but is not actively tested there.
+* **Cross-platform**. Works on Linux, MacOS and Windows.
 * **Easy to use**. Include `bandura.h` for the core API and link against the static library. You may also include `bnd-math.h` for convenient math helpers if you need them.
 * **Rigidbody physics simulation**. Allows for dynamic simulations with different shapes, including primitives, compounds and triangular meshes. Supports forces, impulses, rotations and joints.
 * **Impulse-based collision resolution**. Objects respond to the collisions based on their mass, shape and collision velocity.
