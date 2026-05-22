@@ -26,29 +26,33 @@ typedef enum {
 } node_flags;
 
 typedef struct {
+  support_point v;
+  uint16_t first_attached_edge;
+} vertex;
+
+typedef struct {
+  uint16_t verticies[2];
+  uint16_t next_attached_edges[2];
+  uint16_t attached_faces[2];
+} edge;
+
+typedef struct {
+  uint16_t edges[3];
+  bnd_v3 normal;
+  float distance;
+} face;
+
+typedef union {
+  vertex vertex;
+  edge edge;
+  face face;
+} polytope_node_type;
+
+typedef struct {
   node_type type;
+  polytope_node_type value;
 
   uint16_t prev;
-
-  union {
-    struct {
-      support_point v;
-      uint16_t first_attached_edge;
-    } vertex;
-
-    struct {
-      uint16_t verticies[2];
-      uint16_t next_attached_edges[2];
-      uint16_t attached_faces[2];
-    } edge;
-
-    struct {
-      uint16_t edges[3];
-      bnd_v3 normal;
-      float distance;
-    } face;
-  };
-
 } polytope_node;
 
 typedef struct {
@@ -152,27 +156,27 @@ static void polytope_remove_node(polytope *polytope, uint16_t index) {
 
 static void polytope_attach_edge(polytope *polytope, uint16_t edge, uint16_t vertex) {
   polytope_node *vertex_node = &polytope->nodes[vertex];
-  if (vertex_node->vertex.first_attached_edge == NIL) {
-    vertex_node->vertex.first_attached_edge = edge;
+  if (vertex_node->value.vertex.first_attached_edge == NIL) {
+    vertex_node->value.vertex.first_attached_edge = edge;
   } else {
-    uint16_t attached_edge = vertex_node->vertex.first_attached_edge;
+    uint16_t attached_edge = vertex_node->value.vertex.first_attached_edge;
     polytope_node *edge_node;
     int i;
     do {
       edge_node = &polytope->nodes[attached_edge];
-      i = edge_node->edge.verticies[0] == vertex ? 0 : 1;
-      attached_edge = edge_node->edge.next_attached_edges[i];
+      i = edge_node->value.edge.verticies[0] == vertex ? 0 : 1;
+      attached_edge = edge_node->value.edge.next_attached_edges[i];
     } while (attached_edge != NIL);
 
-    edge_node->edge.next_attached_edges[i] = edge;
+    edge_node->value.edge.next_attached_edges[i] = edge;
   }
 }
 
 static void polytope_attach_face(polytope *polytope, uint16_t face, uint16_t edge) {
   polytope_node *edge_node = &polytope->nodes[edge];
   for (count_t i = 0; i < 2; ++i) {
-    if (edge_node->edge.attached_faces[i] == NIL) {
-      edge_node->edge.attached_faces[i] = face;
+    if (edge_node->value.edge.attached_faces[i] == NIL) {
+      edge_node->value.edge.attached_faces[i] = face;
       break;
     }
   }
@@ -181,7 +185,7 @@ static void polytope_attach_face(polytope *polytope, uint16_t face, uint16_t edg
 static void polytope_detach_face(polytope *polytope, uint16_t face, uint16_t edge) {
   polytope_node *edge_node = &polytope->nodes[edge];
 
-  uint16_t *attached_faces = edge_node->edge.attached_faces;
+  uint16_t *attached_faces = edge_node->value.edge.attached_faces;
   for (count_t i = 0; i < 2; ++i) {
     if (attached_faces[i] == face) {
       attached_faces[i] = NIL;
@@ -192,47 +196,47 @@ static void polytope_detach_face(polytope *polytope, uint16_t face, uint16_t edg
 static void polytope_detach_edge(polytope *polytope, uint16_t edge, uint16_t vertex) {
   polytope_node *vertex_node = &polytope->nodes[vertex];
 
-  uint16_t next_edge = vertex_node->vertex.first_attached_edge;
+  uint16_t next_edge = vertex_node->value.vertex.first_attached_edge;
   polytope_node *next_edge_node = &polytope->nodes[next_edge];
-  int i = next_edge_node->edge.verticies[0] == vertex ? 0 : 1;
+  int i = next_edge_node->value.edge.verticies[0] == vertex ? 0 : 1;
   if (next_edge == edge) {
-    vertex_node->vertex.first_attached_edge = next_edge_node->edge.next_attached_edges[i];
-    if (vertex_node->vertex.first_attached_edge == NIL) {
+    vertex_node->value.vertex.first_attached_edge = next_edge_node->value.edge.next_attached_edges[i];
+    if (vertex_node->value.vertex.first_attached_edge == NIL) {
       polytope->flags[vertex] |= FLAG_FOR_REMOVAL;
     }
     return;
   }
 
-  next_edge = next_edge_node->edge.next_attached_edges[i];
+  next_edge = next_edge_node->value.edge.next_attached_edges[i];
 
   while (next_edge != edge) {
     next_edge_node = &polytope->nodes[next_edge];
-    i = next_edge_node->edge.verticies[0] == vertex ? 0 : 1;
-    next_edge = next_edge_node->edge.next_attached_edges[i];
+    i = next_edge_node->value.edge.verticies[0] == vertex ? 0 : 1;
+    next_edge = next_edge_node->value.edge.next_attached_edges[i];
   }
 
   polytope_node *current_node = next_edge_node;
   int current_i = i;
 
   next_edge_node = &polytope->nodes[next_edge];
-  i = next_edge_node->edge.verticies[0] == vertex ? 0 : 1;
+  i = next_edge_node->value.edge.verticies[0] == vertex ? 0 : 1;
 
-  current_node->edge.next_attached_edges[current_i] = next_edge_node->edge.next_attached_edges[i];
+  current_node->value.edge.next_attached_edges[current_i] = next_edge_node->value.edge.next_attached_edges[i];
 }
 
 static void polytope_get_face_verticies(const polytope *polytope, uint16_t face, bnd_v3 *v1, bnd_v3 *v2, bnd_v3 *v3) {
   polytope_node node = polytope->nodes[face];
-  uint16_t e1 = node.face.edges[0];
-  uint16_t e2 = node.face.edges[1];
-  uint16_t *edge_verts_1 = polytope->nodes[e1].edge.verticies;
-  uint16_t *edge_verts_2 = polytope->nodes[e2].edge.verticies;
+  uint16_t e1 = node.value.face.edges[0];
+  uint16_t e2 = node.value.face.edges[1];
+  uint16_t *edge_verts_1 = polytope->nodes[e1].value.edge.verticies;
+  uint16_t *edge_verts_2 = polytope->nodes[e2].value.edge.verticies;
 
-  *v1 = polytope->nodes[edge_verts_1[0]].vertex.v.v;
-  *v2 = polytope->nodes[edge_verts_1[1]].vertex.v.v;
+  *v1 = polytope->nodes[edge_verts_1[0]].value.vertex.v.v;
+  *v2 = polytope->nodes[edge_verts_1[1]].value.vertex.v.v;
 
   *v3 = edge_verts_2[1] != edge_verts_1[1] && edge_verts_2[1] != edge_verts_1[0]
-    ? polytope->nodes[edge_verts_2[1]].vertex.v.v
-    : polytope->nodes[edge_verts_2[0]].vertex.v.v;
+    ? polytope->nodes[edge_verts_2[1]].value.vertex.v.v
+    : polytope->nodes[edge_verts_2[0]].value.vertex.v.v;
 }
 
 static uint16_t polytope_add_vertex(polytope *polytope, support_point p) {
@@ -243,8 +247,8 @@ static uint16_t polytope_add_vertex(polytope *polytope, support_point p) {
 
   polytope_node *node = &polytope->nodes[index];
   node->type = NODE_VERTEX;
-  node->vertex.v = p;
-  node->vertex.first_attached_edge = NIL;
+  node->value.vertex.v = p;
+  node->value.vertex.first_attached_edge = NIL;
 
   polytope_add_node(polytope, node, index);
 
@@ -263,11 +267,11 @@ static uint16_t polytope_add_edge(polytope *polytope, uint16_t v1, uint16_t v2) 
 
   polytope_node *node = &polytope->nodes[index];
   node->type = NODE_EDGE;
-  node->edge.verticies[0] = v1;
-  node->edge.verticies[1] = v2;
+  node->value.edge.verticies[0] = v1;
+  node->value.edge.verticies[1] = v2;
 
-  memset(node->edge.attached_faces, 0, 2 * sizeof(uint16_t));
-  memset(node->edge.next_attached_edges, 0, 2 * sizeof(uint16_t));
+  memset(node->value.edge.attached_faces, 0, 2 * sizeof(uint16_t));
+  memset(node->value.edge.next_attached_edges, 0, 2 * sizeof(uint16_t));
 
   polytope_attach_edge(polytope, index, v1);
   polytope_attach_edge(polytope, index, v2);
@@ -289,9 +293,9 @@ static uint16_t polytope_add_face(polytope *polytope, uint16_t e1, uint16_t e2, 
 
   polytope_node *node = &polytope->nodes[index];
   node->type = NODE_FACE;
-  node->face.edges[0] = e1;
-  node->face.edges[1] = e2;
-  node->face.edges[2] = e3;
+  node->value.face.edges[0] = e1;
+  node->value.face.edges[1] = e2;
+  node->value.face.edges[2] = e3;
 
   bnd_v3 v1, v2, v3;
   polytope_get_face_verticies(polytope, index, &v1, &v2, &v3);
@@ -301,7 +305,7 @@ static uint16_t polytope_add_face(polytope *polytope, uint16_t e1, uint16_t e2, 
     return NIL;
   }
 
-  node->face.distance = distance_to_triangle(bnd_v3_zero(), v1, v2, v3, &node->face.normal);
+  node->value.face.distance = distance_to_triangle(bnd_v3_zero(), v1, v2, v3, &node->value.face.normal);
 
   polytope_attach_face(polytope, index, e1);
   polytope_attach_face(polytope, index, e2);
@@ -318,9 +322,9 @@ static void polytope_remove_face(polytope *polytope, uint16_t face) {
   }
 
   polytope_node *face_node = &polytope->nodes[face];
-  uint16_t e1 = face_node->face.edges[0];
-  uint16_t e2 = face_node->face.edges[1];
-  uint16_t e3 = face_node->face.edges[2];
+  uint16_t e1 = face_node->value.face.edges[0];
+  uint16_t e2 = face_node->value.face.edges[1];
+  uint16_t e3 = face_node->value.face.edges[2];
 
   polytope_detach_face(polytope, face, e1);
   polytope_detach_face(polytope, face, e2);
@@ -335,12 +339,12 @@ static void polytope_remove_edge(polytope *polytope, uint16_t edge) {
   }
 
   polytope_node *edge_node = &polytope->nodes[edge];
-  if (edge_node->edge.attached_faces[0] != NIL || edge_node->edge.attached_faces[1] != NIL) {
+  if (edge_node->value.edge.attached_faces[0] != NIL || edge_node->value.edge.attached_faces[1] != NIL) {
     return;
   }
 
-  uint16_t v1 = edge_node->edge.verticies[0];
-  uint16_t v2 = edge_node->edge.verticies[1];
+  uint16_t v1 = edge_node->value.edge.verticies[0];
+  uint16_t v2 = edge_node->value.edge.verticies[1];
 
   polytope_detach_edge(polytope, edge, v1);
   polytope_detach_edge(polytope, edge, v2);
@@ -366,7 +370,7 @@ static void polytope_update_nearest(polytope *polytope) {
   polytope_for_each_node(polytope, index, NODE_FACE) {
     polytope_node node = polytope->nodes[index];
 
-    float distance = node.face.distance;
+    float distance = node.value.face.distance;
     if (distance < polytope->nearest_distance) {
       polytope->nearest_distance = distance;
       polytope->nearest = index;
@@ -375,7 +379,7 @@ static void polytope_update_nearest(polytope *polytope) {
 }
 
 static bool polytope_is_face_visible(const polytope_node *face, bnd_v3 support_point) {
-  return bnd_v3_dot(bnd_v3_normalize(face->face.normal), bnd_v3_normalize(support_point)) > visibility_epsilon;
+  return bnd_v3_dot(bnd_v3_normalize(face->value.face.normal), bnd_v3_normalize(support_point)) > visibility_epsilon;
 }
 
 static bool polytope_from_simplex(polytope *polytope, const simplex *s) {
@@ -416,28 +420,28 @@ static void epa_invalid_contact(support_point p, contact *contact) {
 
 static void epa_calculate_contact(const polytope *polytope, contact *contact) {
   polytope_node node = polytope->nodes[polytope->nearest];
-  uint16_t e1 = node.face.edges[0];
-  uint16_t e2 = node.face.edges[1];
-  uint16_t *edge_verts_1 = polytope->nodes[e1].edge.verticies;
-  uint16_t *edge_verts_2 = polytope->nodes[e2].edge.verticies;
+  uint16_t e1 = node.value.face.edges[0];
+  uint16_t e2 = node.value.face.edges[1];
+  uint16_t *edge_verts_1 = polytope->nodes[e1].value.edge.verticies;
+  uint16_t *edge_verts_2 = polytope->nodes[e2].value.edge.verticies;
 
-  support_point v1 = polytope->nodes[edge_verts_1[0]].vertex.v;
-  support_point v2 = polytope->nodes[edge_verts_1[1]].vertex.v;
+  support_point v1 = polytope->nodes[edge_verts_1[0]].value.vertex.v;
+  support_point v2 = polytope->nodes[edge_verts_1[1]].value.vertex.v;
 
   support_point vv3 = edge_verts_2[1] != edge_verts_1[1] && edge_verts_2[1] != edge_verts_1[0]
-    ? polytope->nodes[edge_verts_2[1]].vertex.v
-    : polytope->nodes[edge_verts_2[0]].vertex.v;
+    ? polytope->nodes[edge_verts_2[1]].value.vertex.v
+    : polytope->nodes[edge_verts_2[0]].value.vertex.v;
 
   bnd_v3 barycenter = bnd_v3_barycentric(bnd_v3_zero(), v1.v, v2.v, vv3.v);
   bnd_v3 p1 = bnd_v3_add(bnd_v3_scale(v1.v1, barycenter.x), bnd_v3_add(bnd_v3_scale(v2.v1, barycenter.y), bnd_v3_scale(vv3.v1, barycenter.z)));
   bnd_v3 p2 = bnd_v3_add(bnd_v3_scale(v1.v2, barycenter.x), bnd_v3_add(bnd_v3_scale(v2.v2, barycenter.y), bnd_v3_scale(vv3.v2, barycenter.z)));
 
   contact->point = bnd_v3_scale(bnd_v3_add(p1, p2), 0.5);
-  contact->depth = sqrt(node.face.distance);
+  contact->depth = sqrt(node.value.face.distance);
 
-  float length = bnd_v3_len(node.face.normal);
+  float length = bnd_v3_len(node.value.face.normal);
   if (length > EPSILON) {
-    contact->normal = bnd_v3_scale(node.face.normal, -1.0 / length);
+    contact->normal = bnd_v3_scale(node.value.face.normal, -1.0 / length);
   } else {
     contact->normal = bnd_v3_up();
   }
@@ -455,12 +459,12 @@ static void epa_update_visible_faces(polytope *polytope, support_point p) {
     face_node = &polytope->nodes[face_index];
 
     for (count_t i = 0; i < 3; ++i) {
-      uint16_t edge_index = face_node->face.edges[i];
+      uint16_t edge_index = face_node->value.face.edges[i];
       polytope_node *edge_node = &polytope->nodes[edge_index];
 
       count_t visible_count = 0;
       for (count_t j = 0; j < 2; ++j) {
-        uint16_t adjasent_face_index = edge_node->edge.attached_faces[j];
+        uint16_t adjasent_face_index = edge_node->value.edge.attached_faces[j];
         const polytope_node *adjasent_face_node = &polytope->nodes[adjasent_face_index];
 
         if (polytope->flags[adjasent_face_index] & FLAG_FOR_REMOVAL) {
@@ -511,11 +515,11 @@ static bool epa_expand_polytope(polytope *polytope, support_point p) {
     }
 
     uint16_t edge_index = index;
-    uint16_t first_connected_vertex_index = edge_node->edge.verticies[0];
+    uint16_t first_connected_vertex_index = edge_node->value.edge.verticies[0];
     uint16_t first_new_edge = polytope_add_edge(polytope, new_vertex, first_connected_vertex_index);
     uint16_t prev_edge = first_new_edge;
 
-    uint16_t connected_vertex_index = edge_node->edge.verticies[1];
+    uint16_t connected_vertex_index = edge_node->value.edge.verticies[1];
     while (connected_vertex_index != first_connected_vertex_index) {
       /**
        * Sometimes, in rare cases, this routine might add a duplicate edge - the one which is identical to some other
@@ -528,23 +532,23 @@ static bool epa_expand_polytope(polytope *polytope, support_point p) {
       }
 
       polytope_node *connected_vertex_node = &polytope->nodes[connected_vertex_index];
-      uint16_t attached_edge_index = connected_vertex_node->vertex.first_attached_edge;
+      uint16_t attached_edge_index = connected_vertex_node->value.vertex.first_attached_edge;
       while (attached_edge_index != NIL) {
         polytope_node attached_edge_node = polytope->nodes[attached_edge_index];
-        count_t i = attached_edge_node.edge.verticies[0] == connected_vertex_index ? 0 : 1;
+        count_t i = attached_edge_node.value.edge.verticies[0] == connected_vertex_index ? 0 : 1;
 
         if (attached_edge_index == new_edge || attached_edge_index == edge_index) {
-          attached_edge_index = attached_edge_node.edge.next_attached_edges[i];
+          attached_edge_index = attached_edge_node.value.edge.next_attached_edges[i];
           continue;
         }
 
         if (polytope->flags[attached_edge_index] & FLAG_BORDER_EDGE) {
           edge_index = attached_edge_index;
-          connected_vertex_index = attached_edge_node.edge.verticies[1 - i];
+          connected_vertex_index = attached_edge_node.value.edge.verticies[1 - i];
           break;
         }
 
-        attached_edge_index = attached_edge_node.edge.next_attached_edges[i];
+        attached_edge_index = attached_edge_node.value.edge.next_attached_edges[i];
       }
 
       prev_edge = new_edge;
@@ -587,11 +591,11 @@ void epa_get_contact(const collision_detection_context *ctx, const simplex *simp
   support_point support_point;
   while (attempts++ < EPA_MAX_ATTEMPTS) {
     polytope_node closest_face = pt->nodes[pt->nearest];
-    bnd_v3 direction = closest_face.face.normal;
+    bnd_v3 direction = closest_face.value.face.normal;
 
     support_point = support(ctx, bnd_v3_normalize(direction));
     float distance = bnd_v3_dot(direction, support_point.v);
-    if (distance - closest_face.face.distance < tolerance) {
+    if (distance - closest_face.value.face.distance < tolerance) {
       epa_calculate_contact(pt, contact);
       return;
     }

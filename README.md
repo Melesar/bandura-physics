@@ -152,19 +152,19 @@ Bandura also supports combining multiple primitive shapes into a single body. Th
   bnd_body_shape shapes[] = {
     (bnd_body_shape) { 
       .type = BND_CYLINDER,
-      .cylinder = { .radius = 0.3, .height = 3 },
+      .value = { .cylinder = { .radius = 0.3, .height = 3 } },
       .offset = bnd_v3_zero(),
       .rotation = (bnd_quat) { sinf(PI / 4), 0, 0, cosf(PI / 4) } 
     },
     (bnd_body_shape) {
       .type = BND_SPHERE,
-      .sphere = { .radius = 0.7 },
+      .value = { .sphere = { .radius = 0.7 } },
       .offset = vec3(0, 0, 1.5),
       .rotation = bnd_qidentity()
     },
     (bnd_body_shape) {
       .type = BND_SPHERE,
-      .sphere = { .radius = 0.7 },
+      .value = { .sphere = { .radius = 0.7 } },
       .offset = vec3(0, 0, -1.5),
       .rotation = bnd_qidentity() 
     }
