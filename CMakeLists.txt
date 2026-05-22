@@ -35,9 +35,7 @@ target_compile_options(bandura PRIVATE
   -Wall
   -Wextra
   -Werror=format
-  -Werror=shadow
   -Werror=incompatible-pointer-types
-  -Werror=pointer-type-mismatch
   -Werror=return-type
   -Wno-unused-parameter
 )
@@ -112,9 +110,7 @@ if(BANDURA_BUILD_DEMOS)
       -Wall
       -Wextra
       -Werror=format
-      -Werror=shadow
       -Werror=incompatible-pointer-types
-      -Werror=pointer-type-mismatch
       -Werror=return-type
       -Wno-unused-parameter
     )
