@@ -208,24 +208,24 @@ static void draw_physics_bodies_typed(bnd_body_type type) {
 
       switch (shape.type) {
         case BND_BOX:
-          scale = MatrixScale(shape.box.size.x, shape.box.size.y, shape.box.size.z);
+          scale = MatrixScale(shape.value.box.size.x, shape.value.box.size.y, shape.value.box.size.z);
           DrawMesh(meshes[BND_BOX], material, MatrixMultiply(scale, full_transform));
           break;
 
         case BND_SPHERE:
-          scale = MatrixScale(shape.sphere.radius, shape.sphere.radius, shape.sphere.radius);
+          scale = MatrixScale(shape.value.sphere.radius, shape.value.sphere.radius, shape.value.sphere.radius);
           DrawMesh(meshes[BND_SPHERE], material, MatrixMultiply(scale, full_transform));
           break;
 
         case BND_CYLINDER:
-          scale = MatrixScale(shape.cylinder.radius, shape.cylinder.height, shape.cylinder.radius);
+          scale = MatrixScale(shape.value.cylinder.radius, shape.value.cylinder.height, shape.value.cylinder.radius);
           DrawMesh(meshes[BND_CYLINDER], material, MatrixMultiply(scale, full_transform));
           break;
 
         case BND_MESH:
           for (uint32_t i = 0; i < render_mesh_index; ++i) {
             render_mesh rm = render_meshes[i];
-            if (rm.handle == shape.mesh) {
+            if (rm.handle == shape.value.mesh) {
               DrawMesh(rm.mesh, material, full_transform);
               break;
             }

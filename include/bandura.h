@@ -104,28 +104,33 @@ typedef struct {
 typedef uint32_t bnd_mesh_handle;
 
 typedef struct {
+  bnd_v3 size;
+} bnd_box;
+
+typedef struct {
+  bnd_v3 normal;
+} bnd_plane;
+
+typedef struct {
+  float radius;
+} bnd_sphere;
+
+typedef struct {
+  float radius;
+  float height;
+} bnd_cylinder;
+
+typedef union {
+  bnd_box box;
+  bnd_sphere sphere;
+  bnd_cylinder cylinder;
+  bnd_mesh_handle mesh;
+  bnd_plane plane;
+} bnd_shape;
+
+typedef struct {
   bnd_shape_type type;
-
-  union {
-    struct {
-      bnd_v3 size;
-    } box;
-
-    struct {
-      bnd_v3 normal;
-    } plane;
-
-    struct {
-      float radius;
-    } sphere;
-
-    struct {
-      float radius;
-      float height;
-    } cylinder;
-
-    bnd_mesh_handle mesh;
-  };
+  bnd_shape value;
 
   bnd_v3 offset;
   bnd_quat rotation;
@@ -237,12 +242,7 @@ typedef bnd_body_enumerator bnd_body_enumerator_typed;
 
 typedef struct {
   bnd_event_type type;
-
-  union {
-    struct {
-      bnd_contact contact;
-    } collision;
-  };
+  bnd_contact collision;
 } bnd_event;
 
 typedef struct {

@@ -19,11 +19,11 @@ void scenario_setup_scene(bnd_world *world) {
 
   bnd_body_shape shapes[] = {
     (bnd_body_shape){ .type = BND_BOX,
-      .box = { .size = (bnd_v3){ .x = 0.3, .y = 3, .z = 0.3 } },
+      .value = { .box = { .size = (bnd_v3){ .x = 0.3, .y = 3, .z = 0.3 } } },
       .offset = bnd_v3_zero(),
       .rotation = bnd_qidentity() },
     (bnd_body_shape){ .type = BND_CYLINDER,
-      .cylinder = { .height = 2, .radius = 0.5 },
+      .value = { .cylinder = { .height = 2, .radius = 0.5 } },
       .offset = (bnd_v3){ .x = 0, .y = 1.75, .z = 0 },
       .rotation = QuaternionFromEuler(PI * 0.5, 0, 0) },
     (bnd_body_shape){ 0 },
@@ -35,14 +35,14 @@ void scenario_setup_scene(bnd_world *world) {
   bnd_set_angular_momentum(world, b, (bnd_v3){ 0, 0, 36 });
 
   shapes[0] = (bnd_body_shape){ .type = BND_CYLINDER,
-    .cylinder = { .radius = 0.3, .height = 3 },
+    .value = { .cylinder = { .radius = 0.3, .height = 3 } },
     .offset = bnd_v3_zero(),
     .rotation = QuaternionFromEuler(PI * 0.5, 0, 0) };
   shapes[1] = (bnd_body_shape){
-    .type = BND_SPHERE, .sphere = { .radius = 0.7 }, .offset = (bnd_v3){ .x = 0, .y = 0, .z = 1.5 }, .rotation = bnd_qidentity()
+    .type = BND_SPHERE, .value = { .sphere = { .radius = 0.7 } }, .offset = (bnd_v3){ .x = 0, .y = 0, .z = 1.5 }, .rotation = bnd_qidentity()
   };
   shapes[2] = (bnd_body_shape){ .type = BND_SPHERE,
-    .sphere = { .radius = 0.7 },
+    .value = { .sphere = { .radius = 0.7 } },
     .offset = (bnd_v3){ .x = 0, .y = 0, .z = -1.5 },
     .rotation = bnd_qidentity() };
 

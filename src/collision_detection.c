@@ -54,7 +54,7 @@ bool aabb_intersect(const common_data *data_a, const common_data *data_b, count_
 
 static bnd_v3 sphere_support(const shape_context *ctx, bnd_v3 direction) {
   bnd_v3 center = bnd_v3_add(ctx->data->positions[ctx->index], ctx->shape.offset);
-  float radius = ctx->shape.sphere.radius;
+  float radius = ctx->shape.value.sphere.radius;
 
   return bnd_v3_add(center, bnd_v3_scale(direction, radius));
 }
@@ -66,9 +66,9 @@ static bnd_v3 box_support(const shape_context *ctx, bnd_v3 direction) {
 
   bnd_v3 local_direction = bnd_v3_normalize(bnd_v3_rotate(direction, inv_rotation));
   bnd_v3 v = (bnd_v3) {
-    (local_direction.x > 0 ? 1 : -1) * ctx->shape.box.size.x * 0.5,
-    (local_direction.y > 0 ? 1 : -1) * ctx->shape.box.size.y * 0.5,
-    (local_direction.z > 0 ? 1 : -1) * ctx->shape.box.size.z * 0.5
+    (local_direction.x > 0 ? 1 : -1) * ctx->shape.value.box.size.x * 0.5,
+    (local_direction.y > 0 ? 1 : -1) * ctx->shape.value.box.size.y * 0.5,
+    (local_direction.z > 0 ? 1 : -1) * ctx->shape.value.box.size.z * 0.5
   };
 
   v = bnd_v3_rotate(v, rotation);
@@ -84,8 +84,8 @@ static bnd_v3 cylinder_support(const shape_context *ctx, bnd_v3 direction) {
 
   bnd_v3 local_direction = bnd_v3_normalize(bnd_v3_rotate(direction, inv_rotation));
 
-  float radius = ctx->shape.cylinder.radius;
-  float height = ctx->shape.cylinder.height;
+  float radius = ctx->shape.value.cylinder.radius;
+  float height = ctx->shape.value.cylinder.height;
 
   bnd_v3 v;
   float y = (local_direction.y > 0 ? 1 : -1) * height * 0.5;
@@ -105,7 +105,7 @@ static bnd_v3 cylinder_support(const shape_context *ctx, bnd_v3 direction) {
 
 static bnd_v3 mesh_support(const shape_context *ctx, bnd_v3 direction) {
   const mesh_storage *meshes = &ctx->world->meshes;
-  const bnd_mesh_handle mesh_handle = ctx->shape.mesh;
+  const bnd_mesh_handle mesh_handle = ctx->shape.value.mesh;
 
   bnd_quat rotation = body_rotation(ctx);
   bnd_v3 position = body_center(ctx);
@@ -164,8 +164,8 @@ static count_t sphere_sphere_collision(bnd_world *world, const collision_detecti
   bnd_v3 center_a = ctx->data_a->positions[ctx->body_a];
   bnd_v3 center_b = ctx->data_b->positions[ctx->body_b];
 
-  float radius_a = ctx->shape_a.sphere.radius;
-  float radius_b = ctx->shape_b.sphere.radius;
+  float radius_a = ctx->shape_a.value.sphere.radius;
+  float radius_b = ctx->shape_b.value.sphere.radius;
 
   bnd_v3 offset = bnd_v3_sub(center_a, center_b);
   float distance = bnd_v3_len(offset);
@@ -193,9 +193,9 @@ static count_t box_plane_collision(bnd_world *world, const collision_detection_c
   bnd_quat shape_rotation = ctx->shape_a.rotation;
 
   bnd_v3 box_center = body_a_center(ctx);
-  bnd_v3 extents = bnd_v3_scale(ctx->shape_a.box.size, 0.5);
+  bnd_v3 extents = bnd_v3_scale(ctx->shape_a.value.box.size, 0.5);
 
-  bnd_v3 plane_normal = ctx->shape_b.plane.normal;
+  bnd_v3 plane_normal = ctx->shape_b.value.plane.normal;
   bnd_v3 plane_point = ctx->data_b->positions[ctx->body_b];
 
   bnd_v3 corners[] = {
@@ -237,10 +237,10 @@ static count_t box_plane_collision(bnd_world *world, const collision_detection_c
 
 static count_t sphere_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
   bnd_v3 sphere_center = body_a_center(ctx);
-  float sphere_radius = ctx->shape_a.sphere.radius;
+  float sphere_radius = ctx->shape_a.value.sphere.radius;
 
   bnd_v3 plane_point = ctx->data_b->positions[ctx->body_b];
-  bnd_v3 plane_normal = ctx->shape_b.plane.normal;
+  bnd_v3 plane_normal = ctx->shape_b.value.plane.normal;
 
   float plane_sphere_distance = bnd_v3_dot(bnd_v3_sub(sphere_center, plane_point), plane_normal);
   if (plane_sphere_distance > sphere_radius) {
@@ -261,14 +261,14 @@ static count_t sphere_plane_collision(bnd_world *world, const collision_detectio
 
 static count_t cylinder_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
   bnd_v3 plane_point = ctx->data_b->positions[ctx->body_b];
-  bnd_v3 plane_normal = ctx->shape_b.plane.normal;
+  bnd_v3 plane_normal = ctx->shape_b.value.plane.normal;
 
   bnd_quat global_rotation = ctx->data_a->rotations[ctx->body_a];
   bnd_quat shape_rotation = ctx->shape_a.rotation;
 
   bnd_v3 cylinder_center = body_a_center(ctx);
-  float cylinder_radius = ctx->shape_a.cylinder.radius;
-  float cylinder_half_height = ctx->shape_a.cylinder.height * 0.5f;
+  float cylinder_radius = ctx->shape_a.value.cylinder.radius;
+  float cylinder_half_height = ctx->shape_a.value.cylinder.height * 0.5f;
 
   bnd_v3 cylinder_axis = bnd_v3_rotate(bnd_v3_up(), bnd_qmul(global_rotation, shape_rotation));
   float axis_projection = bnd_v3_dot(cylinder_axis, plane_normal);
@@ -310,7 +310,7 @@ static count_t cylinder_plane_collision(bnd_world *world, const collision_detect
 
 static count_t mesh_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
   bnd_v3 plane_point = ctx->data_b->positions[ctx->body_b];
-  bnd_v3 plane_normal = ctx->shape_b.plane.normal;
+  bnd_v3 plane_normal = ctx->shape_b.value.plane.normal;
 
   bnd_v3 mesh_center = body_a_center(ctx);
   bnd_quat mesh_rotation = bnd_qmul(ctx->data_a->rotations[ctx->body_a], ctx->shape_a.rotation);
@@ -320,7 +320,7 @@ static count_t mesh_plane_collision(bnd_world *world, const collision_detection_
   bnd_v3 local_point = bnd_v3_rotate(bnd_v3_sub(plane_point, mesh_center), inv_mesh_rotation);
 
   const mesh_storage *meshes = &world->meshes;
-  const bnd_mesh_handle mesh_handle = ctx->shape_a.mesh;
+  const bnd_mesh_handle mesh_handle = ctx->shape_a.value.mesh;
 
   bnd_mesh mesh = meshes->meshes[mesh_handle];
   count_t submesh_start = mesh.submesh_offset;

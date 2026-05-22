@@ -64,16 +64,16 @@ static bnd_m3 mesh_inertia(const bnd_world *world, bnd_mesh_handle handle, float
 static bnd_m3 inertia_matrix(const bnd_world *world, bnd_body_shape shape, float mass) {
   switch (shape.type) {
     case BND_BOX:
-      return bnd_m3_initial_inertia(box_inertia(shape.box.size, mass));
+      return bnd_m3_initial_inertia(box_inertia(shape.value.box.size, mass));
 
     case BND_SPHERE:
-      return bnd_m3_initial_inertia(sphere_inertia(shape.sphere.radius, mass));
+      return bnd_m3_initial_inertia(sphere_inertia(shape.value.sphere.radius, mass));
 
     case BND_CYLINDER:
-      return bnd_m3_initial_inertia(cylinder_inertia(shape.cylinder.radius, shape.cylinder.height, mass));
+      return bnd_m3_initial_inertia(cylinder_inertia(shape.value.cylinder.radius, shape.value.cylinder.height, mass));
 
     case BND_MESH:
-      return mesh_inertia(world, shape.mesh, mass);
+      return mesh_inertia(world, shape.value.mesh, mass);
 
     default:
       return bnd_m3_initial_inertia(bnd_v3_one());
@@ -122,17 +122,17 @@ static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
     switch (shape.type) {
       case BND_BOX:
         rotation_matrix = quat_as_matrix(rotation);
-        half_extents = rotated_box_half_extents(rotation_matrix, bnd_v3_scale(shape.box.size, 0.5));
+        half_extents = rotated_box_half_extents(rotation_matrix, bnd_v3_scale(shape.value.box.size, 0.5));
         break;
 
       case BND_SPHERE:
-        half_extents = bnd_v3_scale(bnd_v3_one(), shape.sphere.radius);
+        half_extents = bnd_v3_scale(bnd_v3_one(), shape.value.sphere.radius);
         break;
 
       case BND_CYLINDER:
-        half_height = shape.cylinder.height * 0.5;
+        half_height = shape.value.cylinder.height * 0.5;
         axis = bnd_v3_rotate(bnd_v3_up(), shape_rotation);
-        radius = shape.cylinder.radius;
+        radius = shape.value.cylinder.radius;
 
         float ax = fabsf(axis.x) * half_height;
         float ay = fabsf(axis.y) * half_height;
@@ -147,7 +147,7 @@ static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
 
       case BND_MESH:
         rotation_matrix = quat_as_matrix(rotation);
-        bnd_aabb local_aabb = world->meshes.aabbs[shape.mesh];
+        bnd_aabb local_aabb = world->meshes.aabbs[shape.value.mesh];
         half_extents = rotated_box_half_extents(rotation_matrix, local_aabb.half_extents);
         break;
 
@@ -496,7 +496,7 @@ static bnd_result_handle add_primitive_body_dynamic(bnd_world *world, bnd_body_s
 }
 
 bnd_error bnd_add_plane(bnd_world *world, bnd_v3 point, bnd_v3 normal) {
-  bnd_result_handle plane = add_primitive_body_static(world, (bnd_body_shape){ .type = BND_PLANE, .plane = { .normal = normal }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() });
+  bnd_result_handle plane = add_primitive_body_static(world, (bnd_body_shape){ .type = BND_PLANE, .value = {.plane = { .normal = normal } }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() });
   if (plane.error.type != BND_OK) {
     world->statics.positions[handle_to_inner_index(world, plane.value)] = point;
   }
@@ -505,27 +505,27 @@ bnd_error bnd_add_plane(bnd_world *world, bnd_v3 point, bnd_v3 normal) {
 }
 
 bnd_result_handle bnd_add_box_dynamic(bnd_world *world, float mass, bnd_v3 size) {
-  return add_primitive_body_dynamic(world, (bnd_body_shape){ .type = BND_BOX, .box = { .size = size }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() }, mass);
+  return add_primitive_body_dynamic(world, (bnd_body_shape){ .type = BND_BOX, .value = {.box = { .size = size } }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() }, mass);
 }
 
 bnd_result_handle bnd_add_box_static(bnd_world *world, bnd_v3 size) {
-  return add_primitive_body_static(world, (bnd_body_shape){ .type = BND_BOX, .box = { .size = size }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() });
+  return add_primitive_body_static(world, (bnd_body_shape){ .type = BND_BOX, .value = {.box = { .size = size } }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() });
 }
 
 bnd_result_handle bnd_add_sphere_dynamic(bnd_world *world, float mass, float radius) {
-  return add_primitive_body_dynamic(world, (bnd_body_shape){ .type = BND_SPHERE, .sphere = { .radius = radius }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() }, mass);
+  return add_primitive_body_dynamic(world, (bnd_body_shape){ .type = BND_SPHERE, .value = {.sphere = { .radius = radius } }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() }, mass);
 }
 
 bnd_result_handle bnd_add_sphere_static(bnd_world *world, float radius) {
-  return add_primitive_body_static(world, (bnd_body_shape) { .type = BND_SPHERE, .sphere = { .radius = radius }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() });
+  return add_primitive_body_static(world, (bnd_body_shape){ .type = BND_SPHERE, .value = {.sphere = { .radius = radius } }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() });
 }
 
 bnd_result_handle bnd_add_cylinder_static(bnd_world *world, float radius, float height) {
-  return add_primitive_body_static(world, (bnd_body_shape){ .type = BND_CYLINDER, .cylinder = { .radius = radius, .height = height }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() });
+  return add_primitive_body_static(world, (bnd_body_shape){ .type = BND_CYLINDER, .value = {.cylinder = { .radius = radius, .height = height } }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() });
 }
 
 bnd_result_handle bnd_add_cylinder_dynamic(bnd_world *world, float mass, float radius, float height) {
-  return add_primitive_body_dynamic(world, (bnd_body_shape){ .type = BND_CYLINDER, .cylinder = { .radius = radius, .height = height }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() }, mass);
+  return add_primitive_body_dynamic(world, (bnd_body_shape){ .type = BND_CYLINDER, .value = {.cylinder = { .radius = radius, .height = height } }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() }, mass);
 }
 
 bnd_result_handle bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, count_t shapes_count) {
@@ -570,11 +570,11 @@ bnd_result_handle bnd_add_compound_body_dynamic(bnd_world *world, bnd_body_shape
 }
 
 bnd_result_handle bnd_add_mesh_dynamic(bnd_world *world, float mass, bnd_mesh_handle mesh) {
-  return add_primitive_body_dynamic(world, (bnd_body_shape){ .type = BND_MESH, .mesh = mesh, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() }, mass);
+  return add_primitive_body_dynamic(world, (bnd_body_shape){ .type = BND_MESH, .value = {.mesh = mesh }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() }, mass);
 }
 
 bnd_result_handle bnd_add_mesh_static(bnd_world *world, bnd_mesh_handle mesh) {
-  return add_primitive_body_static(world, (bnd_body_shape){ .type = BND_MESH, .mesh = mesh, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() });
+  return add_primitive_body_static(world, (bnd_body_shape){ .type = BND_MESH, .value = {.mesh = mesh }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() });
 }
 
 bnd_error bnd_remove_body(bnd_world *world, bnd_body_handle handle) {

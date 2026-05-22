@@ -5,13 +5,13 @@
 #include <string.h>
 
 static bnd_event make_collision_event(const bnd_world *world, bnd_body_type type, const contact *c) {
-  return (bnd_event) { .type = BND_EVENT_COLLISION, .collision = { .contact = (bnd_contact) {
+  return (bnd_event) { .type = BND_EVENT_COLLISION, .collision =  (bnd_contact) {
     .point = c->point,
     .normal = c->normal,
     .depth = c->depth,
     .body_a = make_body_handle(world, BND_BODY_DYNAMIC, c->index_a),
     .body_b = make_body_handle(world, type, c->index_b),
-  }}};
+  }};
 }
 
 static void emit_collision_events(bnd_world *world, bnd_body_type type, count_t start, count_t end) {

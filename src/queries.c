@@ -26,7 +26,7 @@ static bool raycast_sphere(bnd_ray r, const shape_context *ctx, bnd_raycast_hit 
 
   bnd_v3 offset = bnd_v3_sub(position, r.origin);
   float o = bnd_v3_lensqr(offset);
-  float rr = ctx->shape.sphere.radius * ctx->shape.sphere.radius;
+  float rr = ctx->shape.value.sphere.radius * ctx->shape.value.sphere.radius;
 
   float tc = bnd_v3_dot(offset, r.direction);
   if (tc < 0.0f && o > rr)
@@ -50,7 +50,7 @@ static bool raycast_sphere(bnd_ray r, const shape_context *ctx, bnd_raycast_hit 
 }
 
 static bool raycast_box(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *hit) {
-  bnd_v3 half = bnd_v3_scale(ctx->shape.box.size, 0.5f);
+  bnd_v3 half = bnd_v3_scale(ctx->shape.value.box.size, 0.5f);
   bnd_v3 position = body_center(ctx);
   bnd_quat rotation = body_rotation(ctx);
 
@@ -133,13 +133,13 @@ static bool raycast_cylinder(bnd_ray r, const shape_context *ctx, bnd_raycast_hi
 
   bnd_ray local_ray = ray_transform(r, position, rotation);
 
-  float half_h = ctx->shape.cylinder.height * 0.5f;
+  float half_h = ctx->shape.value.cylinder.height * 0.5f;
   const float epsilon = 1e-6f;
 
   // --- infinite cylinder (XZ plane) ---
   float a = local_ray.direction.x * local_ray.direction.x + local_ray.direction.z * local_ray.direction.z;
   float b = 2.0f * (local_ray.origin.x * local_ray.direction.x + local_ray.origin.z * local_ray.direction.z);
-  float c = local_ray.origin.x * local_ray.origin.x + local_ray.origin.z * local_ray.origin.z - ctx->shape.cylinder.radius * ctx->shape.cylinder.radius;
+  float c = local_ray.origin.x * local_ray.origin.x + local_ray.origin.z * local_ray.origin.z - ctx->shape.value.cylinder.radius * ctx->shape.value.cylinder.radius;
 
   float t_body_enter = -FLT_MAX;
   float t_body_exit = FLT_MAX;
@@ -219,8 +219,8 @@ static bool raycast_cylinder(bnd_ray r, const shape_context *ctx, bnd_raycast_hi
 }
 
 static bool raycast_plane(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *hit) {
-  float dod = bnd_v3_dot(bnd_v3_sub(ctx->data->positions[ctx->index], r.origin), ctx->shape.plane.normal);
-  float dd = bnd_v3_dot(r.direction, ctx->shape.plane.normal);
+  float dod = bnd_v3_dot(bnd_v3_sub(ctx->data->positions[ctx->index], r.origin), ctx->shape.value.plane.normal);
+  float dd = bnd_v3_dot(r.direction, ctx->shape.value.plane.normal);
 
   if (dd >= 0)
     return false;
@@ -232,7 +232,7 @@ static bool raycast_plane(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *
 
   hit->distance = distance;
   hit->point = bnd_v3_add(r.origin, bnd_v3_scale(r.direction, distance));
-  hit->normal = ctx->shape.plane.normal;
+  hit->normal = ctx->shape.value.plane.normal;
 
   return true;
 }
@@ -248,7 +248,7 @@ static bool raycast_mesh(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *h
   bnd_v3 closest_point, normal;
 
   const mesh_storage *meshes = &ctx->world->meshes;
-  bnd_mesh m = meshes->meshes[ctx->shape.mesh];
+  bnd_mesh m = meshes->meshes[ctx->shape.value.mesh];
 
   count_t submeshes_start = m.submesh_offset;
   count_t submeshes_end = submeshes_start + m.submesh_count;
@@ -414,14 +414,14 @@ static count_t overlap_typed(const bnd_world *world, bnd_v3 origin, float radius
 
       if (ctx.shape_b.type == BND_SPHERE) {
         bnd_v3 sphere_center = data->positions[i];
-        float r = ctx.shape_b.sphere.radius + radius;
+        float r = ctx.shape_b.value.sphere.radius + radius;
 
         if (bnd_v3_distancesqr(sphere_center, origin) > r * r) {
           continue;
         }
       } else if (ctx.shape_b.type == BND_PLANE) {
         bnd_v3 plane_point = data->positions[i];
-        bnd_v3 plane_normal = ctx.shape_b.plane.normal;
+        bnd_v3 plane_normal = ctx.shape_b.value.plane.normal;
 
         if (bnd_v3_dot(plane_normal, bnd_v3_sub(origin, plane_point)) > radius) {
           continue;
