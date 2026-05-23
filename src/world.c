@@ -959,7 +959,7 @@ static void integrate_bodies(bnd_world *world, float dt) {
 }
 
 void bnd_simulate(bnd_world *world, float dt) {
-  profiler_start_frame();
+  PROFILER_START_FRAME;
   {
     PROFILE_FUNCTION
 
@@ -982,7 +982,7 @@ void bnd_simulate(bnd_world *world, float dt) {
     .contacts_count = world->contacts.count,
   };
 
-  profiler_end_frame(metadata);
+  PROFILER_END_FRAME(metadata);
 }
 
 bnd_error bnd_put_to_sleep(bnd_world *world, bnd_body_handle handle) {

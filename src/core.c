@@ -207,7 +207,7 @@ static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allo
   INVOKE(events_init(world))
   INVOKE(epa_init(world))
 
-  profiler_init_default();
+  PROFILER_INIT;
 
   return OK;
 }
@@ -240,7 +240,7 @@ bnd_result_world bnd_init_with_allocator(bnd_config config, bnd_allocator alloca
 
 void bnd_teardown(bnd_world *world) {
   if (world->allocator.free == NULL) {
-    profiler_teardown();
+    PROFILER_TEARDOWN;
     return;
   }
 
@@ -268,7 +268,7 @@ void bnd_teardown(bnd_world *world) {
 
   world->allocator.free(world, sizeof(bnd_world));
 
-  profiler_teardown();
+  PROFILER_TEARDOWN;
 }
 
 count_t ephemeral_body_index(const common_data *data) {

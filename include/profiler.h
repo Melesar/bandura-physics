@@ -23,17 +23,10 @@ typedef struct {
 #define PROFILE_BLOCK(name)
 #define PROFILE_FUNCTION
 
-static profiler_config profiler_default_config() { return (profiler_config){0}; }
-
-static void profiler_init_default() {}
-
-static void profiler_init(profiler_config config) {}
-
-static void profiler_teardown() {}
-
-static void profiler_start_frame() {}
-
-static void profiler_end_frame(profiler_frame_metadata meta) {}
+#define PROFILER_START_FRAME
+#define PROFILER_END_FRAME(metadata)
+#define PROFILER_INIT
+#define PROFILER_TEARDOWN
 
 #else
 
@@ -92,6 +85,11 @@ typedef struct {
       profiler_start_block(name);
 
 #define PROFILE_FUNCTION PROFILE_BLOCK(__func__)
+
+#define PROFILER_START_FRAME profiler_start_frame()
+#define PROFILER_END_FRAME(metadata) profiler_end_frame(metadata)
+#define PROFILER_INIT profiler_init_default()
+#define PROFILER_TEARDOWN profiler_teardown()
 
 profiler_config profiler_default_config();
 void profiler_init_default();
