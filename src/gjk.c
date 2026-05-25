@@ -174,7 +174,7 @@ bool gjk_check_intersection(const bnd_world *world, const collision_detection_co
   direction = bnd_v3_normalize(bnd_v3_negate(support_point.v));
 
   count_t iterations = 0;
-  for (iterations = 0; iterations < world->config.collision_detection.max_gjk_iterations; ++iterations) {
+  for (iterations = 0; iterations < world->config.advanced.max_gjk_iterations; ++iterations) {
     support_point = support(ctx, direction);
 
     if (bnd_v3_dot(support_point.v, direction) < 0) {

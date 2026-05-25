@@ -161,38 +161,39 @@ typedef struct {
 } bnd_raycast_hit;
 
 typedef struct {
-  struct {
-    uint32_t dynamics_capacity;
-    uint32_t statics_capacity;
-    uint32_t contacts_capacity;
-    uint32_t joints_capacity;
-    uint32_t epa_max_nodes;
-    uint32_t meshes_capacity;
-    uint32_t events_capacity;
-    uint32_t shapes_brackets_capacity[5];
-  } memory;
+  uint32_t dynamics_capacity;
+  uint32_t statics_capacity;
+  uint32_t contacts_capacity;
+  uint32_t joints_capacity;
+  uint32_t meshes_capacity;
+  uint32_t events_capacity;
+} bnd_config_memory;
 
-  struct {
-    bnd_v3 gravity;
-    float linear_damping;
-    float angular_damping;
-    float restitution;
-    float friction;
-    float sleep_base_bias;
-    float sleep_threshold;
-  } simulation;
+typedef struct {
+  bnd_v3 gravity;
+  float linear_drag;
+  float angular_drag;
+  float bounciness;
+  float friction;
+  float sleep_base_bias;
+  float sleep_threshold;
+  float min_bounce_velocity;
+} bnd_config_simulation;
 
-  struct {
-    uint32_t max_gjk_iterations;
-    float epa_tolerance;
-  } collision_detection;
+typedef struct {
+  uint32_t epa_max_nodes;
+  uint32_t shapes_brackets_capacity[5];
+  uint32_t max_gjk_iterations;
+  float epa_tolerance;
+  uint32_t resolution_attempts_factor;
+  float penetration_epsilon;
+  float velocity_epsilon;
+} bnd_config_advanced;
 
-  struct {
-    uint32_t resolution_attempts_factor;
-    float penetration_epsilon;
-    float velocity_epsilon;
-    float restitution_damping_limit;
-  } collision_resolution;
+typedef struct {
+  bnd_config_memory memory;
+  bnd_config_simulation simulation;
+  bnd_config_advanced advanced;
 } bnd_config;
 
 typedef struct {

@@ -16,7 +16,7 @@ static void update_desired_velocity_delta(bnd_world *world, count_t contact_inde
   }
 
   float acceleration_velocity = bnd_v3_dot(bnd_v3_sub(accelerations[0], accelerations[1]), contact->normal) * dt;
-  float restitution = fabsf(contact->local_velocity.y) >= world->config.collision_resolution.restitution_damping_limit ? contact->restitution : 0.0f;
+  float restitution = fabsf(contact->local_velocity.y) >= world->config.simulation.min_bounce_velocity ? contact->restitution : 0.0f;
   float desired_delta = -contact->local_velocity.y - restitution * (contact->local_velocity.y - acceleration_velocity);
 
   contact->desired_delta_velocity = desired_delta;
@@ -273,7 +273,7 @@ static void resolve_velocity_contact(bnd_world *world, count_t contact_index, bn
 
 // Find the worst penetration contact. Returns false if none above threshold.
 static bool find_worst_penetration(bnd_world *world, count_t *out_contact_index) {
-  float max_penetration = world->config.collision_resolution.penetration_epsilon;
+  float max_penetration = world->config.advanced.penetration_epsilon;
   count_t best_contact = (count_t)-1;
 
   for (count_t i = 0; i < world->contacts.count; ++i) {
@@ -294,7 +294,7 @@ static bool find_worst_penetration(bnd_world *world, count_t *out_contact_index)
 
 // Find the worst velocity contact. Returns false if none above threshold.
 static bool find_worst_velocity(bnd_world *world, count_t *out_contact_index) {
-  float max_velocity = world->config.collision_resolution.velocity_epsilon;
+  float max_velocity = world->config.advanced.velocity_epsilon;
   count_t best_contact = (count_t)-1;
 
   for (count_t i = 0; i < world->contacts.count; ++i) {
@@ -341,7 +341,7 @@ static void resolve_interpenetrations(bnd_world *world) {
   PROFILE_FUNCTION
 
   const count_t count = world->contacts.count;
-  const count_t max_iterations = count * world->config.collision_resolution.resolution_attempts_factor;
+  const count_t max_iterations = count * world->config.advanced.resolution_attempts_factor;
 
   if (count == 0) {
     return;
@@ -401,7 +401,7 @@ static void resolve_velocities(bnd_world *world, float dt) {
   PROFILE_FUNCTION
 
   const count_t count = world->contacts.count;
-  const count_t max_iterations = count * world->config.collision_resolution.resolution_attempts_factor;
+  const count_t max_iterations = count * world->config.advanced.resolution_attempts_factor;
   if (count == 0) {
     return;
   }

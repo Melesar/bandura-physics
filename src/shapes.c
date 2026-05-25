@@ -7,8 +7,8 @@
 #define SHAPE_BRACKET_BLOCK_CAPACITY 64
 
 void shapes_get_bracket_properties(const bnd_config *config, count_t bracket_index, count_t *blocks, count_t *shapes, count_t *capacity) {
-  count_t blocks_count = config->memory.shapes_brackets_capacity[bracket_index] / SHAPE_BRACKET_BLOCK_CAPACITY +
-                          ((config->memory.shapes_brackets_capacity[bracket_index] & (SHAPE_BRACKET_BLOCK_CAPACITY - 1)) > 0);
+  count_t blocks_count = config->advanced.shapes_brackets_capacity[bracket_index] / SHAPE_BRACKET_BLOCK_CAPACITY +
+                          ((config->advanced.shapes_brackets_capacity[bracket_index] & (SHAPE_BRACKET_BLOCK_CAPACITY - 1)) > 0);
   count_t bracket_capacity = blocks_count * SHAPE_BRACKET_BLOCK_CAPACITY;
 
   count_t bracket_dimension = 1 << bracket_index;

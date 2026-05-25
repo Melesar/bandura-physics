@@ -86,7 +86,7 @@ count_t bnd_required_memory(const bnd_config *config) {
       + blocks_count * sizeof(uint64_t);
   }
 
-  count_t polytope_size = polytope_memory_size(config->memory.epa_max_nodes);
+  count_t polytope_size = polytope_memory_size(config->advanced.epa_max_nodes);
 
   size += (config->memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT) * dynamic_size
     + (config->memory.statics_capacity + EPHEMERAL_BODIES_COUNT) * common_size
@@ -142,32 +142,30 @@ bnd_config bnd_default_config() {
   return (bnd_config){
     .simulation = {
       .gravity = (bnd_v3){0, -9.81f, 0},
-      .linear_damping = 0.95,
-      .angular_damping = 0.8,
-      .restitution = 0.2,
+      .linear_drag = 0.95,
+      .angular_drag = 0.8,
+      .bounciness = 0.2,
       .friction = 0.9,
       .sleep_base_bias = 0.5,
       .sleep_threshold = 0.3,
+      .min_bounce_velocity = 0.25,
     },
     .memory = {
       .dynamics_capacity = 32,
       .statics_capacity = 8,
       .contacts_capacity = 64,
       .joints_capacity = 64,
-      .epa_max_nodes = 512,
       .meshes_capacity = 32,
       .events_capacity = 128,
-      .shapes_brackets_capacity = {64, 1, 1, 1, 1},
     },
-    .collision_detection = {
+    .advanced = {
       .max_gjk_iterations = 100,
       .epa_tolerance = 0.01,
-    },
-    .collision_resolution = {
+      .epa_max_nodes = 512,
       .resolution_attempts_factor = 15,
       .penetration_epsilon = 0.01,
       .velocity_epsilon = 0.01,
-      .restitution_damping_limit = 0.25,
+      .shapes_brackets_capacity = {64, 1, 1, 1, 1},
     },
   };
 }

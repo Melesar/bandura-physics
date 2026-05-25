@@ -569,12 +569,12 @@ static bool epa_expand_polytope(polytope *polytope, support_point p) {
 
 bnd_error epa_init(bnd_world *world) {
   bnd_allocator allocator = world->allocator;
-  uint32_t memory_size = polytope_memory_size(world->config.memory.epa_max_nodes);
+  uint32_t memory_size = polytope_memory_size(world->config.advanced.epa_max_nodes);
   uint8_t *memory;
 
   ALLOC_BUFFER8(memory, memory_size);
 
-  pt = polytope_init(memory, world->config.memory.epa_max_nodes);
+  pt = polytope_init(memory, world->config.advanced.epa_max_nodes);
 
   return OK;
 }

@@ -17,6 +17,7 @@ Bandura is a traditional Ukrainian [musical instrument](https://en.wikipedia.org
   * [Using meshes as body shapes](#using-meshes-as-body-shapes)
   * [Querying the physics world](#querying-the-physics-world)
   * [Reacting to collisions](#reacting-to-collisions)
+* [Configuring the engine](#configuring-the-engine)
 * [Handling errors](#handling-errors)
 * [Handling simulation time steps](#handling-simulation-time-steps)
 * [Bring your own...](#bring-your-own)
@@ -403,6 +404,41 @@ while (bnd_event_next(world, &enumerator)) {
 // To stop receiving collision events:
 bnd_event_unsubscribe(world, b, BND_EVENT_COLLISION);
 ```
+
+## Configuring the engine
+
+Configuration is done via [`bnd_config`](include/bandura.h) which is passed to `bnd_init`. It's recommended that you create a default config with `bnd_default_config` and then tweak the values if needed before calling `bnd_init`.
+
+Here is the overview of the available configuration options:
+
+### Memory
+
+This section determines how much memory the engine will allocate upon initialization. If the capacity of some buffer is exceeded later on, Bandura will re-allocate it, doubling its capacity. Otherwise, no heap allocations will be done.
+
+If you know  the upper limit for your body count in advance, you can adjust this section so that no allocations will be necessary after the engine is initialized.
+
+* `dynamics_capacity` - number of dynamic bodies.
+* `statics_capacity` - number of static bodies.
+* `contacts_capacity` - maximum number of contacts per simulation frame.
+* `joints_capacity` - number of joints.
+* `meshes_capacity` - number of meshes imported with `bnd_import_mesh`.
+* `events_capacity` - maximum number of events produced per simulation frame.
+
+### Simulation
+
+These parameters affect the physics simulation. You may want to adjust them for your game's needs
+
+* `gravity` - constant gravitational _acceleration_ applied to all dynamic bodies every simulation frame. Default is `(0, -9.81, 0)`.
+* `linear_drag` - how much linear velocity is lost every simulation frame. You may think of this as drag due to the air friction. Should be a value from 0 to 1. Default is `0.95`, meaning the bodies are being slowed down by 5% every frame.
+* `angular_drag` - same as the previous one, but for the angular velocity (rotation speed). Default is `0.8`. 
+* `bounciness` - Specifies how much the bodies bounce off each other upon collision. Should be the value from 0 to 1. Default is `0.2` which means that the bounce velocity will be 20% of the collision velocity.
+* `friction` - dynamic friction between two bodies. Should be the value between 0 and 1, where the bigger value means stronger friction. Default is `0.9`.
+* `sleep_base_bias` and `sleep_threshold` control how quickly the bodies go to sleep. Sleeping bodies are dynamic bodies which currently don't move. While in this state they consume almost no CPU resources for simulation, so this is benefitial for the game performance. To determine which body has to fall asleep, the engine uses the biased average of its velocity values across multiple frames. `sleep_base_bias` specifies which velocities are more important: values closer to 0 favour previous velocities, while values closer to 1 favour the current velocity. Once this biased average crosses `sleep_threshold`, the body falls asleep. 
+* `min_bounce_velocity` defines the minimum velocity at which the body will bounce. Adjusting this may be useful for getting the more stable resting bodies. Default value is `0.25`.
+
+### Advanced
+
+These options affect the internal systems of the engine, such as collision detection algorithms, contact solver and supporting data structures. Adjust them if you know what you are doing.
 
 ## Handling errors
 

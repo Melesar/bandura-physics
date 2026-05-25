@@ -920,8 +920,8 @@ static void integrate_bodies(bnd_world *world, float dt) {
   PROFILE_FUNCTION
 
   bnd_v3 gravity_acc = world->config.simulation.gravity;
-  float linear_damping = powf(world->config.simulation.linear_damping, dt);
-  float angular_damping = powf(world->config.simulation.angular_damping, dt);
+  float linear_damping = powf(world->config.simulation.linear_drag, dt);
+  float angular_damping = powf(world->config.simulation.angular_drag, dt);
 
   dynamic_bodies *dynamics = &world->dynamics;
   for (count_t i = 0; i < dynamics->awake_count; ++i) {

@@ -8,7 +8,7 @@ void scenario_configure(program_config *config, bnd_config *physics_config) {
   config->camera_target = (bnd_v3){ 0, 5, 10 };
 
   physics_config->simulation.gravity = bnd_v3_zero();
-  physics_config->simulation.angular_damping = 1;
+  physics_config->simulation.angular_drag = 1;
   physics_config->simulation.sleep_base_bias = 1;
 }
 

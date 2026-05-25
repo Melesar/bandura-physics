@@ -106,7 +106,7 @@ contact *contacts_new_default(bnd_world *world, count_t body_a, count_t body_b) 
   c->index_a = body_a;
   c->index_b = body_b;
   c->friction = world->config.simulation.friction;
-  c->restitution = world->config.simulation.restitution;
+  c->restitution = world->config.simulation.bounciness;
 
   return c;
 }
