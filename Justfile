@@ -8,3 +8,7 @@ release prefix="zig-out":
 cmake:
   cmake -S . -B build
   cmake --build build
+
+warn comp="gcc":
+  {{comp}} -std=c99 -Wall -Wextra -c src/*.c -Wno-braced-scalar-init -Wno-unused-parameter -Iinclude
+  rm *.o
