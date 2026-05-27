@@ -142,7 +142,7 @@ fn build_bandura(b: *std.Build, options: Options, withTests: bool) !*std.Build.S
 
     banduraLib.installHeader(b.path("include/bandura.h"), "bandura.h");
     banduraLib.installHeader(b.path("include/bnd-math.h"), "bnd-math.h");
-    banduraLib.installHeader(b.path("include/bnd-core.h"), "bnd-core.h");
+    banduraLib.installHeader(b.path("src/bnd-core.h"), "bnd-core.h");
 
     return banduraLib;
 }
