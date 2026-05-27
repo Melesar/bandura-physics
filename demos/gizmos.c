@@ -1,6 +1,5 @@
 #include "scenario-core.h"
 #include "raymath.h"
-#include "raylib.h"
 
 #include "stdbool.h"
 #include "stdlib.h"
@@ -23,8 +22,8 @@ typedef enum {
 } gizmo_type;
 
 typedef struct {
-  Vector3 *pos;
-  Quaternion *rot;
+  bnd_world *world;
+  bnd_body_handle handle;
 
   int id;
 
@@ -181,19 +180,29 @@ gizmo_type check_gizmo_hover(Ray mouse_ray, Vector3 cylinder_pos) {
 void init_gizmos() { gizmos = (gizmo *)malloc(capacity * sizeof(gizmo)); }
 
 void manipulate_gizmos(Camera *camera) {
+  for (int i = count - 1; i >= 0; i--) {
+    gizmo *g = &gizmos[i];
+    if (bnd_handle_valid(g->world, g->handle).type != BND_OK) {
+      gizmos[i] = gizmos[--count];
+    }
+  }
+
   for (int i = 0; i < count; ++i) {
     gizmo *g = &gizmos[i];
+    Vector3 pos = bnd_get_position(g->world, g->handle).value;
+    Quaternion rot = bnd_get_rotation(g->world, g->handle).value;
+
     Ray mouse_ray = GetScreenToWorldRay(GetMousePosition(), *camera);
 
     if (!g->is_dragging) {
-      g->hovered_gizmo = check_gizmo_hover(mouse_ray, *g->pos);
+      g->hovered_gizmo = check_gizmo_hover(mouse_ray, pos);
 
       if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && g->hovered_gizmo != GIZMO_NONE) {
         g->is_dragging = true;
         g->selected_gizmo = g->hovered_gizmo;
         g->drag_start_pos = mouse_ray.position;
-        g->start_pos = *g->pos;
-        g->start_rot = *g->rot;
+        g->start_pos = pos;
+        g->start_rot = rot;
 
         // For translation, calculate initial offset along axis
         if (g->selected_gizmo >= GIZMO_TRANSLATE_X && g->selected_gizmo <= GIZMO_TRANSLATE_Z) {
@@ -205,13 +214,13 @@ void manipulate_gizmos(Camera *camera) {
           else if (g->selected_gizmo == GIZMO_TRANSLATE_Z)
             axis = (Vector3){ 0, 0, 1 };
 
-          Vector3 line_start = *g->pos;
-          Vector3 line_end = Vector3Add(*g->pos, Vector3Scale(axis, 100));
+          Vector3 line_start = pos;
+          Vector3 line_end = Vector3Add(pos, Vector3Scale(axis, 100));
 
           Vector3 closest_point;
           ray_to_line_distance(mouse_ray, line_start, line_end, &closest_point);
 
-          Vector3 offset = Vector3Subtract(closest_point, *g->pos);
+          Vector3 offset = Vector3Subtract(closest_point, pos);
           g->drag_start_offset = Vector3DotProduct(offset, axis);
         }
 
@@ -226,8 +235,8 @@ void manipulate_gizmos(Camera *camera) {
             axis = (Vector3){ 0, 0, 1 };
 
           Vector3 intersection;
-          ray_to_circle_distance(mouse_ray, *g->pos, axis, gizmo_rotation_ring_radius, &intersection);
-          Vector3 to_intersection = Vector3Subtract(intersection, *g->pos);
+          ray_to_circle_distance(mouse_ray, pos, axis, gizmo_rotation_ring_radius, &intersection);
+          Vector3 to_intersection = Vector3Subtract(intersection, pos);
 
           // Project to find perpendicular for angle calculation
           Vector3 perpendicular;
@@ -259,7 +268,7 @@ void manipulate_gizmos(Camera *camera) {
             axis = (Vector3){ 0, 0, 1 };
 
           // Project mouse movement onto axis
-          Vector3 line_start = *g->pos;
+          Vector3 line_start = pos;
           Vector3 line_end = Vector3Add(g->start_pos, Vector3Scale(axis, 100));
 
           Vector3 closest_point;
@@ -271,7 +280,8 @@ void manipulate_gizmos(Camera *camera) {
           // Calculate delta from initial click position
           float delta = current_offset - g->drag_start_offset;
 
-          *g->pos = Vector3Add(g->start_pos, Vector3Scale(axis, delta));
+          pos = Vector3Add(g->start_pos, Vector3Scale(axis, delta));
+          bnd_set_position(g->world, g->handle, pos);
         } else {
           // Rotation
           Vector3 axis = { 0, 0, 0 };
@@ -283,10 +293,10 @@ void manipulate_gizmos(Camera *camera) {
             axis = (Vector3){ 0, 0, 1 };
 
           Vector3 intersection;
-          float dist = ray_to_circle_distance(mouse_ray, *g->pos, axis, gizmo_rotation_ring_radius, &intersection);
+          float dist = ray_to_circle_distance(mouse_ray, pos, axis, gizmo_rotation_ring_radius, &intersection);
 
           if (dist < 1.0f) {
-            Vector3 to_intersection = Vector3Subtract(intersection, *g->pos);
+            Vector3 to_intersection = Vector3Subtract(intersection, pos);
 
             Vector3 perpendicular;
             if (fabsf(axis.y) < 0.9f) {
@@ -303,7 +313,8 @@ void manipulate_gizmos(Camera *camera) {
             float angle_delta = current_angle - g->drag_start_angle;
 
             Quaternion rotation = QuaternionFromAxisAngle(axis, angle_delta);
-            *g->rot = QuaternionMultiply(rotation, g->start_rot);
+            rot = QuaternionMultiply(rotation, g->start_rot);
+            bnd_set_rotation(g->world, g->handle, rot);
           }
         }
       } else {
@@ -317,27 +328,29 @@ void manipulate_gizmos(Camera *camera) {
 void draw_gizmos() {
   for (int i = 0; i < count; ++i) {
     gizmo g = gizmos[i];
+    Vector3 pos = bnd_get_position(g.world, g.handle).value;
+    Quaternion rot = bnd_get_rotation(g.world, g.handle).value;
 
     Color x_color = (g.hovered_gizmo == GIZMO_TRANSLATE_X || g.selected_gizmo == GIZMO_TRANSLATE_X) ? ORANGE : RED;
     Color y_color = (g.hovered_gizmo == GIZMO_TRANSLATE_Y || g.selected_gizmo == GIZMO_TRANSLATE_Y) ? ORANGE : GREEN;
     Color z_color = (g.hovered_gizmo == GIZMO_TRANSLATE_Z || g.selected_gizmo == GIZMO_TRANSLATE_Z) ? ORANGE : BLUE;
 
-    draw_arrow(*g.pos, (bnd_v3){ gizmo_arrow_length, 0, 0 }, x_color);
-    draw_arrow(*g.pos, (bnd_v3){ 0, gizmo_arrow_length, 0 }, y_color);
-    draw_arrow(*g.pos, (bnd_v3){ 0, 0, gizmo_arrow_length }, z_color);
+    draw_arrow(pos, (bnd_v3){ gizmo_arrow_length, 0, 0 }, x_color);
+    draw_arrow(pos, (bnd_v3){ 0, gizmo_arrow_length, 0 }, y_color);
+    draw_arrow(pos, (bnd_v3){ 0, 0, gizmo_arrow_length }, z_color);
 
     // Draw rotation gizmos
     Color rx_color = (g.hovered_gizmo == GIZMO_ROTATE_X || g.selected_gizmo == GIZMO_ROTATE_X) ? ORANGE : RED;
     Color ry_color = (g.hovered_gizmo == GIZMO_ROTATE_Y || g.selected_gizmo == GIZMO_ROTATE_Y) ? ORANGE : GREEN;
     Color rz_color = (g.hovered_gizmo == GIZMO_ROTATE_Z || g.selected_gizmo == GIZMO_ROTATE_Z) ? ORANGE : BLUE;
 
-    draw_rotation_gizmo(*g.pos, (Vector3){ 1, 0, 0 }, rx_color);
-    draw_rotation_gizmo(*g.pos, (Vector3){ 0, 1, 0 }, ry_color);
-    draw_rotation_gizmo(*g.pos, (Vector3){ 0, 0, 1 }, rz_color);
+    draw_rotation_gizmo(pos, (Vector3){ 1, 0, 0 }, rx_color);
+    draw_rotation_gizmo(pos, (Vector3){ 0, 1, 0 }, ry_color);
+    draw_rotation_gizmo(pos, (Vector3){ 0, 0, 1 }, rz_color);
   }
 }
 
-int register_gizmo(Vector3 *pos, Quaternion *rot) {
+int register_gizmo(bnd_world *world, bnd_body_handle handle) {
   if (capacity <= count) {
     while (capacity <= count)
       capacity *= 2;
@@ -349,8 +362,8 @@ int register_gizmo(Vector3 *pos, Quaternion *rot) {
   }
 
   gizmo g = { 0 };
-  g.pos = pos;
-  g.rot = rot;
+  g.world = world;
+  g.handle = handle;
   g.id = current_id++;
 
   gizmos[count++] = g;

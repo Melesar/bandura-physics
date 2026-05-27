@@ -239,13 +239,18 @@ struct bnd_world_t {
 };
 
 typedef struct {
-  bnd_v3 v;
-  bnd_v3 v1;
-  bnd_v3 v2;
+  bnd_v3 point;
+  uint16_t id;
 } support_point;
 
 typedef struct {
-  support_point points[4];
+  bnd_v3 p;
+  support_point p1;
+  support_point p2;
+} body_support;
+
+typedef struct {
+  body_support points[4];
   uint8_t size;
 } simplex;
 
@@ -309,7 +314,8 @@ bnd_quat integrate_rotation_midpoint(bnd_quat rotation, bnd_v3 angular_momentum,
 bool gjk_check_intersection(const bnd_world *world, const collision_detection_context *ctx, simplex *simplex);
 bnd_error epa_init(bnd_world *world);
 void epa_get_contact(const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact);
-support_point support(const collision_detection_context *ctx, bnd_v3 direction);
+void epa_get_final_points(bnd_v3 *points);
+body_support support(const collision_detection_context *ctx, bnd_v3 direction);
 uint32_t polytope_memory_size(uint16_t max_nodes);
 
 float distance_to_triangle(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_v3 *closest);

@@ -67,7 +67,7 @@ typedef struct {
 
 typedef bnd_body_handle *ragdoll;
 
-int register_gizmo(Vector3 *pos, Quaternion *rot);
+int register_gizmo(bnd_world *world, bnd_body_handle handle);
 void unregister_gizmo(int id);
 
 bool import_raylib_mesh(bnd_world *world, Mesh mesh, bnd_mesh_handle *handle);

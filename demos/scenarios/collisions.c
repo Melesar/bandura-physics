@@ -12,39 +12,6 @@ bnd_body_shape box_shape = {
   .rotation = (bnd_quat){ 0, 0, 0, 1 },
 };
 
-static void draw_simplex(const simplex *s) {
-  Vector3 p3 = s->points[3].v;
-  Vector3 p2 = s->points[2].v;
-  Vector3 p1 = s->points[1].v;
-  Vector3 p0 = s->points[0].v;
-
-  Color color = GREEN;
-  color.a = 100;
-
-  Color point_colors[4] = { RED, GREEN, BLUE, YELLOW };
-  for (count_t i = 0; i < s->size; ++i) {
-    Vector3 v1 = s->points[i].v1;
-    Vector3 v2 = s->points[i].v2;
-
-    DrawSphere(v1, 0.05, point_colors[i]);
-    DrawSphere(v2, 0.05, point_colors[i]);
-  }
-
-  DrawTriangle3D(p3, p1, p0, color);
-  DrawTriangle3D(p3, p2, p1, color);
-  DrawTriangle3D(p3, p0, p2, color);
-  DrawTriangle3D(p2, p0, p1, color);
-
-  const float radius = 0.01;
-  DrawCylinderEx(p3, p0, radius, radius, 16, BLACK);
-  DrawCylinderEx(p3, p1, radius, radius, 16, BLACK);
-  DrawCylinderEx(p3, p2, radius, radius, 16, BLACK);
-
-  DrawCylinderEx(p0, p1, radius, radius, 16, BLACK);
-  DrawCylinderEx(p1, p2, radius, radius, 16, BLACK);
-  DrawCylinderEx(p2, p0, radius, radius, 16, BLACK);
-}
-
 void scenario_configure(program_config *config, bnd_config *physics) {
   config->window_title = "Collisions";
   config->camera_position = (bnd_v3){ 22.542, 11.645, 20.752 };
@@ -63,8 +30,8 @@ void scenario_setup_scene(bnd_world *world) {
 
   boxes[0] = b1;
   boxes[1] = b2;
-  // register_gizmo((Vector3 *)b1.position, (Quaternion *)b1.rotation);
-  // register_gizmo((Vector3 *)b2.position, (Quaternion *)b2.rotation);
+  register_gizmo(world, b1);
+  register_gizmo(world, b2);
 }
 
 void scenario_simulate(bnd_world *world, float dt) {
@@ -89,9 +56,32 @@ void scenario_draw_scene(bnd_world *world) {
       .shape_b = box_shape,
     };
 
-    if (gjk_check_intersection(world, &ctx, &s)) {
-      draw_simplex(&s);
+    if (!gjk_check_intersection(world, &ctx, &s)) {
+      continue;
     }
+
+    contact c;
+    epa_get_contact(&ctx, &s, world->config.advanced.epa_tolerance, &c);
+
+    bnd_v3 points[6];
+    epa_get_final_points(points);
+
+    Color colors[] = { RED, GREEN };
+    for (int j = 0; j < 6; j += 3) {
+      bnd_v3 p0 = points[j + 0];
+      bnd_v3 p1 = points[j + 1];
+      bnd_v3 p2 = points[j + 2];
+
+      DrawSphere(p0, 0.05, colors[j / 3]);
+      DrawSphere(p1, 0.05, colors[j / 3]);
+      DrawSphere(p2, 0.05, colors[j / 3]);
+
+      const float radius = 0.01;
+      DrawCylinderEx(p0, p1, radius, radius, 16, BLACK);
+      DrawCylinderEx(p1, p2, radius, radius, 16, BLACK);
+      DrawCylinderEx(p2, p0, radius, radius, 16, BLACK);
+    }
+
   }
 }
 

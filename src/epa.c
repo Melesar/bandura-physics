@@ -26,7 +26,7 @@ typedef enum {
 } node_flags;
 
 typedef struct {
-  support_point v;
+  body_support v;
   uint16_t first_attached_edge;
 } vertex;
 
@@ -231,15 +231,15 @@ static void polytope_get_face_verticies(const polytope *polytope, uint16_t face,
   uint16_t *edge_verts_1 = polytope->nodes[e1].value.edge.verticies;
   uint16_t *edge_verts_2 = polytope->nodes[e2].value.edge.verticies;
 
-  *v1 = polytope->nodes[edge_verts_1[0]].value.vertex.v.v;
-  *v2 = polytope->nodes[edge_verts_1[1]].value.vertex.v.v;
+  *v1 = polytope->nodes[edge_verts_1[0]].value.vertex.v.p;
+  *v2 = polytope->nodes[edge_verts_1[1]].value.vertex.v.p;
 
   *v3 = edge_verts_2[1] != edge_verts_1[1] && edge_verts_2[1] != edge_verts_1[0]
-    ? polytope->nodes[edge_verts_2[1]].value.vertex.v.v
-    : polytope->nodes[edge_verts_2[0]].value.vertex.v.v;
+    ? polytope->nodes[edge_verts_2[1]].value.vertex.v.p
+    : polytope->nodes[edge_verts_2[0]].value.vertex.v.p;
 }
 
-static uint16_t polytope_add_vertex(polytope *polytope, support_point p) {
+static uint16_t polytope_add_vertex(polytope *polytope, body_support p) {
   uint16_t index = polytope_free_index(polytope);
   if (index == NIL) {
     return NIL;
@@ -412,8 +412,8 @@ static bool polytope_from_simplex(polytope *polytope, const simplex *s) {
   return true;
 }
 
-static void epa_invalid_contact(support_point p, contact *contact) {
-  contact->point = bnd_v3_scale(bnd_v3_add(p.v1, p.v2), 0.5);
+static void epa_invalid_contact(body_support p, contact *contact) {
+  contact->point = bnd_v3_scale(bnd_v3_add(p.p1.point, p.p2.point), 0.5);
   contact->normal = bnd_v3_up();
   contact->depth = 0.1;
 }
@@ -425,16 +425,16 @@ static void epa_calculate_contact(const polytope *polytope, contact *contact) {
   uint16_t *edge_verts_1 = polytope->nodes[e1].value.edge.verticies;
   uint16_t *edge_verts_2 = polytope->nodes[e2].value.edge.verticies;
 
-  support_point v1 = polytope->nodes[edge_verts_1[0]].value.vertex.v;
-  support_point v2 = polytope->nodes[edge_verts_1[1]].value.vertex.v;
+  body_support v1 = polytope->nodes[edge_verts_1[0]].value.vertex.v;
+  body_support v2 = polytope->nodes[edge_verts_1[1]].value.vertex.v;
 
-  support_point vv3 = edge_verts_2[1] != edge_verts_1[1] && edge_verts_2[1] != edge_verts_1[0]
+  body_support vv3 = edge_verts_2[1] != edge_verts_1[1] && edge_verts_2[1] != edge_verts_1[0]
     ? polytope->nodes[edge_verts_2[1]].value.vertex.v
     : polytope->nodes[edge_verts_2[0]].value.vertex.v;
 
-  bnd_v3 barycenter = bnd_v3_barycentric(bnd_v3_zero(), v1.v, v2.v, vv3.v);
-  bnd_v3 p1 = bnd_v3_add(bnd_v3_scale(v1.v1, barycenter.x), bnd_v3_add(bnd_v3_scale(v2.v1, barycenter.y), bnd_v3_scale(vv3.v1, barycenter.z)));
-  bnd_v3 p2 = bnd_v3_add(bnd_v3_scale(v1.v2, barycenter.x), bnd_v3_add(bnd_v3_scale(v2.v2, barycenter.y), bnd_v3_scale(vv3.v2, barycenter.z)));
+  bnd_v3 barycenter = bnd_v3_barycentric(bnd_v3_zero(), v1.p, v2.p, vv3.p);
+  bnd_v3 p1 = bnd_v3_add(bnd_v3_scale(v1.p1.point, barycenter.x), bnd_v3_add(bnd_v3_scale(v2.p1.point, barycenter.y), bnd_v3_scale(vv3.p1.point, barycenter.z)));
+  bnd_v3 p2 = bnd_v3_add(bnd_v3_scale(v1.p2.point, barycenter.x), bnd_v3_add(bnd_v3_scale(v2.p2.point, barycenter.y), bnd_v3_scale(vv3.p2.point, barycenter.z)));
 
   contact->point = bnd_v3_scale(bnd_v3_add(p1, p2), 0.5);
   contact->depth = sqrt(node.value.face.distance);
@@ -447,7 +447,32 @@ static void epa_calculate_contact(const polytope *polytope, contact *contact) {
   }
 }
 
-static void epa_update_visible_faces(polytope *polytope, support_point p) {
+
+void epa_get_final_points(bnd_v3 *points) {
+  const polytope_node *node = &pt->nodes[pt->nearest];
+
+  uint16_t e1 = node->value.face.edges[0];
+  uint16_t e2 = node->value.face.edges[1];
+  uint16_t *edge_verts_1 = pt->nodes[e1].value.edge.verticies;
+  uint16_t *edge_verts_2 = pt->nodes[e2].value.edge.verticies;
+
+  body_support *v1 = &pt->nodes[edge_verts_1[0]].value.vertex.v;
+  body_support *v2 = &pt->nodes[edge_verts_1[1]].value.vertex.v;
+
+  body_support *v3 = edge_verts_2[1] != edge_verts_1[1] && edge_verts_2[1] != edge_verts_1[0]
+    ? &pt->nodes[edge_verts_2[1]].value.vertex.v
+    : &pt->nodes[edge_verts_2[0]].value.vertex.v;
+
+  points[0] = v1->p1.point;
+  points[1] = v2->p1.point;
+  points[2] = v3->p1.point;
+
+  points[3] = v1->p2.point;
+  points[4] = v2->p2.point;
+  points[5] = v3->p2.point;
+}
+
+static void epa_update_visible_faces(polytope *polytope, body_support p) {
   uint16_t stack_ptr = 1;
   uint16_t stack[VISIBLE_FACES_STACK_SIZE] = { polytope->nearest };
 
@@ -469,7 +494,7 @@ static void epa_update_visible_faces(polytope *polytope, support_point p) {
 
         if (polytope->flags[adjasent_face_index] & FLAG_FOR_REMOVAL) {
           visible_count += 1;
-        } else if (polytope_is_face_visible(adjasent_face_node, p.v)) {
+        } else if (polytope_is_face_visible(adjasent_face_node, p.p)) {
           visible_count += 1;
           polytope->flags[adjasent_face_index] |= FLAG_FOR_REMOVAL;
           stack[stack_ptr++] = adjasent_face_index;
@@ -485,7 +510,7 @@ static void epa_update_visible_faces(polytope *polytope, support_point p) {
   }
 }
 
-static bool epa_expand_polytope(polytope *polytope, support_point p) {
+static bool epa_expand_polytope(polytope *polytope, body_support p) {
   epa_update_visible_faces(polytope, p);
 
   polytope_for_each_node(polytope, index, NODE_FACE) {
@@ -588,13 +613,13 @@ void epa_get_contact(const collision_detection_context *ctx, const simplex *simp
   }
 
   count_t attempts = 0;
-  support_point support_point;
+  body_support support_point;
   while (attempts++ < EPA_MAX_ATTEMPTS) {
     polytope_node closest_face = pt->nodes[pt->nearest];
     bnd_v3 direction = closest_face.value.face.normal;
 
     support_point = support(ctx, bnd_v3_normalize(direction));
-    float distance = bnd_v3_dot(direction, support_point.v);
+    float distance = bnd_v3_dot(direction, support_point.p);
     if (distance - closest_face.value.face.distance < tolerance) {
       epa_calculate_contact(pt, contact);
       return;
@@ -602,7 +627,7 @@ void epa_get_contact(const collision_detection_context *ctx, const simplex *simp
 
     bnd_v3 a, b, c, closest;
     polytope_get_face_verticies(pt, pt->nearest, &a, &b, &c);
-    distance = distance_to_triangle(support_point.v, a, b, c, &closest);
+    distance = distance_to_triangle(support_point.p, a, b, c, &closest);
 
     if (distance < tolerance) {
       epa_calculate_contact(pt, contact);

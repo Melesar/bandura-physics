@@ -142,16 +142,16 @@ static bnd_v3 mesh_support(const shape_context *ctx, bnd_v3 direction) {
 
 support_func support_functions[] = { box_support, sphere_support, cylinder_support, mesh_support };
 
-support_point support(const collision_detection_context *ctx, bnd_v3 direction) {
+body_support support(const collision_detection_context *ctx, bnd_v3 direction) {
   PROFILE_FUNCTION
 
   shape_context sa = { ctx->world, ctx->data_a, ctx->shape_a, ctx->body_a };
   shape_context sb = { ctx->world, ctx->data_b, ctx->shape_b, ctx->body_b };
 
-  support_point result;
-  result.v1 = support_functions[ctx->shape_a.type](&sa, direction);
-  result.v2 = support_functions[ctx->shape_b.type](&sb, bnd_v3_negate(direction));
-  result.v = bnd_v3_sub(result.v1, result.v2);
+  body_support result;
+  result.p1.point = support_functions[ctx->shape_a.type](&sa, direction);
+  result.p2.point = support_functions[ctx->shape_b.type](&sb, bnd_v3_negate(direction));
+  result.p = bnd_v3_sub(result.p1.point, result.p2.point);
 
   return result;
 }

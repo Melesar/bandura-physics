@@ -20,7 +20,7 @@ static inline bool is_zero(float x) {
   return fabsf(x) < TOLERANCE;
 }
 
-static void simplex_add_point(simplex *s, support_point p) {
+static void simplex_add_point(simplex *s, body_support p) {
   s->points[3] = s->points[2];
   s->points[2] = s->points[1];
   s->points[1] = s->points[0];
@@ -30,8 +30,8 @@ static void simplex_add_point(simplex *s, support_point p) {
 }
 
 static bool simplex_update_2(simplex *s, bnd_v3 *direction) {
-  bnd_v3 a = s->points[0].v;
-  bnd_v3 b = s->points[1].v;
+  bnd_v3 a = s->points[0].p;
+  bnd_v3 b = s->points[1].p;
   bnd_v3 ab = bnd_v3_sub(b, a);
   bnd_v3 ao = bnd_v3_negate(a);
 
@@ -54,18 +54,18 @@ static bool simplex_update_2(simplex *s, bnd_v3 *direction) {
 }
 
 static bool simplex_update_3(simplex *s, bnd_v3 *direction) {
-  support_point a = s->points[0];
-  support_point b = s->points[1];
-  support_point c = s->points[2];
+  body_support a = s->points[0];
+  body_support b = s->points[1];
+  body_support c = s->points[2];
 
-  if (bnd_v3_distancesqr(a.v, b.v) < TOLERANCE || bnd_v3_distancesqr(a.v, c.v) < TOLERANCE) {
+  if (bnd_v3_distancesqr(a.p, b.p) < TOLERANCE || bnd_v3_distancesqr(a.p, c.p) < TOLERANCE) {
     *direction = bnd_v3_zero();
     return false;
   }
 
-  bnd_v3 ab = bnd_v3_sub(b.v, a.v);
-  bnd_v3 ac = bnd_v3_sub(c.v, a.v);
-  bnd_v3 ao = bnd_v3_negate(a.v);
+  bnd_v3 ab = bnd_v3_sub(b.p, a.p);
+  bnd_v3 ac = bnd_v3_sub(c.p, a.p);
+  bnd_v3 ao = bnd_v3_negate(a.p);
 
   bnd_v3 abc = bnd_v3_cross(ab, ac);
 
@@ -96,7 +96,7 @@ static bool simplex_update_3(simplex *s, bnd_v3 *direction) {
       if (is_zero(d5) || d5 > 0) {
         *direction = abc;
       } else {
-        support_point tmp = s->points[1];
+        body_support tmp = s->points[1];
         s->points[1] = s->points[2];
         s->points[2] = tmp;
         *direction = bnd_v3_negate(abc);
@@ -108,15 +108,15 @@ static bool simplex_update_3(simplex *s, bnd_v3 *direction) {
 }
 
 static bool simplex_update_4(simplex *s, bnd_v3 *direction) {
-  support_point a = s->points[0];
-  support_point b = s->points[1];
-  support_point c = s->points[2];
-  support_point d = s->points[3];
+  body_support a = s->points[0];
+  body_support b = s->points[1];
+  body_support c = s->points[2];
+  body_support d = s->points[3];
 
-  bnd_v3 ab = bnd_v3_sub(b.v, a.v);
-  bnd_v3 ac = bnd_v3_sub(c.v, a.v);
-  bnd_v3 ad = bnd_v3_sub(d.v, a.v);
-  bnd_v3 ao = bnd_v3_negate(a.v);
+  bnd_v3 ab = bnd_v3_sub(b.p, a.p);
+  bnd_v3 ac = bnd_v3_sub(c.p, a.p);
+  bnd_v3 ad = bnd_v3_sub(d.p, a.p);
+  bnd_v3 ao = bnd_v3_negate(a.p);
 
   bnd_v3 abc = bnd_v3_cross(ab, ac);
   bnd_v3 acd = bnd_v3_cross(ac, ad);
@@ -169,15 +169,15 @@ bool gjk_check_intersection(const bnd_world *world, const collision_detection_co
 
   simplex->size = 0;
 
-  support_point support_point = support(ctx, direction);
+  body_support support_point = support(ctx, direction);
   simplex_add_point(simplex, support_point);
-  direction = bnd_v3_normalize(bnd_v3_negate(support_point.v));
+  direction = bnd_v3_normalize(bnd_v3_negate(support_point.p));
 
   count_t iterations = 0;
   for (iterations = 0; iterations < world->config.advanced.max_gjk_iterations; ++iterations) {
     support_point = support(ctx, direction);
 
-    if (bnd_v3_dot(support_point.v, direction) < 0) {
+    if (bnd_v3_dot(support_point.p, direction) < 0) {
       return false;
     }
 
