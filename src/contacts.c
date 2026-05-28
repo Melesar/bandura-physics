@@ -64,6 +64,8 @@ bnd_error contacts_init(bnd_world *world) {
   contacts->count = 0;
   contacts->dynamic_count = 0;
 
+  collision_detection_init(world);
+
   return OK;
 }
 

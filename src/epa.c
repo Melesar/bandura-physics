@@ -470,6 +470,10 @@ void epa_get_final_points(bnd_v3 *points) {
   points[3] = v1->p2.point;
   points[4] = v2->p2.point;
   points[5] = v3->p2.point;
+
+  points[6] = v1->p;
+  points[7] = v2->p;
+  points[8] = v3->p;
 }
 
 static void epa_update_visible_faces(polytope *polytope, body_support p) {

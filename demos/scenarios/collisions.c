@@ -63,10 +63,12 @@ void scenario_draw_scene(bnd_world *world) {
     contact c;
     epa_get_contact(&ctx, &s, world->config.advanced.epa_tolerance, &c);
 
-    bnd_v3 points[6];
+    bnd_v3 points[9];
     epa_get_final_points(points);
 
+    const float radius = 0.01;
     Color colors[] = { RED, GREEN };
+
     for (int j = 0; j < 6; j += 3) {
       bnd_v3 p0 = points[j + 0];
       bnd_v3 p1 = points[j + 1];
@@ -76,12 +78,15 @@ void scenario_draw_scene(bnd_world *world) {
       DrawSphere(p1, 0.05, colors[j / 3]);
       DrawSphere(p2, 0.05, colors[j / 3]);
 
-      const float radius = 0.01;
       DrawCylinderEx(p0, p1, radius, radius, 16, BLACK);
       DrawCylinderEx(p1, p2, radius, radius, 16, BLACK);
       DrawCylinderEx(p2, p0, radius, radius, 16, BLACK);
     }
 
+    DrawTriangle3D(points[6], points[7], points[8], colors[0]);
+    DrawCylinderEx(points[6], points[7], radius, radius, 16, BLACK);
+    DrawCylinderEx(points[7], points[8], radius, radius, 16, BLACK);
+    DrawCylinderEx(points[8], points[6], radius, radius, 16, BLACK);
   }
 }
 

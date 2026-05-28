@@ -1,3 +1,4 @@
+#include "bandura.h"
 #include "bnd-core.h"
 #include "bnd-math.h"
 
@@ -12,6 +13,27 @@ typedef struct {
   bnd_v3 size;
   bnd_v3 axis[3];
 } collision_box;
+
+typedef count_t (*collision_detection_func)(bnd_world *world, const collision_detection_context *ctx);
+
+typedef struct {
+  collision_detection_func func;
+  bool primary;
+} collision_detection_entry;
+
+static collision_detection_entry collision_detection_table[BND_SHAPES_COUNT][BND_SHAPES_COUNT];
+
+static collision_detection_context ctx_inverse(collision_detection_context ctx) {
+  return (collision_detection_context){
+    .world = ctx.world,
+    .data_a = ctx.data_b,
+    .data_b = ctx.data_a,
+    .body_a = ctx.body_b,
+    .body_b = ctx.body_a,
+    .shape_a = ctx.shape_b,
+    .shape_b = ctx.shape_a,
+  };
+}
 
 static bnd_v3 body_center_ex(bnd_v3 shape_offset, bnd_quat global_rotation, bnd_v3 body_position) {
   bnd_v3 center = shape_offset;
@@ -365,7 +387,7 @@ static count_t mesh_plane_collision(bnd_world *world, const collision_detection_
   return 1;
 }
 
-static count_t detect_collisions(bnd_world *world, const collision_detection_context *ctx) {
+static count_t polytope_polytope_collision(bnd_world *world, const collision_detection_context *ctx) {
   simplex s;
   if (!gjk_check_intersection(world, ctx, &s)) {
     return 0;
@@ -381,20 +403,21 @@ static count_t detect_collisions(bnd_world *world, const collision_detection_con
   return 1;
 }
 
-count_t collisions_detect_dynamic(bnd_world *world) {
+static count_t collisions_detect(bnd_world *world, const common_data *data_b, bool loop_all) {
   const common_data *dynamics = (common_data *)&world->dynamics;
 
   collision_detection_context ctx = {
     .world = world,
     .data_a = dynamics,
-    .data_b = dynamics,
+    .data_b = data_b,
   };
 
-  count_t dyn_count = 0;
+  count_t count = 0;
 
   for (count_t i = 0; i < dynamics->count; ++i) {
-    for (count_t j = 0; j < i; ++j) {
-      if (!aabb_intersect(dynamics, dynamics, i, j)) {
+    count_t until = loop_all ? data_b->count : i;
+    for (count_t j = 0; j < until; ++j) {
+      if (!aabb_intersect(dynamics, data_b, i, j)) {
         continue;
       }
 
@@ -402,7 +425,7 @@ count_t collisions_detect_dynamic(bnd_world *world) {
       ctx.body_b = j;
 
       body_shapes shapes_a = dynamics->shapes[i];
-      body_shapes shapes_b = dynamics->shapes[j];
+      body_shapes shapes_b = data_b->shapes[j];
 
       for (count_t sa = 0; sa < shapes_a.count; ++sa) {
         bnd_body_shape shape_a = shapes_get(world, shapes_a)[sa];
@@ -412,77 +435,53 @@ count_t collisions_detect_dynamic(bnd_world *world) {
           bnd_body_shape shape_b = shapes_get(world, shapes_b)[sb];
           ctx.shape_b = shape_b;
 
-          if (shape_a.type == BND_SPHERE && shape_b.type == BND_SPHERE) {
-            dyn_count += sphere_sphere_collision(world, &ctx);
+          collision_detection_entry entry = collision_detection_table[shape_a.type][shape_b.type];
+          if (entry.func == NULL) {
+            continue;
+          }
+
+          if (entry.primary) {
+            count += entry.func(world, &ctx);
           } else {
-            dyn_count += detect_collisions(world, &ctx);
+            collision_detection_context inv_ctx = ctx_inverse(ctx);
+            count_t new_contacts = entry.func(world, &inv_ctx);
+
+            for (count_t k = world->contacts.count - new_contacts; k < world->contacts.count; ++k) {
+              world->contacts.values[k].normal = bnd_v3_negate(world->contacts.values[k].normal);
+            }
+
+            count += new_contacts;
           }
         }
       }
     }
   }
 
-  return dyn_count;
+  return count;
+}
+
+count_t collisions_detect_dynamic(bnd_world *world) {
+  const common_data *dynamics = (common_data *)&world->dynamics;
+  return collisions_detect(world, dynamics, false);
 }
 
 void collisions_detect_static(bnd_world *world) {
-  const common_data *dynamics = (common_data *)&world->dynamics;
   const common_data *statics = (common_data *)&world->statics;
+  collisions_detect(world, statics, true);
+}
 
-  collision_detection_context ctx = {
-    .world = world,
-    .data_a = dynamics,
-    .data_b = statics,
-  };
+void collision_detection_init(bnd_world *world) {
+  memset(collision_detection_table, 0, sizeof(collision_detection_table));
 
-  for (count_t i = 0; i < dynamics->count; ++i) {
-    for (count_t j = 0; j < statics->count; ++j) {
-      if (!aabb_intersect(dynamics, statics, i, j)) {
-        continue;
-      }
+  collision_detection_table[BND_SPHERE][BND_SPHERE] = (collision_detection_entry) { sphere_sphere_collision, true };
+  collision_detection_table[BND_BOX][BND_BOX] = (collision_detection_entry) { polytope_polytope_collision, true };
+  collision_detection_table[BND_MESH][BND_MESH] = (collision_detection_entry) { polytope_polytope_collision, true };
 
-      ctx.body_a = i;
-      ctx.body_b = j;
+  collision_detection_table[BND_MESH][BND_BOX] = (collision_detection_entry) { polytope_polytope_collision, true };
+  collision_detection_table[BND_BOX][BND_MESH] = (collision_detection_entry) { polytope_polytope_collision, false };
 
-      body_shapes shapes_a = dynamics->shapes[i];
-      body_shapes shapes_b = statics->shapes[j];
-
-      for (count_t sa = 0; sa < shapes_a.count; ++sa) {
-        bnd_body_shape shape_a = shapes_get(world, shapes_a)[sa];
-        ctx.shape_a = shape_a;
-
-        for (count_t sb = 0; sb < shapes_b.count; ++sb) {
-          bnd_body_shape shape_b = shapes_get(world, shapes_b)[sb];
-          ctx.shape_b = shape_b;
-
-          if (shape_a.type == BND_SPHERE && shape_b.type == BND_SPHERE) {
-            sphere_sphere_collision(world, &ctx);
-          } else  if (shape_b.type == BND_PLANE) {
-            switch (shape_a.type) {
-              case BND_BOX:
-                box_plane_collision(world, &ctx);
-                break;
-
-              case BND_SPHERE:
-                sphere_plane_collision(world, &ctx);
-                break;
-
-              case BND_CYLINDER:
-                cylinder_plane_collision(world, &ctx);
-                break;
-
-              case BND_MESH:
-                mesh_plane_collision(world, &ctx);
-                break;
-
-              default:
-                break;
-            }
-          } else {
-            detect_collisions(world, &ctx);
-          }
-        }
-      }
-    }
-  }
+  collision_detection_table[BND_BOX][BND_PLANE] = (collision_detection_entry) { box_plane_collision, true };
+  collision_detection_table[BND_SPHERE][BND_PLANE] = (collision_detection_entry) { sphere_plane_collision, true };
+  collision_detection_table[BND_CYLINDER][BND_PLANE] = (collision_detection_entry) { cylinder_plane_collision, true };
+  collision_detection_table[BND_MESH][BND_PLANE] = (collision_detection_entry) { mesh_plane_collision, true };
 }

@@ -279,6 +279,7 @@ contact *contacts_new_default(bnd_world *world, count_t body_a, count_t body_b);
 void contacts_generate(bnd_world *world);
 void contacts_resolve(bnd_world *world, float dt);
 
+void collision_detection_init(bnd_world *world);
 count_t collisions_detect_dynamic(bnd_world *world);
 void collisions_detect_static(bnd_world *world);
 
