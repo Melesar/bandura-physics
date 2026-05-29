@@ -55,8 +55,8 @@ void scenario_setup_scene(bnd_world *world) {
   big_box = bnd_add_box_static(world, (bnd_v3){ 1, 3, 10 }).value;
   bnd_set_position(world, big_box, (bnd_v3){ -7, 1.5, 0 });
 
-  big_box = bnd_add_cylinder_static(world, 1, 3).value;
-  bnd_set_position(world, big_box, (bnd_v3){ 0, 1.5, 0 });
+  // big_box = bnd_add_cylinder_static(world, 1, 3).value;
+  // bnd_set_position(world, big_box, (bnd_v3){ 0, 1.5, 0 });
 }
 
 void scenario_simulate(bnd_world *world, float dt) { bnd_simulate(world, dt); }

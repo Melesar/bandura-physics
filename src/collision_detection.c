@@ -210,6 +210,18 @@ static count_t sphere_sphere_collision(bnd_world *world, const collision_detecti
   return 1;
 }
 
+static count_t box_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
+  bnd_v3 box_center = body_a_center(ctx);
+  bnd_quat box_rotation = bnd_qmul(ctx->data_a->rotations[ctx->body_a], ctx->shape_a.rotation);
+  bnd_quat inv_box_rotation = bnd_qinvert(box_rotation);
+
+  bnd_v3 sphere_center = bnd_v3_add(ctx->data_b->positions[ctx->body_b], ctx->shape_b.offset);
+  bnd_v3 local_sphere_center = bnd_v3_rotate(bnd_v3_sub(sphere_center, box_center), inv_box_rotation);
+  float sphere_radius = ctx->shape_b.value.sphere.radius;
+
+  return 0;
+}
+
 static count_t box_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
   bnd_quat box_rotation = ctx->data_a->rotations[ctx->body_a];
   bnd_quat shape_rotation = ctx->shape_a.rotation;
@@ -476,6 +488,9 @@ void collision_detection_init(bnd_world *world) {
   collision_detection_table[BND_SPHERE][BND_SPHERE] = (collision_detection_entry) { sphere_sphere_collision, true };
   collision_detection_table[BND_BOX][BND_BOX] = (collision_detection_entry) { polytope_polytope_collision, true };
   collision_detection_table[BND_MESH][BND_MESH] = (collision_detection_entry) { polytope_polytope_collision, true };
+
+  collision_detection_table[BND_BOX][BND_SPHERE] = (collision_detection_entry) { box_sphere_collision, true };
+  collision_detection_table[BND_SPHERE][BND_BOX] = (collision_detection_entry) { box_sphere_collision, false };
 
   collision_detection_table[BND_MESH][BND_BOX] = (collision_detection_entry) { polytope_polytope_collision, true };
   collision_detection_table[BND_BOX][BND_MESH] = (collision_detection_entry) { polytope_polytope_collision, false };
