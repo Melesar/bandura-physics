@@ -6,6 +6,7 @@
 
 #include <float.h>
 #include <math.h>
+#include <stdbool.h>
 #include <string.h>
 
 typedef struct {
@@ -211,15 +212,67 @@ static count_t sphere_sphere_collision(bnd_world *world, const collision_detecti
 }
 
 static count_t box_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
+  bnd_v3 half_extents = bnd_v3_scale(ctx->shape_a.value.box.size, 0.5);
   bnd_v3 box_center = body_a_center(ctx);
   bnd_quat box_rotation = bnd_qmul(ctx->data_a->rotations[ctx->body_a], ctx->shape_a.rotation);
   bnd_quat inv_box_rotation = bnd_qinvert(box_rotation);
 
   bnd_v3 sphere_center = bnd_v3_add(ctx->data_b->positions[ctx->body_b], ctx->shape_b.offset);
   bnd_v3 local_sphere_center = bnd_v3_rotate(bnd_v3_sub(sphere_center, box_center), inv_box_rotation);
-  float sphere_radius = ctx->shape_b.value.sphere.radius;
+  float r = ctx->shape_b.value.sphere.radius;
 
-  return 0;
+  bnd_v3 closest = {
+    fmaxf(-half_extents.x, fminf(local_sphere_center.x, half_extents.x)),
+    fmaxf(-half_extents.y, fminf(local_sphere_center.y, half_extents.y)),
+    fmaxf(-half_extents.z, fminf(local_sphere_center.z, half_extents.z))
+  };
+
+  float distancesqr = bnd_v3_distancesqr(closest, local_sphere_center);
+  if (distancesqr > r * r) {
+    return 0;
+  }
+
+  float *s = (float *)&half_extents;
+  float *c = (float *)&closest;
+
+  float depth = 0;
+  float local_normal[3] = {0};
+
+  if (fabsf(distancesqr) < EPSILON) {
+    // Sphere is inside the box
+    float min_dist = FLT_MAX;
+    int min_axis = -1;
+    for (int i = 0; i < 3; ++i) {
+      float dist = s[i] - fabsf(c[i]);
+      if (dist < min_dist) {
+        min_dist = dist;
+        min_axis = i;
+      }
+    }
+
+    local_normal[min_axis] = c[min_axis] > 0 ? 1 : -1;
+    depth = min_dist + r;
+  } else {
+    bnd_v3 diff = bnd_v3_sub(local_sphere_center, closest);
+    float dist = sqrtf(distancesqr);
+    depth = r - dist;
+
+    diff = bnd_v3_scale(diff, 1.0f / dist);
+    memcpy(&local_normal, &diff, sizeof(bnd_v3));
+  }
+
+  contact *contact = new_contact(world, ctx);
+  if (contact == NULL) {
+    return 0;
+  }
+
+  memcpy(&contact->normal, local_normal, sizeof(bnd_v3));
+
+  contact->point = bnd_v3_add(box_center, bnd_v3_rotate(closest, box_rotation));
+  contact->normal = bnd_v3_rotate(contact->normal, box_rotation);
+  contact->depth = depth;
+
+  return 1;
 }
 
 static count_t box_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
@@ -459,7 +512,10 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
             count_t new_contacts = entry.func(world, &inv_ctx);
 
             for (count_t k = world->contacts.count - new_contacts; k < world->contacts.count; ++k) {
-              world->contacts.values[k].normal = bnd_v3_negate(world->contacts.values[k].normal);
+              contact *c = &world->contacts.values[k];
+              c->index_a = inv_ctx.body_b;
+              c->index_b = inv_ctx.body_a;
+              c->normal = bnd_v3_negate(c->normal);
             }
 
             count += new_contacts;
