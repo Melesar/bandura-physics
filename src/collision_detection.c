@@ -250,10 +250,10 @@ static count_t box_sphere_collision(bnd_world *world, const collision_detection_
       }
     }
 
-    local_normal[min_axis] = c[min_axis] > 0 ? 1 : -1;
+    local_normal[min_axis] = c[min_axis] > 0 ? -1 : 1;
     depth = min_dist + r;
   } else {
-    bnd_v3 diff = bnd_v3_sub(local_sphere_center, closest);
+    bnd_v3 diff = bnd_v3_sub(closest, local_sphere_center);
     float dist = sqrtf(distancesqr);
     depth = r - dist;
 
@@ -513,8 +513,8 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
 
             for (count_t k = world->contacts.count - new_contacts; k < world->contacts.count; ++k) {
               contact *c = &world->contacts.values[k];
-              c->index_a = inv_ctx.body_b;
-              c->index_b = inv_ctx.body_a;
+              c->index_a = ctx.body_a;
+              c->index_b = ctx.body_b;
               c->normal = bnd_v3_negate(c->normal);
             }
 
