@@ -100,7 +100,7 @@ static bnd_v3 box_support(const shape_context *ctx, bnd_v3 direction) {
   return v;
 }
 
-static bnd_v3 cylinder_support(const shape_context *ctx, bnd_v3 direction) {
+static bnd_v3 capsule_support(const shape_context *ctx, bnd_v3 direction) {
   bnd_v3 center = body_center(ctx);
   bnd_quat rotation = body_rotation(ctx);
   bnd_quat inv_rotation = bnd_qinvert(rotation);
@@ -111,17 +111,8 @@ static bnd_v3 cylinder_support(const shape_context *ctx, bnd_v3 direction) {
   float height = ctx->shape.value.capsule.height;
 
   bnd_v3 v;
-  float y = (local_direction.y > 0 ? 1 : -1) * height * 0.5;
-  if (fabsf(local_direction.y) - 1.0 < 0) {
-    float t = 1.0 / sqrtf(local_direction.x * local_direction.x + local_direction.z * local_direction.z);
 
-    v = (bnd_v3){radius * local_direction.x * t, y, radius * local_direction.z * t};
-  } else {
-    v = (bnd_v3){radius, y, 0};
-  }
-
-  v = bnd_v3_rotate(v, rotation);
-  v = bnd_v3_add(center, v);
+  // TODO
 
   return v;
 }
@@ -163,7 +154,7 @@ static bnd_v3 mesh_support(const shape_context *ctx, bnd_v3 direction) {
   return support;
 }
 
-support_func support_functions[] = { box_support, sphere_support, cylinder_support, mesh_support };
+support_func support_functions[] = { box_support, sphere_support, capsule_support, mesh_support };
 
 body_support support(const collision_detection_context *ctx, bnd_v3 direction) {
   PROFILE_FUNCTION
@@ -212,6 +203,7 @@ static count_t sphere_sphere_collision(bnd_world *world, const collision_detecti
 }
 
 static count_t capsule_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
+  // TODO
   return 0;
 }
 
@@ -351,7 +343,37 @@ static count_t sphere_plane_collision(bnd_world *world, const collision_detectio
 }
 
 static count_t capsule_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
-  return 0;
+  bnd_v3 capsule_center = body_a_center(ctx);
+  float capsule_radius = ctx->shape_a.value.capsule.radius;
+  float capsule_height = ctx->shape_a.value.capsule.height;
+
+  bnd_quat capsule_rotation = bnd_qmul(ctx->data_a->rotations[ctx->body_a], ctx->shape_a.rotation);
+  bnd_v3 capsule_axis = bnd_v3_rotate(bnd_v3_up(), capsule_rotation);
+  bnd_v3 cap_top = bnd_v3_add(capsule_center, bnd_v3_scale(capsule_axis, capsule_height * 0.5));
+  bnd_v3 cap_bottom = bnd_v3_add(capsule_center, bnd_v3_scale(capsule_axis, -capsule_height * 0.5));
+
+  bnd_v3 plane_point = ctx->data_b->positions[ctx->body_b];
+  bnd_v3 plane_normal = ctx->shape_b.value.plane.normal;
+
+  bnd_v3 points[] = { cap_top, cap_bottom };
+
+  count_t contact_count = 0;
+  for (int i = 0; i < 2; ++i) {
+    bnd_v3 offset = bnd_v3_sub(points[i], plane_point);
+    float d = bnd_v3_dot(offset, plane_normal);
+    if (d > capsule_radius) {
+      continue;
+    }
+
+    contact *c = new_contact(world, ctx);
+    c->point = bnd_v3_add(points[i], bnd_v3_scale(plane_normal, -d));
+    c->normal = plane_normal;
+    c->depth = capsule_radius - d;
+
+    contact_count += 1;
+  }
+
+  return contact_count;
 }
 
 static count_t mesh_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
@@ -507,6 +529,8 @@ void collision_detection_init(bnd_world *world) {
 
   collision_detection_table[BND_BOX][BND_SPHERE] = (collision_detection_entry) { box_sphere_collision, true };
   collision_detection_table[BND_SPHERE][BND_BOX] = (collision_detection_entry) { box_sphere_collision, false };
+  collision_detection_table[BND_BOX][BND_CAPSULE] = (collision_detection_entry) { polytope_polytope_collision, true };
+  collision_detection_table[BND_CAPSULE][BND_BOX] = (collision_detection_entry) { polytope_polytope_collision, false };
   collision_detection_table[BND_CAPSULE][BND_SPHERE] = (collision_detection_entry) { capsule_sphere_collision, true };
   collision_detection_table[BND_SPHERE][BND_CAPSULE] = (collision_detection_entry) { capsule_sphere_collision, false };
 

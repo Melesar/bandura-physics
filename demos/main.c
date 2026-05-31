@@ -219,8 +219,15 @@ static void draw_physics_bodies_typed(bnd_body_type type) {
 
         case BND_CAPSULE:
           scale = MatrixScale(shape.value.capsule.radius, shape.value.capsule.height, shape.value.capsule.radius);
-          // TODO
           DrawMesh(meshes[BND_CAPSULE], material, MatrixMultiply(scale, full_transform));
+
+          Vector3 p = Vector3Transform((Vector3) { 0, shape.value.capsule.height * 0.5, 0 }, full_transform);
+          Matrix m = MatrixMultiply(MatrixScale(shape.value.capsule.radius, shape.value.capsule.radius, shape.value.capsule.radius), MatrixTranslate(p.x, p.y, p.z));
+          DrawMesh(meshes[BND_SPHERE], material, m);
+
+          p = Vector3Transform((Vector3) { 0, -shape.value.capsule.height * 0.5, 0 }, full_transform);
+          m = MatrixMultiply(MatrixScale(shape.value.capsule.radius, shape.value.capsule.radius, shape.value.capsule.radius), MatrixTranslate(p.x, p.y, p.z));
+          DrawMesh(meshes[BND_SPHERE], material, m);
           break;
 
         case BND_MESH:

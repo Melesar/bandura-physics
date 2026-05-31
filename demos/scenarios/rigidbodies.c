@@ -1,4 +1,3 @@
-#include "raylib.h"
 #include "scenario-core.h"
 #include "bnd-math.h"
 #include "raymath.h"
@@ -54,6 +53,10 @@ void scenario_setup_scene(bnd_world *world) {
 
   big_box = bnd_add_box_static(world, (bnd_v3){ 1, 3, 10 }).value;
   bnd_set_position(world, big_box, (bnd_v3){ -7, 1.5, 0 });
+
+  bnd_body_handle capsule = bnd_add_capsule_dynamic(world, 1, 1, 2).value;
+  bnd_set_position(world, capsule, (bnd_v3) { 0, 10, 0 });
+  bnd_set_rotation(world, capsule, (bnd_quat) { PI / 4, 5 * PI / 2, 3 * PI / 4, 0.5 });
 
   // big_box = bnd_add_cylinder_static(world, 1, 3).value;
   // bnd_set_position(world, big_box, (bnd_v3){ 0, 1.5, 0 });

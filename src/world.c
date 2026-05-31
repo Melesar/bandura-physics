@@ -35,8 +35,19 @@ static void swap_bodies(bnd_world *world, bnd_body_type type, count_t index_a, c
 static void move_body(bnd_world *world, count_t src_index, count_t dst_index);
 
 static bnd_v3 capsule_inertia(float radius, float height, float mass) {
-  // TODO
-  return bnd_v3_one();
+  float r2 = radius * radius;
+  float r3 = r2 * radius;
+  float h2 = height * height;
+
+  const float pi = 3.14159265358979323846f;
+  float mcy = r2 * height * pi;
+  float mhs = 2.0 / 3 * r3 * pi;
+  float m = mcy + mhs + mhs;
+  float scale = mass / m;
+
+  float side = mcy * (h2 / 12.0 + r2 / 4.0) + 2 * mhs * (2 * r2 / 5.0 + h2 / 2 + 3 * height * radius / 8.0);
+  float prime = mcy * r2 / 2.0 + 2 * mhs * 2 * r2 / 5.0;
+  return (bnd_v3) { scale * side, scale * prime, scale * side };
 }
 
 static bnd_v3 sphere_inertia(float radius, float mass) {
