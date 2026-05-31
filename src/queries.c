@@ -127,95 +127,8 @@ static bool raycast_box(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *hi
   return true;
 }
 
-static bool raycast_cylinder(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *hit) {
-  bnd_v3 position = body_center(ctx);
-  bnd_quat rotation = body_rotation(ctx);
-
-  bnd_ray local_ray = ray_transform(r, position, rotation);
-
-  float half_h = ctx->shape.value.cylinder.height * 0.5f;
-  const float epsilon = 1e-6f;
-
-  // --- infinite cylinder (XZ plane) ---
-  float a = local_ray.direction.x * local_ray.direction.x + local_ray.direction.z * local_ray.direction.z;
-  float b = 2.0f * (local_ray.origin.x * local_ray.direction.x + local_ray.origin.z * local_ray.direction.z);
-  float c = local_ray.origin.x * local_ray.origin.x + local_ray.origin.z * local_ray.origin.z - ctx->shape.value.cylinder.radius * ctx->shape.value.cylinder.radius;
-
-  float t_body_enter = -FLT_MAX;
-  float t_body_exit = FLT_MAX;
-  bool body_hit = false;
-
-  if (fabsf(a) > epsilon) {
-    float disc = b * b - 4.0f * a * c;
-    if (disc < 0.0f)
-      return false;
-    float sq = sqrtf(disc);
-    float inv2a = 1.0f / (2.0f * a);
-    t_body_enter = (-b - sq) * inv2a;
-    t_body_exit = (-b + sq) * inv2a;
-    body_hit = true;
-  } else {
-    // ray parallel to axis — must be inside the infinite cylinder
-    if (c > 0.0f)
-      return false;
-  }
-
-  // --- end caps (Y axis slab) ---
-  float t_cap_enter, t_cap_exit;
-  bnd_v3 normal_cap_enter, normal_cap_exit;
-
-  if (fabsf(local_ray.direction.y) > epsilon) {
-    float inv_dy = 1.0f / local_ray.direction.y;
-    float t1 = (-half_h - local_ray.origin.y) * inv_dy;
-    float t2 = (half_h - local_ray.origin.y) * inv_dy;
-    if (t1 < t2) {
-      t_cap_enter = t1;
-      normal_cap_enter = (bnd_v3){0, -1, 0};
-      t_cap_exit = t2;
-      normal_cap_exit = (bnd_v3){0, 1, 0};
-    } else {
-      t_cap_enter = t2;
-      normal_cap_enter = (bnd_v3){0, 1, 0};
-      t_cap_exit = t1;
-      normal_cap_exit = (bnd_v3){0, -1, 0};
-    }
-  } else {
-    // ray parallel to caps — must be between them
-    if (local_ray.origin.y < -half_h || local_ray.origin.y > half_h)
-      return false;
-    t_cap_enter = -FLT_MAX;
-    normal_cap_enter = (bnd_v3){0, -1, 0};
-    t_cap_exit = FLT_MAX;
-    normal_cap_exit = (bnd_v3){0, 1, 0};
-  }
-
-  // --- intersect intervals ---
-  float t_enter = (body_hit && t_body_enter > t_cap_enter) ? t_body_enter : t_cap_enter;
-  float t_exit = (body_hit && t_body_exit < t_cap_exit) ? t_body_exit : t_cap_exit;
-
-  if (t_enter > t_exit)
-    return false;
-
-  float t = t_enter;
-  if (t < 0.0f)
-    t = t_exit;
-  if (t < 0.0f || t > r.max_distance)
-    return false;
-
-  // --- normal in local space ---
-  bnd_v3 local_normal;
-  if (t == t_body_enter || (t_enter < 0.0f && t == t_body_exit)) {
-    bnd_v3 p = bnd_v3_add(local_ray.origin, bnd_v3_scale(local_ray.direction, t));
-    bnd_v3 radial = (bnd_v3){p.x, 0, p.z};
-    local_normal = bnd_v3_normalize(radial);
-  } else {
-    local_normal = (t == t_cap_enter) ? normal_cap_enter : normal_cap_exit;
-  }
-
-  hit->distance = t;
-  hit->point = bnd_v3_add(r.origin, bnd_v3_scale(r.direction, t));
-  hit->normal = bnd_v3_rotate(local_normal, rotation);
-  return true;
+static bool raycast_capsule(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *hit) {
+  return false;
 }
 
 static bool raycast_plane(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *hit) {
@@ -303,7 +216,7 @@ static bool raycast_mesh(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *h
 static raycast_func raycasts[] = {
   raycast_box,
   raycast_sphere,
-  raycast_cylinder,
+  raycast_capsule,
   raycast_mesh,
   raycast_plane,
 };

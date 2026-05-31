@@ -66,7 +66,7 @@ typedef enum {
 typedef enum {
   BND_BOX,
   BND_SPHERE,
-  BND_CYLINDER,
+  BND_CAPSULE,
   BND_MESH,
 
   // Keep the plane at the end
@@ -136,12 +136,12 @@ typedef struct {
 typedef struct {
   float radius;
   float height;
-} bnd_cylinder;
+} bnd_capsule;
 
 typedef union {
   bnd_box box;
   bnd_sphere sphere;
-  bnd_cylinder cylinder;
+  bnd_capsule capsule;
   bnd_mesh_handle mesh;
   bnd_plane plane;
 } bnd_shape;
@@ -284,8 +284,8 @@ BNDAPI bnd_result_handle bnd_add_box_dynamic(bnd_world *world, float mass, bnd_v
 BNDAPI bnd_result_handle bnd_add_box_static(bnd_world *world, bnd_v3 size);
 BNDAPI bnd_result_handle bnd_add_sphere_dynamic(bnd_world *world, float mass, float radius);
 BNDAPI bnd_result_handle bnd_add_sphere_static(bnd_world *world, float radius);
-BNDAPI bnd_result_handle bnd_add_cylinder_static(bnd_world *world, float radius, float height);
-BNDAPI bnd_result_handle bnd_add_cylinder_dynamic(bnd_world *world, float mass, float radius, float height);
+BNDAPI bnd_result_handle bnd_add_capsule_static(bnd_world *world, float radius, float height);
+BNDAPI bnd_result_handle bnd_add_capsule_dynamic(bnd_world *world, float mass, float radius, float height);
 BNDAPI bnd_result_handle bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, uint32_t shapes_count);
 BNDAPI bnd_result_handle bnd_add_compound_body_dynamic(bnd_world *world, bnd_body_shape *shapes, float *masses, uint32_t shapes_count);
 BNDAPI bnd_result_handle bnd_add_mesh_dynamic(bnd_world *world, float mass, bnd_mesh_handle mesh);

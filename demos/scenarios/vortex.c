@@ -168,8 +168,8 @@ void scenario_setup_scene(bnd_world *world) {
         .value = { .box = { .size = (bnd_v3){ 0.28f, 1.7f, 0.28f } } },
         .offset = (bnd_v3){ 0.0f, 0.0f, 0.0f },
         .rotation = bnd_qidentity() },
-      (bnd_body_shape){ .type = BND_CYLINDER,
-        .value = { .cylinder = { .radius = 0.32f, .height = 1.05f } },
+      (bnd_body_shape){ .type = BND_CAPSULE,
+        .value = { .capsule = { .radius = 0.32f, .height = 1.05f } },
         .offset = (bnd_v3){ 0.0f, 1.0f, 0.0f },
         .rotation = QuaternionFromEuler(0.0f, 0.0f, PI * 0.5f) },
     };
@@ -183,8 +183,8 @@ void scenario_setup_scene(bnd_world *world) {
 
   {
     bnd_body_shape dumbbell_shapes[] = {
-      (bnd_body_shape){ .type = BND_CYLINDER,
-        .value = { .cylinder = { .radius = 0.16f, .height = 2.1f } },
+      (bnd_body_shape){ .type = BND_CAPSULE,
+        .value = { .capsule = { .radius = 0.16f, .height = 2.1f } },
         .offset = (bnd_v3){ 0.0f, 0.0f, 0.0f },
         .rotation = QuaternionFromEuler(0.0f, 0.0f, PI * 0.5f) },
       (bnd_body_shape){ .type = BND_SPHERE,
@@ -204,32 +204,32 @@ void scenario_setup_scene(bnd_world *world) {
 
   {
     bnd_body_shape stickman_shapes[] = {
-      (bnd_body_shape){ .type = BND_CYLINDER,
-        .value = { .cylinder = { .radius = 0.18f, .height = 1.1f } },
+      (bnd_body_shape){ .type = BND_CAPSULE,
+        .value = { .capsule = { .radius = 0.18f, .height = 1.1f } },
         .offset = (bnd_v3){ 0.0f, 0.90f, 0.0f },
         .rotation = bnd_qidentity() },
       (bnd_body_shape){ .type = BND_SPHERE,
         .value = { .sphere = { .radius = 0.28f } },
         .offset = (bnd_v3){ 0.0f, 1.75f, 0.0f },
         .rotation = bnd_qidentity() },
-      (bnd_body_shape){ .type = BND_CYLINDER,
-        .value = { .cylinder = { .radius = 0.11f, .height = 1.2f } },
+      (bnd_body_shape){ .type = BND_CAPSULE,
+        .value = { .capsule = { .radius = 0.11f, .height = 1.2f } },
         .offset = (bnd_v3){ 0.0f, 1.20f, 0.0f },
         .rotation = QuaternionFromEuler(0.0f, 0.0f, PI * 0.5f) },
-      (bnd_body_shape){ .type = BND_CYLINDER,
-        .value = { .cylinder = { .radius = 0.10f, .height = 1.0f } },
+      (bnd_body_shape){ .type = BND_CAPSULE,
+        .value = { .capsule = { .radius = 0.10f, .height = 1.0f } },
         .offset = (bnd_v3){ -0.22f, 0.15f, 0.0f },
         .rotation = QuaternionFromEuler(0.0f, 0.0f, 0.18f) },
-      (bnd_body_shape){ .type = BND_CYLINDER,
-        .value = { .cylinder = { .radius = 0.10f, .height = 1.0f } },
+      (bnd_body_shape){ .type = BND_CAPSULE,
+        .value = { .capsule = { .radius = 0.10f, .height = 1.0f } },
         .offset = (bnd_v3){ 0.22f, 0.15f, 0.0f },
         .rotation = QuaternionFromEuler(0.0f, 0.0f, -0.18f) },
-      (bnd_body_shape){ .type = BND_CYLINDER,
-        .value = { .cylinder = { .radius = 0.09f, .height = 0.9f } },
+      (bnd_body_shape){ .type = BND_CAPSULE,
+        .value = { .capsule = { .radius = 0.09f, .height = 0.9f } },
         .offset = (bnd_v3){ -0.62f, 1.18f, 0.0f },
         .rotation = QuaternionFromEuler(0.0f, 0.0f, 1.05f) },
-      (bnd_body_shape){ .type = BND_CYLINDER,
-        .value = { .cylinder = { .radius = 0.09f, .height = 0.9f } },
+      (bnd_body_shape){ .type = BND_CAPSULE,
+        .value = { .capsule = { .radius = 0.09f, .height = 0.9f } },
         .offset = (bnd_v3){ 0.62f, 1.18f, 0.0f },
         .rotation = QuaternionFromEuler(0.0f, 0.0f, -1.05f) },
     };
@@ -241,7 +241,7 @@ void scenario_setup_scene(bnd_world *world) {
     }
   }
 
-  bnd_body_handle cylinder = bnd_add_cylinder_static(world, 2, 5).value;
+  bnd_body_handle cylinder = bnd_add_capsule_static(world, 2, 5).value;
   bnd_set_position(world, cylinder, (bnd_v3){ 0, 2.5, 0 });
 
   vorticies[0] = vortex_create((bnd_v3){ 0, 0, -8 }, 20, 1);

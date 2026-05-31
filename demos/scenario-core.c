@@ -80,38 +80,38 @@ ragdoll ragdoll_create(bnd_world *world, bnd_v3 position) {
   bnd_body_handle head = bnd_add_sphere_dynamic(world, 3, 0.4).value;
   bnd_set_position(world, head, Vector3Add(position, (Vector3){ 0, 5, 0}));
 
-  bnd_body_handle torso = bnd_add_cylinder_dynamic(world, 25, 0.3, 1.0).value;
+  bnd_body_handle torso = bnd_add_capsule_dynamic(world, 25, 0.3, 1.0).value;
   bnd_set_position(world, torso, Vector3Add(position, (Vector3){ 0, 4, 0}));
 
-  bnd_body_handle pelvis = bnd_add_cylinder_dynamic(world, 20, 0.25, 1.0).value;
+  bnd_body_handle pelvis = bnd_add_capsule_dynamic(world, 20, 0.25, 1.0).value;
   bnd_set_position(world, pelvis, Vector3Add(position, (Vector3){ 0, 3, 0}));
 
-  bnd_body_handle left_upper_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2).value;
+  bnd_body_handle left_upper_leg = bnd_add_capsule_dynamic(world, 10, 0.2, 1.2).value;
   bnd_set_position(world, left_upper_leg, Vector3Add(position, (Vector3){ 0.23, 1.8, -0.2}));
   bnd_set_rotation(world, left_upper_leg, QuaternionFromEuler(PI / 6, 0, 0));
 
-  bnd_body_handle left_lower_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2).value;
+  bnd_body_handle left_lower_leg = bnd_add_capsule_dynamic(world, 10, 0.2, 1.2).value;
   bnd_set_position(world, left_lower_leg, Vector3Add(position,(Vector3) {0.23, 0.6, -0.2}));
   bnd_set_rotation(world, left_lower_leg, QuaternionFromEuler(-PI / 6, 0, 0));
 
-  bnd_body_handle right_upper_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2).value;
+  bnd_body_handle right_upper_leg = bnd_add_capsule_dynamic(world, 10, 0.2, 1.2).value;
   bnd_set_position(world, right_upper_leg, bnd_v3_add(position, (Vector3){-0.23, 1.8, 0}));
 
-  bnd_body_handle right_lower_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2).value;
+  bnd_body_handle right_lower_leg = bnd_add_capsule_dynamic(world, 10, 0.2, 1.2).value;
   bnd_set_position(world, right_lower_leg, bnd_v3_add(position, (Vector3){-0.23, 0.6, 0}));
 
-  bnd_body_handle left_upper_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2).value;
+  bnd_body_handle left_upper_arm = bnd_add_capsule_dynamic(world, 10, 0.1, 1.2).value;
   bnd_set_position(world, left_upper_arm, bnd_v3_add(position, (Vector3){0.4, 3.9, -0.4}));
   bnd_set_rotation(world, left_upper_arm, QuaternionFromEuler(PI / 5, 0, 0));
 
-  bnd_body_handle left_lower_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2).value;
+  bnd_body_handle left_lower_arm = bnd_add_capsule_dynamic(world, 10, 0.1, 1.2).value;
   bnd_set_position(world, left_lower_arm, bnd_v3_add(position, (Vector3){0.43, 3.37, -1.45}));
   bnd_set_rotation(world, left_lower_arm, QuaternionFromEuler(PI / 2, 0, 0));
 
-  bnd_body_handle right_upper_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2).value;
+  bnd_body_handle right_upper_arm = bnd_add_capsule_dynamic(world, 10, 0.1, 1.2).value;
   bnd_set_position(world, right_upper_arm, bnd_v3_add(position, (Vector3){-0.43, 3.8, 0}));
 
-  bnd_body_handle right_lower_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2).value;
+  bnd_body_handle right_lower_arm = bnd_add_capsule_dynamic(world, 10, 0.1, 1.2).value;
   bnd_set_position(world, right_lower_arm, bnd_v3_add(position, (Vector3){-0.43, 2.63, -0.3}));
   bnd_set_rotation(world, right_lower_arm, QuaternionFromEuler(PI / 6, 0, 0));
 

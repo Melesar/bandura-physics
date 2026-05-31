@@ -22,8 +22,8 @@ void scenario_setup_scene(bnd_world *world) {
       .value = { .box = { .size = (bnd_v3){ .x = 0.3, .y = 3, .z = 0.3 } } },
       .offset = bnd_v3_zero(),
       .rotation = bnd_qidentity() },
-    (bnd_body_shape){ .type = BND_CYLINDER,
-      .value = { .cylinder = { .height = 2, .radius = 0.5 } },
+    (bnd_body_shape){ .type = BND_CAPSULE,
+      .value = { .capsule = { .height = 2, .radius = 0.5 } },
       .offset = (bnd_v3){ .x = 0, .y = 1.75, .z = 0 },
       .rotation = QuaternionFromEuler(PI * 0.5, 0, 0) },
     (bnd_body_shape){ 0 },
@@ -34,8 +34,8 @@ void scenario_setup_scene(bnd_world *world) {
   bnd_set_position(world, b, (bnd_v3){ 0, 10, 0 });
   bnd_set_angular_momentum(world, b, (bnd_v3){ 0, 0, 36 });
 
-  shapes[0] = (bnd_body_shape){ .type = BND_CYLINDER,
-    .value = { .cylinder = { .radius = 0.3, .height = 3 } },
+  shapes[0] = (bnd_body_shape){ .type = BND_CAPSULE,
+    .value = { .capsule = { .radius = 0.3, .height = 3 } },
     .offset = bnd_v3_zero(),
     .rotation = QuaternionFromEuler(PI * 0.5, 0, 0) };
   shapes[1] = (bnd_body_shape){

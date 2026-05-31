@@ -107,8 +107,8 @@ static bnd_v3 cylinder_support(const shape_context *ctx, bnd_v3 direction) {
 
   bnd_v3 local_direction = bnd_v3_normalize(bnd_v3_rotate(direction, inv_rotation));
 
-  float radius = ctx->shape.value.cylinder.radius;
-  float height = ctx->shape.value.cylinder.height;
+  float radius = ctx->shape.value.capsule.radius;
+  float height = ctx->shape.value.capsule.height;
 
   bnd_v3 v;
   float y = (local_direction.y > 0 ? 1 : -1) * height * 0.5;
@@ -209,6 +209,10 @@ static count_t sphere_sphere_collision(bnd_world *world, const collision_detecti
   c->depth = -penetration;
 
   return 1;
+}
+
+static count_t capsule_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
+  return 0;
 }
 
 static count_t box_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
@@ -346,53 +350,8 @@ static count_t sphere_plane_collision(bnd_world *world, const collision_detectio
   return 1;
 }
 
-static count_t cylinder_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
-  bnd_v3 plane_point = ctx->data_b->positions[ctx->body_b];
-  bnd_v3 plane_normal = ctx->shape_b.value.plane.normal;
-
-  bnd_quat global_rotation = ctx->data_a->rotations[ctx->body_a];
-  bnd_quat shape_rotation = ctx->shape_a.rotation;
-
-  bnd_v3 cylinder_center = body_a_center(ctx);
-  float cylinder_radius = ctx->shape_a.value.cylinder.radius;
-  float cylinder_half_height = ctx->shape_a.value.cylinder.height * 0.5f;
-
-  bnd_v3 cylinder_axis = bnd_v3_rotate(bnd_v3_up(), bnd_qmul(global_rotation, shape_rotation));
-  float axis_projection = bnd_v3_dot(cylinder_axis, plane_normal);
-  float radial_projection_sq = 1.0f - axis_projection * axis_projection;
-  if (radial_projection_sq < 0.0f) {
-    radial_projection_sq = 0.0f;
-  }
-
-  float radial_projection = sqrtf(radial_projection_sq);
-  float center_distance = bnd_v3_dot(bnd_v3_sub(cylinder_center, plane_point), plane_normal);
-  float min_distance = center_distance - cylinder_half_height * fabsf(axis_projection) - cylinder_radius * radial_projection;
-  if (min_distance > 0.0f) {
-    return 0;
-  }
-
-  float cap_sign = axis_projection > 0.0f ? -1.0f : 1.0f;
-  bnd_v3 cap_offset = bnd_v3_scale(cylinder_axis, cap_sign * cylinder_half_height);
-
-  bnd_v3 radial_axis = bnd_v3_sub(plane_normal, bnd_v3_scale(cylinder_axis, axis_projection));
-  float radial_axis_len_sqr = bnd_v3_lensqr(radial_axis);
-  bnd_v3 radial_offset = bnd_v3_zero();
-  if (radial_axis_len_sqr > 0.000001f) {
-    radial_offset = bnd_v3_scale(bnd_v3_normalize(radial_axis), -cylinder_radius);
-  }
-
-  bnd_v3 deepest_point = bnd_v3_add(cylinder_center, bnd_v3_add(cap_offset, radial_offset));
-
-  contact *contact = new_contact(world, ctx);
-  if (contact == NULL) {
-    return 0;
-  }
-
-  contact->normal = plane_normal;
-  contact->point = bnd_v3_add(deepest_point, bnd_v3_scale(plane_normal, -min_distance));
-  contact->depth = -min_distance;
-
-  return 1;
+static count_t capsule_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
+  return 0;
 }
 
 static count_t mesh_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
@@ -543,16 +502,24 @@ void collision_detection_init(bnd_world *world) {
 
   collision_detection_table[BND_SPHERE][BND_SPHERE] = (collision_detection_entry) { sphere_sphere_collision, true };
   collision_detection_table[BND_BOX][BND_BOX] = (collision_detection_entry) { polytope_polytope_collision, true };
+  collision_detection_table[BND_CAPSULE][BND_CAPSULE] = (collision_detection_entry) { polytope_polytope_collision, true };
   collision_detection_table[BND_MESH][BND_MESH] = (collision_detection_entry) { polytope_polytope_collision, true };
 
   collision_detection_table[BND_BOX][BND_SPHERE] = (collision_detection_entry) { box_sphere_collision, true };
   collision_detection_table[BND_SPHERE][BND_BOX] = (collision_detection_entry) { box_sphere_collision, false };
+  collision_detection_table[BND_CAPSULE][BND_SPHERE] = (collision_detection_entry) { capsule_sphere_collision, true };
+  collision_detection_table[BND_SPHERE][BND_CAPSULE] = (collision_detection_entry) { capsule_sphere_collision, false };
+
 
   collision_detection_table[BND_MESH][BND_BOX] = (collision_detection_entry) { polytope_polytope_collision, true };
   collision_detection_table[BND_BOX][BND_MESH] = (collision_detection_entry) { polytope_polytope_collision, false };
+  collision_detection_table[BND_MESH][BND_SPHERE] = (collision_detection_entry) { polytope_polytope_collision, true };
+  collision_detection_table[BND_SPHERE][BND_MESH] = (collision_detection_entry) { polytope_polytope_collision, false };
+  collision_detection_table[BND_MESH][BND_CAPSULE] = (collision_detection_entry) { polytope_polytope_collision, true };
+  collision_detection_table[BND_CAPSULE][BND_MESH] = (collision_detection_entry) { polytope_polytope_collision, false };
 
   collision_detection_table[BND_BOX][BND_PLANE] = (collision_detection_entry) { box_plane_collision, true };
   collision_detection_table[BND_SPHERE][BND_PLANE] = (collision_detection_entry) { sphere_plane_collision, true };
-  collision_detection_table[BND_CYLINDER][BND_PLANE] = (collision_detection_entry) { cylinder_plane_collision, true };
+  collision_detection_table[BND_CAPSULE][BND_PLANE] = (collision_detection_entry) { capsule_plane_collision, true };
   collision_detection_table[BND_MESH][BND_PLANE] = (collision_detection_entry) { mesh_plane_collision, true };
 }

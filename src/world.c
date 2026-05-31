@@ -34,9 +34,9 @@ extern count_t max_body_index;
 static void swap_bodies(bnd_world *world, bnd_body_type type, count_t index_a, count_t index_b);
 static void move_body(bnd_world *world, count_t src_index, count_t dst_index);
 
-static bnd_v3 cylinder_inertia(float radius, float height, float mass) {
-  float principal = mass * (3 * radius * radius + height * height) / 12.0;
-  return (bnd_v3){ principal, mass * radius * radius / 2.0, principal };
+static bnd_v3 capsule_inertia(float radius, float height, float mass) {
+  // TODO
+  return bnd_v3_one();
 }
 
 static bnd_v3 sphere_inertia(float radius, float mass) {
@@ -69,8 +69,8 @@ static bnd_m3 inertia_matrix(const bnd_world *world, bnd_body_shape shape, float
     case BND_SPHERE:
       return bnd_m3_initial_inertia(sphere_inertia(shape.value.sphere.radius, mass));
 
-    case BND_CYLINDER:
-      return bnd_m3_initial_inertia(cylinder_inertia(shape.value.cylinder.radius, shape.value.cylinder.height, mass));
+    case BND_CAPSULE:
+      return bnd_m3_initial_inertia(capsule_inertia(shape.value.capsule.radius, shape.value.capsule.height, mass));
 
     case BND_MESH:
       return mesh_inertia(world, shape.value.mesh, mass);
@@ -129,20 +129,9 @@ static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
         half_extents = bnd_v3_scale(bnd_v3_one(), shape.value.sphere.radius);
         break;
 
-      case BND_CYLINDER:
-        half_height = shape.value.cylinder.height * 0.5;
-        axis = bnd_v3_rotate(bnd_v3_up(), shape_rotation);
-        radius = shape.value.cylinder.radius;
-
-        float ax = fabsf(axis.x) * half_height;
-        float ay = fabsf(axis.y) * half_height;
-        float az = fabsf(axis.z) * half_height;
-
-        float rx = radius * sqrtf(1.0f - axis.x * axis.x);
-        float ry = radius * sqrtf(1.0f - axis.y * axis.y);
-        float rz = radius * sqrtf(1.0f - axis.z * axis.z);
-
-        half_extents = (bnd_v3){ax + rx, ay + ry, az + rz};
+      case BND_CAPSULE:
+        // TODO
+        half_extents = bnd_v3_zero();
         break;
 
       case BND_MESH:
@@ -520,12 +509,12 @@ bnd_result_handle bnd_add_sphere_static(bnd_world *world, float radius) {
   return add_primitive_body_static(world, (bnd_body_shape){ .type = BND_SPHERE, .value = {.sphere = { .radius = radius } }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() });
 }
 
-bnd_result_handle bnd_add_cylinder_static(bnd_world *world, float radius, float height) {
-  return add_primitive_body_static(world, (bnd_body_shape){ .type = BND_CYLINDER, .value = {.cylinder = { .radius = radius, .height = height } }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() });
+bnd_result_handle bnd_add_capsule_static(bnd_world *world, float radius, float height) {
+  return add_primitive_body_static(world, (bnd_body_shape){ .type = BND_CAPSULE, .value = {.capsule = { .radius = radius, .height = height } }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() });
 }
 
-bnd_result_handle bnd_add_cylinder_dynamic(bnd_world *world, float mass, float radius, float height) {
-  return add_primitive_body_dynamic(world, (bnd_body_shape){ .type = BND_CYLINDER, .value = {.cylinder = { .radius = radius, .height = height } }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() }, mass);
+bnd_result_handle bnd_add_capsule_dynamic(bnd_world *world, float mass, float radius, float height) {
+  return add_primitive_body_dynamic(world, (bnd_body_shape){ .type = BND_CAPSULE, .value = {.capsule = { .radius = radius, .height = height } }, .offset = bnd_v3_zero(), .rotation = bnd_qidentity() }, mass);
 }
 
 bnd_result_handle bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, count_t shapes_count) {

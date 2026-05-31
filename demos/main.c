@@ -217,9 +217,10 @@ static void draw_physics_bodies_typed(bnd_body_type type) {
           DrawMesh(meshes[BND_SPHERE], material, MatrixMultiply(scale, full_transform));
           break;
 
-        case BND_CYLINDER:
-          scale = MatrixScale(shape.value.cylinder.radius, shape.value.cylinder.height, shape.value.cylinder.radius);
-          DrawMesh(meshes[BND_CYLINDER], material, MatrixMultiply(scale, full_transform));
+        case BND_CAPSULE:
+          scale = MatrixScale(shape.value.capsule.radius, shape.value.capsule.height, shape.value.capsule.radius);
+          // TODO
+          DrawMesh(meshes[BND_CAPSULE], material, MatrixMultiply(scale, full_transform));
           break;
 
         case BND_MESH:
@@ -368,7 +369,7 @@ static void setup_scene(Shader shader) {
   UpdateMeshBuffer(cylinder, RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION, cylinder.vertices,
       3 * cylinder.vertexCount * sizeof(float), 0);
 
-  meshes[BND_CYLINDER] = cylinder;
+  meshes[BND_CAPSULE] = cylinder;
 
   for (size_t i = 0; i < 20; ++i) {
     Material m = LoadMaterialDefault();
