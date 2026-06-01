@@ -142,7 +142,7 @@ static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
 
       case BND_CAPSULE:
         // TODO
-        half_extents = bnd_v3_zero();
+        half_extents = bnd_v3_scale(bnd_v3_one(), FLT_MAX);
         break;
 
       case BND_MESH:

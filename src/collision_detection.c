@@ -7,6 +7,7 @@
 #include <float.h>
 #include <math.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 
 typedef struct {
@@ -48,8 +49,20 @@ static bnd_v3 body_a_center(const collision_detection_context *ctx) {
   return body_center_ex(ctx->shape_a.offset, ctx->data_a->rotations[ctx->body_a], ctx->data_a->positions[ctx->body_a]);
 }
 
+static bnd_v3 body_b_center(const collision_detection_context *ctx) {
+  return body_center_ex(ctx->shape_b.offset, ctx->data_b->rotations[ctx->body_b], ctx->data_b->positions[ctx->body_b]);
+}
+
 bnd_v3 body_center(const shape_context *ctx) {
   return body_center_ex(ctx->shape.offset, ctx->data->rotations[ctx->index], ctx->data->positions[ctx->index]);
+}
+
+bnd_quat body_a_rotation(const collision_detection_context *ctx) {
+  return bnd_qmul(ctx->data_a->rotations[ctx->body_a], ctx->shape_a.rotation);
+}
+
+bnd_quat body_b_rotation(const collision_detection_context *ctx) {
+  return bnd_qmul(ctx->data_b->rotations[ctx->body_b], ctx->shape_b.rotation);
 }
 
 bnd_quat body_rotation(const shape_context *ctx) {
@@ -203,8 +216,92 @@ static count_t sphere_sphere_collision(bnd_world *world, const collision_detecti
 }
 
 static count_t capsule_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
-  // TODO
-  return 0;
+  bnd_v3 capsule_center = body_a_center(ctx);
+  bnd_quat capsule_rotation = body_a_rotation(ctx);
+  bnd_quat capsule_inv_rotation = bnd_qinvert(capsule_rotation);
+  float capsule_radius = ctx->shape_a.value.capsule.radius;
+  float capsule_half_height = ctx->shape_a.value.capsule.height * 0.5;
+
+  bnd_v3 sphere_center = body_b_center(ctx);
+  bnd_v3 local_sphere_center = bnd_v3_rotate(bnd_v3_sub(sphere_center, capsule_center), capsule_inv_rotation);
+  float sphere_radius = ctx->shape_b.value.sphere.radius;
+
+  if (fabsf(local_sphere_center.y) < capsule_half_height) {
+    bnd_v3 horizontal_offset = { local_sphere_center.x, 0, local_sphere_center.z };
+    float horizontal_distance = bnd_v3_len(horizontal_offset);
+
+    if (horizontal_distance < capsule_radius) {
+      contact *c = new_contact(world, ctx);
+      if (c == NULL) {
+        return 0;
+      }
+
+      c->point = bnd_v3_add(capsule_center, bnd_v3_rotate(local_sphere_center, capsule_rotation));
+      c->normal = horizontal_distance > EPSILON
+        ? bnd_v3_normalize(bnd_v3_rotate(bnd_v3_negate(horizontal_offset), capsule_rotation))
+        : bnd_v3_rotate(bnd_v3_right(), capsule_rotation);
+      c->depth = capsule_radius - horizontal_distance + sphere_radius;
+
+      return 1;
+    } else if (horizontal_distance < capsule_radius + sphere_radius) {
+      contact *c = new_contact(world, ctx);
+      if (c == NULL) {
+        return 0;
+      }
+
+      bnd_v3 closest = bnd_v3_scale(horizontal_offset, capsule_radius / horizontal_distance);
+      closest.y = local_sphere_center.y;
+      closest = bnd_v3_rotate(closest, capsule_rotation);
+
+      c->point = bnd_v3_add(capsule_center, closest);
+      c->normal = bnd_v3_normalize(bnd_v3_negate(closest));
+      c->depth = sphere_radius - horizontal_distance + capsule_radius;
+
+      return 1;
+    } else {
+      return 0;
+    }
+  } else {
+    bnd_v3 local_caps[] = {
+      (bnd_v3) { 0, capsule_half_height, 0 },
+      (bnd_v3) { 0, -capsule_half_height, 0 },
+    };
+
+    bnd_v3 cap = local_sphere_center.y > capsule_half_height ? local_caps[0] : local_caps[1];
+    bnd_v3 cap_offset = (bnd_v3) { local_sphere_center.x, local_sphere_center.y - cap.y, local_sphere_center.z };
+
+    float cap_distance = bnd_v3_len(cap_offset);
+    if (cap_distance < capsule_radius) {
+      contact *c = new_contact(world, ctx);
+      if (c == NULL) {
+        return 0;
+      }
+
+      c->point = bnd_v3_add(capsule_center, bnd_v3_rotate(local_sphere_center, capsule_rotation));
+      c->normal = cap_distance > EPSILON
+        ? bnd_v3_normalize(bnd_v3_rotate(bnd_v3_negate(cap_offset), capsule_rotation))
+        : bnd_v3_rotate(bnd_v3_up(), capsule_rotation);
+      c->depth = capsule_radius - cap_distance + sphere_radius;
+
+      return 1;
+    } else if (cap_distance < capsule_radius + sphere_radius) {
+      bnd_v3 closest = bnd_v3_scale(cap_offset, capsule_radius / cap_distance);
+      closest = bnd_v3_add(cap, closest);
+
+      contact *c = new_contact(world, ctx);
+      if (c == NULL) {
+        return 0;
+      }
+
+      c->point = bnd_v3_add(capsule_center, bnd_v3_rotate(closest, capsule_rotation));
+      c->normal = bnd_v3_normalize(bnd_v3_rotate(bnd_v3_negate(cap_offset), capsule_rotation));
+      c->depth = sphere_radius - cap_distance + capsule_radius;
+
+      return 1;
+    } else {
+      return 0;
+    }
+  }
 }
 
 static count_t box_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
@@ -366,6 +463,10 @@ static count_t capsule_plane_collision(bnd_world *world, const collision_detecti
     }
 
     contact *c = new_contact(world, ctx);
+    if (c == NULL) {
+      return contact_count;
+    }
+
     c->point = bnd_v3_add(points[i], bnd_v3_scale(plane_normal, -d));
     c->normal = plane_normal;
     c->depth = capsule_radius - d;
