@@ -75,11 +75,14 @@ typedef enum {
 } bnd_shape_type;
 
 typedef enum {
+  BND_DEBUG_DRAW_NONE = 0,
   BND_DEBUG_DRAW_CONTACTS = 1,
 
   BND_DEBUG_DRAW_SHAPES_DYNAMIC = 2,
   BND_DEBUG_DRAW_SHAPES_STATIC = 4,
   BND_DEBUG_DRAW_SHAPES = BND_DEBUG_DRAW_SHAPES_DYNAMIC | BND_DEBUG_DRAW_SHAPES_STATIC,
+
+  BND_DEBUG_DRAW_AABBS = 8,
 
   BND_DEBUG_DRAW_ALL = ~0,
 } bnd_debug_draw_flags;
@@ -87,14 +90,6 @@ typedef enum {
 typedef enum {
   BND_EVENT_COLLISION = 1,
 } bnd_event_type;
-
-typedef void (*bnd_debug_draw_contact_fn)(bnd_v3 point, bnd_v3 normal, float depth);
-typedef void (*bnd_debug_draw_shape_fn)(bnd_v3 position, bnd_quat rotation, bnd_shape_type type);
-
-typedef struct {
-  bnd_debug_draw_contact_fn draw_contact;
-  bnd_debug_draw_shape_fn draw_shape;
-} bnd_debug_draw_callbacks;
 
 typedef struct {
   bnd_malloc_fn malloc;
@@ -234,6 +229,16 @@ typedef struct {
   float max_error;
 } bnd_joint;
 
+typedef void (*bnd_debug_draw_contact_fn)(bnd_v3 point, bnd_v3 normal, float depth, void *user_data);
+typedef void (*bnd_debug_draw_shape_fn)(bnd_v3 position, bnd_quat rotation, bnd_body_handle body_handle, bnd_body_shape shape, void *user_data);
+typedef void (*bnd_debug_draw_aabb_fn)(bnd_v3 center, bnd_v3 size, bnd_body_handle body_handle, void *user_data);
+
+typedef struct {
+  bnd_debug_draw_contact_fn draw_contact;
+  bnd_debug_draw_shape_fn draw_shape;
+  bnd_debug_draw_aabb_fn draw_aabb;
+} bnd_debug_draw_callbacks;
+
 typedef struct bnd_world_t bnd_world;
 
 #define BND_RESULT_TYPE(suffix, type) \
@@ -346,7 +351,7 @@ BNDAPI bool bnd_raycast_closest(const bnd_world *world, bnd_ray ray, bnd_raycast
 BNDAPI uint32_t bnd_raycast_multiple(const bnd_world *world, bnd_ray ray, bnd_raycast_hit *hits, uint32_t max_hits);
 BNDAPI uint32_t bnd_overlap(const bnd_world *world, bnd_v3 origin, float radius, bnd_body_handle *overlaps, uint32_t max_overlaps);
 
-BNDAPI void bnd_debug_draw(const bnd_world *world, bnd_debug_draw_flags flags, bnd_debug_draw_callbacks callbacks);
+BNDAPI void bnd_debug_draw(const bnd_world *world, bnd_debug_draw_flags flags, bnd_debug_draw_callbacks callbacks, void *user_data);
 
 BNDAPI void bnd_teardown(bnd_world *world);
 

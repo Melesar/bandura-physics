@@ -977,10 +977,12 @@ void bnd_simulate(bnd_world *world, float dt) {
     clear_forces(world);
   }
 
+#ifdef BND_PROFILING
   profiler_frame_metadata metadata = {
     .body_count = world->dynamics.count + world->statics.count,
     .contacts_count = world->contacts.count,
   };
+#endif
 
   PROFILER_END_FRAME(metadata);
 }

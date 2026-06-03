@@ -1,4 +1,5 @@
 #include "scenario-core.h"
+#include "bandura.h"
 #include "bnd-math.h"
 #include "raylib.h"
 #include "raymath.h"
@@ -6,9 +7,39 @@
 #include <stdlib.h>
 #include <string.h>
 
+typedef struct {
+  bnd_mesh_handle handle;
+  Mesh mesh;
+} render_mesh;
+
 Mesh arrow_base;
 Mesh arrow_head;
 Material mat;
+
+Color colors[] = { BROWN, YELLOW, GREEN, MAROON, MAGENTA, RAYWHITE, DARKPURPLE, LIME, PINK, ORANGE, BROWN, YELLOW,
+  GREEN, MAROON, MAGENTA, RAYWHITE, DARKPURPLE, LIME, PINK, ORANGE };
+Material materials[20];
+Mesh meshes[20];
+render_mesh render_meshes[20];
+Model groundModel;
+uint32_t render_mesh_index = 0;
+
+void register_mesh_for_rendering(bnd_mesh_handle handle, Mesh mesh) {
+  if (render_mesh_index >= 20) {
+    return;
+  }
+
+  for (uint32_t i = 0; i < render_mesh_index; ++i) {
+    if (render_meshes[i].handle == handle) {
+      return;
+    }
+  }
+
+  render_meshes[render_mesh_index++] = (render_mesh){
+    .handle = handle,
+    .mesh = mesh,
+  };
+}
 
 static void set_arrow_color(Color c) { mat.maps[MATERIAL_MAP_DIFFUSE].color = c; }
 
@@ -198,4 +229,104 @@ bool import_raylib_mesh(bnd_world *world, Mesh mesh, bnd_mesh_handle *handle) {
   register_mesh_for_rendering(*handle, mesh);
 
   return true;
+}
+
+void draw_contact(bnd_v3 point, bnd_v3 normal, float depth, void *user_data) {
+  DrawSphere(point, 0.05, RED);
+  draw_arrow(point, bnd_v3_scale(normal, 0.4), RED);
+}
+
+void draw_shape(bnd_v3 position, bnd_quat rotation, bnd_body_handle body_handle, bnd_body_shape shape, void *user_data) {
+  master_widget_state *widget_state = (master_widget_state *)user_data;
+
+  Matrix scale;
+  Matrix transform =
+      MatrixMultiply(QuaternionToMatrix(rotation), MatrixTranslate(position.x, position.y, position.z));
+  Material material = materials[body_handle.index % 20];
+
+  Matrix shape_transform = MatrixMultiply(QuaternionToMatrix(shape.rotation),
+      MatrixTranslate(shape.offset.x, shape.offset.y, shape.offset.z));
+  Matrix full_transform = MatrixMultiply(shape_transform, transform);
+
+  if (widget_state->bodies_as_wireframe) {
+    rlEnableWireMode();
+  }
+  switch (shape.type) {
+    case BND_BOX:
+      scale = MatrixScale(shape.value.box.size.x, shape.value.box.size.y, shape.value.box.size.z);
+      DrawMesh(meshes[BND_BOX], material, MatrixMultiply(scale, full_transform));
+      break;
+
+    case BND_SPHERE:
+      scale = MatrixScale(shape.value.sphere.radius, shape.value.sphere.radius, shape.value.sphere.radius);
+      DrawMesh(meshes[BND_SPHERE], material, MatrixMultiply(scale, full_transform));
+      break;
+
+    case BND_CAPSULE:
+      scale = MatrixScale(shape.value.capsule.radius, shape.value.capsule.height, shape.value.capsule.radius);
+      DrawMesh(meshes[BND_CAPSULE], material, MatrixMultiply(scale, full_transform));
+
+      Vector3 p = Vector3Transform((Vector3) { 0, shape.value.capsule.height * 0.5, 0 }, full_transform);
+      Matrix m = MatrixMultiply(MatrixScale(shape.value.capsule.radius, shape.value.capsule.radius, shape.value.capsule.radius), MatrixTranslate(p.x, p.y, p.z));
+      DrawMesh(meshes[BND_SPHERE], material, m);
+
+      p = Vector3Transform((Vector3) { 0, -shape.value.capsule.height * 0.5, 0 }, full_transform);
+      m = MatrixMultiply(MatrixScale(shape.value.capsule.radius, shape.value.capsule.radius, shape.value.capsule.radius), MatrixTranslate(p.x, p.y, p.z));
+      DrawMesh(meshes[BND_SPHERE], material, m);
+      break;
+
+    case BND_MESH:
+      for (uint32_t i = 0; i < render_mesh_index; ++i) {
+        render_mesh rm = render_meshes[i];
+        if (rm.handle == shape.value.mesh) {
+          DrawMesh(rm.mesh, material, full_transform);
+          break;
+        }
+      }
+      break;
+
+    default:
+      break;
+  }
+  if (widget_state->bodies_as_wireframe) {
+    rlDisableWireMode();
+  }
+}
+
+void draw_aabb(bnd_v3 center, bnd_v3 half_extents, bnd_body_handle handle, void *user_data) {
+  DrawCubeWires(
+    center,
+    2 * half_extents.x,
+    2 * half_extents.y,
+    2 * half_extents.z,
+    ORANGE
+  );
+}
+
+void setup_scene(Shader shader) {
+  meshes[BND_BOX] = GenMeshCube(1, 1, 1);
+  meshes[BND_SPHERE] = GenMeshSphere(1, 16, 16);
+  meshes[BND_PLANE] = GenMeshPlane(200.0f, 200.0f, 1, 1);
+
+  Mesh cylinder = GenMeshCylinder(1, 1, 32);
+  for (int i = 0; i < cylinder.vertexCount; ++i) {
+    cylinder.vertices[i * 3 + 1] -= 0.5;
+  }
+  UpdateMeshBuffer(cylinder, RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION, cylinder.vertices,
+      3 * cylinder.vertexCount * sizeof(float), 0);
+
+  meshes[BND_CAPSULE] = cylinder;
+
+  for (size_t i = 0; i < 20; ++i) {
+    Material m = LoadMaterialDefault();
+    m.shader = shader;
+    m.maps[MATERIAL_MAP_ALBEDO].color = colors[i];
+
+    materials[i] = m;
+  }
+
+  groundModel = LoadModelFromMesh(meshes[BND_PLANE]);
+
+  groundModel.materials[0].shader = shader;
+  groundModel.materials[0].maps[MATERIAL_MAP_DIFFUSE].color = COLOR_GROUND;
 }

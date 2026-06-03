@@ -34,6 +34,19 @@ typedef Quaternion bnd_quat;
   (Color) { 0x12, 0x12, 0x12, 25 }
 
 typedef struct {
+  bool is_collapsed;
+  bool physics_config_collapsed;
+
+  bool show_ui_debug;
+  bool show_physics_world_stats;
+  bool show_physics_config_widget;
+  bool draw_bodies;
+  bool bodies_as_wireframe;
+  bool draw_collisions;
+  bool draw_bounding_boxes;
+} master_widget_state;
+
+typedef struct {
   char *window_title;
   bool draw_ground;
   bnd_v3 camera_position;
@@ -67,6 +80,7 @@ typedef struct {
 
 typedef bnd_body_handle *ragdoll;
 
+void setup_scene(Shader shader);
 int register_gizmo(bnd_world *world, bnd_body_handle handle);
 void unregister_gizmo(int id);
 
@@ -74,13 +88,16 @@ bool import_raylib_mesh(bnd_world *world, Mesh mesh, bnd_mesh_handle *handle);
 void register_mesh_for_rendering(bnd_mesh_handle handle, Mesh mesh);
 
 void draw_arrow(bnd_v3 start, bnd_v3 direction, Color color);
-void draw_bounding_boxes(const bnd_world *world);
 
 void draw_model_with_wireframe(Model model, Vector3 position, float scale, Color color);
 
 void physics_draw_collisions(const bnd_world *world);
 
 ragdoll ragdoll_create(bnd_world *world, bnd_v3 position);
+
+void draw_contact(bnd_v3 point, bnd_v3 normal, float depth, void *user_data);
+void draw_shape(bnd_v3 position, bnd_quat rotation, bnd_body_handle body_handle, bnd_body_shape shape, void *user_data);
+void draw_aabb(bnd_v3 center, bnd_v3 half_extents, bnd_body_handle handle, void *user_data);
 
 void ui_initialize();
 void ui_teardown();

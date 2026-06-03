@@ -5,7 +5,6 @@
 #include "string.h"
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <math.h>
 
 #define RLIGHTS_IMPLEMENTATION
@@ -25,25 +24,18 @@ typedef struct {
   float rotation_sensitivity;
 } camera_settings;
 
-typedef struct {
-  bnd_mesh_handle handle;
-  Mesh mesh;
-} render_mesh;
-
 void init_debugging();
 void init_gizmos();
 void manipulate_gizmos(Camera *camera);
 void draw_gizmos();
 
 static void draw_custom_grid(int slices, float spacing);
-static void setup_scene(Shader shader);
 static void init_physics(const program_config *program_config);
 static Shader setup_lighting();
 static Camera setup_camera(program_config config);
 static void update_camera(Camera *camera, float deltaTime);
 static void draw_scene(program_config config, Camera camera, Shader shader, float dt);
 static void build_ui();
-static void draw_physics_bodies();
 static void process_inputs(Camera *camera);
 static void reset();
 
@@ -61,37 +53,26 @@ camera_settings cam_settings = {
   .rotation_sensitivity = 0.1f,
 };
 
-Color colors[] = { BROWN, YELLOW, GREEN, MAROON, MAGENTA, RAYWHITE, DARKPURPLE, LIME, PINK, ORANGE, BROWN, YELLOW,
-  GREEN, MAROON, MAGENTA, RAYWHITE, DARKPURPLE, LIME, PINK, ORANGE };
-Material materials[20];
-Mesh meshes[20];
-render_mesh render_meshes[20];
+bnd_debug_draw_callbacks debug_callbacks = {
+  .draw_shape = draw_shape,
+  .draw_aabb = draw_aabb,
+  .draw_contact = draw_contact,
+};
 
-uint32_t render_mesh_index = 0;
 bool edit_mode = false;
 bool simulation_running = true;
 bool step_forward = false;
 
-struct {
-  bool is_collapsed;
-  bool physics_config_collapsed;
+master_widget_state widget_state = { 0 };
 
-  bool show_ui_debug;
-  bool show_physics_world_stats;
-  bool show_physics_config_widget;
-  bool draw_bodies;
-  bool draw_collisions;
-  bool draw_bounding_boxes;
-} master_widget_state;
-
-static Model groundModel;
+extern Model groundModel;
 static bnd_world *world;
 static bnd_config config;
 
 int main(int argc, char **argv) {
   program_config program_config = { 0 };
   program_config.draw_ground = true;
-  master_widget_state.draw_bodies = true;
+  widget_state.draw_bodies = true;
 
   config = bnd_default_config();
 
@@ -184,92 +165,6 @@ static void process_inputs(Camera *camera) {
     scenario_handle_input(world, camera);
 }
 
-static void draw_physics_bodies_typed(bnd_body_type type) {
-  bnd_body_enumerator_typed enumerator;
-  bnd_enumerate_bodies_typed(world, type, &enumerator);
-
-  while (bnd_body_next_typed(world, &enumerator)) {
-    bnd_v3 position = bnd_get_position(world, enumerator.handle).value;
-    bnd_quat rotation = bnd_get_rotation(world, enumerator.handle).value;
-
-    bnd_body_shape shapes[16];
-    bnd_result_u32 shapes_count = bnd_get_shapes(world, enumerator.handle, shapes, 16);
-
-    Matrix scale;
-    Matrix transform =
-        MatrixMultiply(QuaternionToMatrix(rotation), MatrixTranslate(position.x, position.y, position.z));
-    Material material = materials[enumerator.handle.index % 20];
-
-    for (uint32_t k = 0; k < shapes_count.value; ++k) {
-      bnd_body_shape shape = shapes[k];
-      Matrix shape_transform = MatrixMultiply(QuaternionToMatrix(shape.rotation),
-          MatrixTranslate(shape.offset.x, shape.offset.y, shape.offset.z));
-      Matrix full_transform = MatrixMultiply(shape_transform, transform);
-
-      switch (shape.type) {
-        case BND_BOX:
-          scale = MatrixScale(shape.value.box.size.x, shape.value.box.size.y, shape.value.box.size.z);
-          DrawMesh(meshes[BND_BOX], material, MatrixMultiply(scale, full_transform));
-          break;
-
-        case BND_SPHERE:
-          scale = MatrixScale(shape.value.sphere.radius, shape.value.sphere.radius, shape.value.sphere.radius);
-          DrawMesh(meshes[BND_SPHERE], material, MatrixMultiply(scale, full_transform));
-          break;
-
-        case BND_CAPSULE:
-          scale = MatrixScale(shape.value.capsule.radius, shape.value.capsule.height, shape.value.capsule.radius);
-          DrawMesh(meshes[BND_CAPSULE], material, MatrixMultiply(scale, full_transform));
-
-          Vector3 p = Vector3Transform((Vector3) { 0, shape.value.capsule.height * 0.5, 0 }, full_transform);
-          Matrix m = MatrixMultiply(MatrixScale(shape.value.capsule.radius, shape.value.capsule.radius, shape.value.capsule.radius), MatrixTranslate(p.x, p.y, p.z));
-          DrawMesh(meshes[BND_SPHERE], material, m);
-
-          p = Vector3Transform((Vector3) { 0, -shape.value.capsule.height * 0.5, 0 }, full_transform);
-          m = MatrixMultiply(MatrixScale(shape.value.capsule.radius, shape.value.capsule.radius, shape.value.capsule.radius), MatrixTranslate(p.x, p.y, p.z));
-          DrawMesh(meshes[BND_SPHERE], material, m);
-          break;
-
-        case BND_MESH:
-          for (uint32_t i = 0; i < render_mesh_index; ++i) {
-            render_mesh rm = render_meshes[i];
-            if (rm.handle == shape.value.mesh) {
-              DrawMesh(rm.mesh, material, full_transform);
-              break;
-            }
-          }
-          break;
-
-        default:
-          break;
-      }
-    }
-  }
-}
-
-void register_mesh_for_rendering(bnd_mesh_handle handle, Mesh mesh) {
-  if (render_mesh_index >= 20) {
-    return;
-  }
-
-  for (uint32_t i = 0; i < render_mesh_index; ++i) {
-    if (render_meshes[i].handle == handle) {
-      return;
-    }
-  }
-
-  render_meshes[render_mesh_index++] = (render_mesh){
-    .handle = handle,
-    .mesh = mesh,
-  };
-}
-
-static void draw_physics_bodies() {
-  if (master_widget_state.draw_bodies) {
-    draw_physics_bodies_typed(BND_BODY_DYNAMIC);
-    draw_physics_bodies_typed(BND_BODY_STATIC);
-  }
-}
 
 static void draw_scene(program_config program_config, Camera camera, Shader shader, float dt) {
   BeginDrawing();
@@ -280,23 +175,34 @@ static void draw_scene(program_config program_config, Camera camera, Shader shad
 
   BeginShaderMode(shader);
 
-  draw_physics_bodies();
+  if (widget_state.draw_bodies) {
+    bnd_debug_draw(world, BND_DEBUG_DRAW_SHAPES, debug_callbacks, &widget_state);
+  }
+
   scenario_draw_scene(world);
 
   // Draw ground plane
   if (program_config.draw_ground) {
     DrawModel(groundModel, (Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, WHITE);
+  }
+  EndShaderMode();
+
+  if (program_config.draw_ground) {
     draw_custom_grid(32, 1.0f);
   }
 
   if (edit_mode) {
     draw_gizmos();
   }
-  if (master_widget_state.draw_bounding_boxes) {
-    draw_bounding_boxes(world);
-  }
 
-  EndShaderMode();
+  bnd_debug_draw_flags flags = BND_DEBUG_DRAW_NONE;
+  if (widget_state.draw_bounding_boxes) {
+    flags |= BND_DEBUG_DRAW_AABBS;
+  }
+  if (widget_state.draw_collisions) {
+    flags |= BND_DEBUG_DRAW_CONTACTS;
+  }
+  bnd_debug_draw(world, flags, debug_callbacks, &widget_state);
 
   EndMode3D();
 
@@ -364,33 +270,6 @@ static void draw_custom_grid(int slices, float spacing) {
   }
 }
 
-static void setup_scene(Shader shader) {
-  meshes[BND_BOX] = GenMeshCube(1, 1, 1);
-  meshes[BND_SPHERE] = GenMeshSphere(1, 16, 16);
-  meshes[BND_PLANE] = GenMeshPlane(200.0f, 200.0f, 1, 1);
-
-  Mesh cylinder = GenMeshCylinder(1, 1, 32);
-  for (int i = 0; i < cylinder.vertexCount; ++i) {
-    cylinder.vertices[i * 3 + 1] -= 0.5;
-  }
-  UpdateMeshBuffer(cylinder, RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION, cylinder.vertices,
-      3 * cylinder.vertexCount * sizeof(float), 0);
-
-  meshes[BND_CAPSULE] = cylinder;
-
-  for (size_t i = 0; i < 20; ++i) {
-    Material m = LoadMaterialDefault();
-    m.shader = shader;
-    m.maps[MATERIAL_MAP_ALBEDO].color = colors[i];
-
-    materials[i] = m;
-  }
-
-  groundModel = LoadModelFromMesh(meshes[BND_PLANE]);
-
-  groundModel.materials[0].shader = shader;
-  groundModel.materials[0].maps[MATERIAL_MAP_DIFFUSE].color = COLOR_GROUND;
-}
 
 static void reset() {
   bnd_reset_world(world);
@@ -413,6 +292,7 @@ static void init_physics(const program_config *program_config) {
 
     world = result.value;
   }
+
 }
 
 static void build_ui() {
@@ -422,25 +302,26 @@ static void build_ui() {
       .padding = CLAY_PADDING_ALL(15),
       .childGap = 15,
   }}) {
-    bool ui_debug = master_widget_state.show_ui_debug;
-    if (ui_begin_area("Debug widget", &master_widget_state.is_collapsed)) {
-      ui_checkbox("UI debug", &master_widget_state.show_ui_debug);
-      ui_checkbox("Physics config", &master_widget_state.show_physics_config_widget);
-      ui_checkbox("World stats", &master_widget_state.show_physics_world_stats);
-      ui_checkbox("Draw bodies", &master_widget_state.draw_bodies);
-      ui_checkbox("Draw collisions", &master_widget_state.draw_collisions);
-      ui_checkbox("Draw bounding boxes", &master_widget_state.draw_bounding_boxes);
+    bool ui_debug = widget_state.show_ui_debug;
+    if (ui_begin_area("Debug widget", &widget_state.is_collapsed)) {
+      ui_checkbox("UI debug", &widget_state.show_ui_debug);
+      ui_checkbox("Physics config", &widget_state.show_physics_config_widget);
+      ui_checkbox("World stats", &widget_state.show_physics_world_stats);
+      ui_checkbox("Draw bodies", &widget_state.draw_bodies);
+      ui_checkbox("Bodies as wireframe", &widget_state.bodies_as_wireframe);
+      ui_checkbox("Draw collisions", &widget_state.draw_collisions);
+      ui_checkbox("Draw bounding boxes", &widget_state.draw_bounding_boxes);
     }
 
     ui_end_area();
 
-    if (ui_debug != master_widget_state.show_ui_debug) {
-      ui_set_debug(master_widget_state.show_ui_debug);
+    if (ui_debug != widget_state.show_ui_debug) {
+      ui_set_debug(widget_state.show_ui_debug);
     }
 
-    if (master_widget_state.show_physics_config_widget) {
+    if (widget_state.show_physics_config_widget) {
       bnd_config *physics_config = bnd_edit_config(world);
-      if (ui_begin_area("Physics config", &master_widget_state.physics_config_collapsed)) {
+      if (ui_begin_area("Physics config", &widget_state.physics_config_collapsed)) {
         ui_value_float("Linear damping", &physics_config->simulation.linear_drag, 0, 1);
         ui_value_float("Angular damping", &physics_config->simulation.angular_drag, 0, 1);
         ui_value_float("Restitution", &physics_config->simulation.bounciness, 0, 2);
@@ -461,7 +342,7 @@ static void build_ui() {
     scenario_build_ui(world);
   }
 
-  if (master_widget_state.show_physics_world_stats) {
+  if (widget_state.show_physics_world_stats) {
     CLAY(CLAY_ID("Stats"), {
       .layout = {
         .layoutDirection = CLAY_LEFT_TO_RIGHT,
