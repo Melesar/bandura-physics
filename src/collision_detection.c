@@ -633,13 +633,13 @@ void collision_detection_init(bnd_world *world) {
 
   collision_detection_table[BND_SPHERE][BND_SPHERE] = (collision_detection_entry) { sphere_sphere_collision, true };
   collision_detection_table[BND_BOX][BND_BOX] = (collision_detection_entry) { polytope_polytope_collision, true };
-  collision_detection_table[BND_CAPSULE][BND_CAPSULE] = (collision_detection_entry) { polytope_polytope_collision, true };
+  collision_detection_table[BND_CAPSULE][BND_CAPSULE] = (collision_detection_entry) { polytope_polytope_collision, true }; // TODO
   collision_detection_table[BND_MESH][BND_MESH] = (collision_detection_entry) { polytope_polytope_collision, true };
 
   collision_detection_table[BND_BOX][BND_SPHERE] = (collision_detection_entry) { box_sphere_collision, true };
   collision_detection_table[BND_SPHERE][BND_BOX] = (collision_detection_entry) { box_sphere_collision, false };
-  collision_detection_table[BND_BOX][BND_CAPSULE] = (collision_detection_entry) { polytope_polytope_collision, true };
-  collision_detection_table[BND_CAPSULE][BND_BOX] = (collision_detection_entry) { polytope_polytope_collision, false };
+  collision_detection_table[BND_BOX][BND_CAPSULE] = (collision_detection_entry) { polytope_polytope_collision, true }; // TODO
+  collision_detection_table[BND_CAPSULE][BND_BOX] = (collision_detection_entry) { polytope_polytope_collision, false }; // TODO
   collision_detection_table[BND_CAPSULE][BND_SPHERE] = (collision_detection_entry) { capsule_sphere_collision, true };
   collision_detection_table[BND_SPHERE][BND_CAPSULE] = (collision_detection_entry) { capsule_sphere_collision, false };
 

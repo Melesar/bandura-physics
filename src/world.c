@@ -128,11 +128,11 @@ static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
 
     bnd_m3 rotation_matrix;
     bnd_v3 shape_min, shape_max;
-    bnd_v3 half_extents, axis;
-    float half_height, radius;
+    bnd_v3 half_extents;
+    bnd_aabb local_aabb;
     switch (shape.type) {
       case BND_BOX:
-        rotation_matrix = quat_as_matrix(rotation);
+        rotation_matrix = quat_as_matrix(shape_rotation);
         half_extents = rotated_box_half_extents(rotation_matrix, bnd_v3_scale(shape.value.box.size, 0.5));
         break;
 
@@ -141,13 +141,17 @@ static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
         break;
 
       case BND_CAPSULE:
-        // TODO
-        half_extents = bnd_v3_scale(bnd_v3_one(), FLT_MAX);
+        rotation_matrix = quat_as_matrix(shape_rotation);
+        local_aabb = (bnd_aabb) {
+          .center = shape_center,
+          .half_extents = { shape.value.capsule.radius, 0.5 * shape.value.capsule.height + shape.value.capsule.radius, shape.value.capsule.radius }
+        };
+        half_extents = rotated_box_half_extents(rotation_matrix, local_aabb.half_extents);
         break;
 
       case BND_MESH:
-        rotation_matrix = quat_as_matrix(rotation);
-        bnd_aabb local_aabb = world->meshes.aabbs[shape.value.mesh];
+        rotation_matrix = quat_as_matrix(shape_rotation);
+        local_aabb = world->meshes.aabbs[shape.value.mesh];
         half_extents = rotated_box_half_extents(rotation_matrix, local_aabb.half_extents);
         break;
 
