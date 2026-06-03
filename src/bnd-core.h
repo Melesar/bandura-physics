@@ -261,7 +261,7 @@ typedef struct {
   count_t index;
 } shape_context;
 
-typedef bnd_v3 (*support_func)(const shape_context *, bnd_v3);
+typedef support_point (*support_func)(const shape_context *, bnd_v3);
 
 bnd_allocator bnd_default_allocator();
 

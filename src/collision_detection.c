@@ -87,14 +87,14 @@ bool aabb_intersect(const common_data *data_a, const common_data *data_b, count_
   return true;
 }
 
-static bnd_v3 sphere_support(const shape_context *ctx, bnd_v3 direction) {
+static support_point sphere_support(const shape_context *ctx, bnd_v3 direction) {
   bnd_v3 center = bnd_v3_add(ctx->data->positions[ctx->index], ctx->shape.offset);
   float radius = ctx->shape.value.sphere.radius;
 
-  return bnd_v3_add(center, bnd_v3_scale(direction, radius));
+  return (support_point) { bnd_v3_add(center, bnd_v3_scale(direction, radius)), 0 };
 }
 
-static bnd_v3 box_support(const shape_context *ctx, bnd_v3 direction) {
+static support_point box_support(const shape_context *ctx, bnd_v3 direction) {
   bnd_v3 center = body_center(ctx);
   bnd_quat rotation = body_rotation(ctx);
   bnd_quat inv_rotation = bnd_qinvert(rotation);
@@ -109,10 +109,20 @@ static bnd_v3 box_support(const shape_context *ctx, bnd_v3 direction) {
   v = bnd_v3_rotate(v, rotation);
   v = bnd_v3_add(center, v);
 
-  return v;
+  uint16_t index = 0;
+  if (local_direction.x > 0 && local_direction.z > 0) {
+    index = 1;
+  } else if (local_direction.x <= 0 && local_direction.z > 0) {
+    index = 2;
+  } else if (local_direction.x <= 0 && local_direction.z <= 0) {
+    index = 3;
+  }
+  index += local_direction.y > 0 ? 4 : 0;
+
+  return (support_point) { v, index };
 }
 
-static bnd_v3 capsule_support(const shape_context *ctx, bnd_v3 direction) {
+static support_point capsule_support(const shape_context *ctx, bnd_v3 direction) {
   bnd_v3 center = body_center(ctx);
   bnd_quat rotation = body_rotation(ctx);
   bnd_quat inv_rotation = bnd_qinvert(rotation);
@@ -122,14 +132,13 @@ static bnd_v3 capsule_support(const shape_context *ctx, bnd_v3 direction) {
   float radius = ctx->shape.value.capsule.radius;
   float height = ctx->shape.value.capsule.height;
 
-  bnd_v3 v;
+  bnd_v3 cap = bnd_v3_add(center, (bnd_v3) { 0, (local_direction.y >= 0 ? 1 : -1) * height * 0.5f, 0 });
+  bnd_v3 p = bnd_v3_add(cap, bnd_v3_scale(local_direction, radius));
 
-  // TODO
-
-  return v;
+  return (support_point) { p, 0 };
 }
 
-static bnd_v3 mesh_support(const shape_context *ctx, bnd_v3 direction) {
+static support_point mesh_support(const shape_context *ctx, bnd_v3 direction) {
   const mesh_storage *meshes = &ctx->world->meshes;
   const bnd_mesh_handle mesh_handle = ctx->shape.value.mesh;
 
@@ -163,7 +172,7 @@ static bnd_v3 mesh_support(const shape_context *ctx, bnd_v3 direction) {
   support = bnd_v3_rotate(support, rotation);
   support = bnd_v3_add(support, position);
 
-  return support;
+  return (support_point) { support, max_vertex };
 }
 
 support_func support_functions[] = { box_support, sphere_support, capsule_support, mesh_support };
@@ -175,8 +184,8 @@ body_support support(const collision_detection_context *ctx, bnd_v3 direction) {
   shape_context sb = { ctx->world, ctx->data_b, ctx->shape_b, ctx->body_b };
 
   body_support result;
-  result.p1.point = support_functions[ctx->shape_a.type](&sa, direction);
-  result.p2.point = support_functions[ctx->shape_b.type](&sb, bnd_v3_negate(direction));
+  result.p1 = support_functions[ctx->shape_a.type](&sa, direction);
+  result.p2 = support_functions[ctx->shape_b.type](&sb, bnd_v3_negate(direction));
   result.p = bnd_v3_sub(result.p1.point, result.p2.point);
 
   return result;
