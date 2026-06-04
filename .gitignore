@@ -10,3 +10,5 @@ compile_commands.json
 *.csv
 *.png
 *.pdf
+
+tests/test_cases_generator*
