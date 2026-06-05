@@ -1,10 +1,9 @@
-LIBCCD_ROOT=../vendor/libccd/src
+LIBCCD_ROOT=../../vendor/libccd/src
 
-CC=clang
 CFLAGS=-I$(LIBCCD_ROOT) -std=c99
 LDFLAGS=-lm
 GEN=test_cases_generator
-OUT=collision_test_cases.yaml
+OUT=../collision_test_cases.yaml
 
 $(OUT): $(GEN)
 	./$(GEN) > $(OUT)
