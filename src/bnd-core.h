@@ -359,5 +359,6 @@ bnd_m3 bnd_m3_inertia(bnd_m3 initial_inertia, bnd_quat rotation);
 bnd_m3 bnd_m3_displacement_inertia(bnd_m3 i0, bnd_v3 offset, float mass);
 
 collision_test_suite *collision_tests_load();
+void collision_tests_pair_spawn(bnd_world *world, const collision_test_pair *pair, bnd_body_handle *pair_handles);
 void collision_tests_free(collision_test_suite *tests);
 #endif

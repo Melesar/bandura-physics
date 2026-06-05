@@ -167,13 +167,11 @@ static void render_custom_element(Clay_RenderCommand *command) {
   switch (element->type) {
     case ELEMENT_INPUT_INT:
       edit = element->state == STATE_FOCUSED || element->state == STATE_PRESSED;
-      GuiValueBox(rect, NULL, element->input_int.value, element->input_int.min_value, element->input_int.max_value,
-                  edit);
+      GuiValueBox(rect, NULL, element->input_int.value, element->input_int.min_value, element->input_int.max_value, edit);
       break;
 
     case ELEMENT_INPUT_FLOAT:
-      GuiSlider(rect, NULL, NULL, element->input_float.value, element->input_float.min_value,
-                element->input_float.max_value);
+      GuiSlider(rect, NULL, NULL, element->input_float.value, element->input_float.min_value, element->input_float.max_value);
       break;
   }
 }
@@ -502,27 +500,20 @@ void ui_value_int(const char *label, int *value, int min_value, int max_value) {
   element->input_int.max_value = max_value;
 
   CLAY(CLAY_SID(clay_string_concat(label, "container")), {
-                                                             .layout =
-                                                                 {
-                                                                     .sizing = clay_container_sizing(),
-                                                                     .layoutDirection = CLAY_LEFT_TO_RIGHT,
-                                                                 },
-                                                         }) {
-
+    .layout = {
+      .sizing = clay_container_sizing(),
+      .layoutDirection = CLAY_LEFT_TO_RIGHT,
+    }}) {
     ui_prefix_label(label);
 
     element->state = clay_gui_state();
 
-    CLAY(CLAY_SID(clay_string_concat(label, "value_container")),
-         {
-             .layout =
-                 {
-                     .childAlignment = {.x = CLAY_ALIGN_X_RIGHT},
-                     .sizing = {.width = CLAY_SIZING_GROW(),
-                                .height = CLAY_SIZING_FIT(GuiGetStyle(DEFAULT, TEXT_SIZE), FLT_MAX)},
-                 },
-             .custom = {.customData = element},
-         });
+    CLAY(CLAY_SID(clay_string_concat(label, "value_container")), {
+      .layout = {
+        .childAlignment = {.x = CLAY_ALIGN_X_RIGHT},
+        .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT(GuiGetStyle(DEFAULT, TEXT_SIZE), FLT_MAX)}, },
+        .custom = {.customData = element},
+    });
   }
 }
 

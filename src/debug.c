@@ -159,6 +159,31 @@ collision_test_suite *collision_tests_load() {
 #endif
 }
 
+void collision_tests_pair_spawn(bnd_world *world, const collision_test_pair *pair, bnd_body_handle *pair_handles) {
+  bnd_body_shape shapes[] = { pair->a, pair->b };
+
+  for (count_t j = 0; j < 2; j++) {
+    const bnd_body_shape *shape = &shapes[j];
+
+    switch(shape->type)  {
+      case BND_SPHERE:
+        pair_handles[j] = bnd_add_sphere_dynamic(world, 5, shape->value.sphere.radius).value;
+        break;
+
+      case BND_BOX:
+        pair_handles[j] = bnd_add_box_dynamic(world, 5, shape->value.box.size).value;
+        break;
+
+      case BND_CAPSULE:
+        pair_handles[j] = bnd_add_capsule_dynamic(world, 5, shape->value.capsule.radius, shape->value.capsule.height).value;
+        break;
+
+      default:
+        break;
+    }
+  }
+}
+
 void collision_tests_free(collision_test_suite *tests) {
   if (tests == NULL) {
     return;

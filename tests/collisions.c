@@ -12,29 +12,9 @@ void collisions_are_detected_correctly() {
 
   for (count_t i = 0; i < tests->num_pairs; i++) {
     const collision_test_pair *pair = &tests->pairs[i];
-    bnd_body_shape shapes[] = { pair->a, pair->b };
+
     bnd_body_handle handles[2];
-
-    for (count_t j = 0; j < 2; j++) {
-      const bnd_body_shape *shape = &shapes[j];
-
-      switch(shape->type)  {
-        case BND_SPHERE:
-          handles[j] = bnd_add_sphere_dynamic(world, 5, shape->value.sphere.radius).value;
-          break;
-
-        case BND_BOX:
-          handles[j] = bnd_add_box_dynamic(world, 5, shape->value.box.size).value;
-          break;
-
-        case BND_CAPSULE:
-          handles[j] = bnd_add_capsule_dynamic(world, 5, shape->value.capsule.radius, shape->value.capsule.height).value;
-          break;
-
-        default:
-          break;
-      }
-    }
+    collision_tests_pair_spawn(world, pair, handles);
 
     bnd_event_subscribe(world, handles[0], BND_EVENT_COLLISION);
 
