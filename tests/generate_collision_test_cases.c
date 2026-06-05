@@ -181,19 +181,6 @@ int generate_test_cases(generator_state *state, int num_cases, float r_min, floa
     test_case->point = point;
     test_case->normal = normal;
     test_case->depth = depth;
-
-    // printf("  - case%d:\n", num_cases + i + 1);
-    // printf("    positionA: (%f, %f, %f)\n", a->position.v[0], a->position.v[1], a->position.v[2]);
-    // printf("    positionB: (%f, %f, %f)\n", b->position.v[0], b->position.v[1], b->position.v[2]);
-    // printf("    orientationA: (%f, %f, %f, %f)\n", a->orientation.q[0], a->orientation.q[1], a->orientation.q[2], a->orientation.q[3]);
-    // printf("    orientationB: (%f, %f, %f, %f)\n", b->orientation.q[0], b->orientation.q[1], b->orientation.q[2], b->orientation.q[3]);
-    // printf("    intersection: %s\n", intersection == 0 ? "true" : "false");
-
-    // if (!intersection) {
-    //   printf("    point: (%f, %f, %f)\n", point.v[0], point.v[1], point.v[2]);
-    //   printf("    normal: (%f, %f, %f)\n", normal.v[0], normal.v[1], normal.v[2]);
-    //   printf("    depth: %f\n", depth);
-    // }
   }
 
   return ROLLS_COUNT;
@@ -269,12 +256,6 @@ void generate_cases_for_bodies(generator_state *state) {
   float bbr_a = bounding_sphere_radius(state->a);
   float bbr_b = bounding_sphere_radius(state->b);
 
-  // printf("---\n");
-  // printf("shape1:\n");
-  // print_shape_header(state->a);
-  // printf("shape2:\n");
-  // print_shape_header(state->b);
-  // printf("cases:\n");
   collision_pair *pair = &state->pairs[state->num_pairs];
   pair->a = *state->a;
   pair->b = *state->b;
@@ -291,8 +272,6 @@ void generate_cases_for_bodies(generator_state *state) {
   num_cases += generate_test_cases(state, num_cases, all_collisions_radius, some_collisions_radius);
 
   state->num_pairs += 1;
-
-  // printf("\n");
 }
 
 int main() {
@@ -336,7 +315,7 @@ int main() {
   generate_cases_for_bodies(&state);
 
   printf("num_pairs: %d\n", state.num_pairs);
-  printf("num_cases: %d\n", state.num_pairs * CASES_PER_PAIR);
+  printf("cases_per_pair: %d\n", CASES_PER_PAIR);
 
   for (int i = 0; i < state.num_pairs; ++i) {
     collision_pair pair = state.pairs[i];

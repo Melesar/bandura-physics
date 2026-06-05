@@ -1,4 +1,5 @@
 #include "scenario-core.h"
+#include "bnd-core.h"
 #include "bnd-math.h"
 #include "raymath.h"
 #include <unistd.h>
@@ -40,6 +41,7 @@ void scenario_configure(program_config *config, bnd_config *physics) {
 
 void scenario_initialize(bnd_world *world) {
   TraceLog(LOG_INFO, "Allocated %lu, used %lu bytes", size, offset);
+  collision_tests_load();
 }
 
 void scenario_setup_scene(bnd_world *world) {

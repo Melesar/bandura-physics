@@ -261,6 +261,29 @@ typedef struct {
   count_t index;
 } shape_context;
 
+typedef struct {
+  bnd_body_shape a, b;
+} collision_test_pair;
+
+typedef struct {
+  bnd_v3 position_a, position_b;
+  bnd_quat rotation_a, rotation_b;
+
+  bnd_v3 point;
+  bnd_v3 normal;
+  float depth;
+
+  bool intersection;
+} collision_test_case;
+
+typedef struct {
+  collision_test_pair *pairs;
+  collision_test_case *cases;
+
+  count_t num_pairs;
+  count_t cases_per_pair;
+} collision_test_suite;
+
 typedef support_point (*support_func)(const shape_context *, bnd_v3);
 
 bnd_allocator bnd_default_allocator();
@@ -334,4 +357,7 @@ bnd_m3 bnd_m3_skew_symmetric(bnd_v3 v);
 bnd_m3 bnd_m3_initial_inertia(bnd_v3 inertia);
 bnd_m3 bnd_m3_inertia(bnd_m3 initial_inertia, bnd_quat rotation);
 bnd_m3 bnd_m3_displacement_inertia(bnd_m3 i0, bnd_v3 offset, float mass);
+
+collision_test_suite *collision_tests_load();
+void collision_tests_free(collision_test_suite *tests);
 #endif

@@ -254,6 +254,7 @@ fn libraryFlags(b: *std.Build, options: Options, withTests: bool) ![]const []con
 
     if (options.linkage == .dynamic) {
         try flags.append(b.allocator, "-DBND_BUILD_DLL");
+        try flags.append(b.allocator, "-fvisibility=hidden");
     } else {
         try flags.append(b.allocator, "-DBND_STATIC");
     }
@@ -261,6 +262,8 @@ fn libraryFlags(b: *std.Build, options: Options, withTests: bool) ![]const []con
     if (withTests) {
       try flags.append(b.allocator, "-DBND_TESTS");
     }
+
+    try flags.append(b.allocator, "-DCOLLISION_TEST_SUITE_PATH=\"tests/collision_test_cases.yaml\"");
 
     // if (!withTests) {
     //   try flags.append(b.allocator, "-fvisibility=hidden");
