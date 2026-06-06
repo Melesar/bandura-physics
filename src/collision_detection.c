@@ -9,12 +9,6 @@
 #include <stdbool.h>
 #include <string.h>
 
-typedef struct {
-  bnd_v3 center;
-  bnd_v3 size;
-  bnd_v3 axis[3];
-} collision_box;
-
 typedef count_t (*collision_detection_func)(bnd_world *world, const collision_detection_context *ctx);
 
 typedef struct {

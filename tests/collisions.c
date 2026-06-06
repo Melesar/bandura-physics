@@ -1,7 +1,10 @@
 #include "bandura.h"
-#include "bnd-math.h"
 #include "testing.h"
+
 #include "bnd-core.h"
+#include "bnd-math.h"
+
+#include <stdlib.h>
 
 void collisions_are_detected_correctly() {
   collision_test_suite *tests = collision_tests_load();
@@ -29,7 +32,12 @@ void collisions_are_detected_correctly() {
 
       bnd_simulate(world, 0.01);
 
-      assert(test_case->intersection == bnd_event_any(world, handles[0]).value);
+      bool expected = test_case->intersection;
+      bool got = bnd_event_any(world, handles[0]).value;
+      if (expected != got) {
+        fprintf(stderr, "Pair %u, case %u failed. Expected %d, got %d\n", i, j, expected, got);
+        exit(1);
+      }
     }
 
     bnd_reset_world(world);
