@@ -372,6 +372,83 @@ static count_t box_sphere_collision(bnd_world *world, const collision_detection_
   return 1;
 }
 
+static count_t box_capsule_collision(bnd_world *world, const collision_detection_context *ctx) {
+  bnd_v3 box_half_size = bnd_v3_scale(ctx->shape_a.value.box.size, 0.5);
+  bnd_quat box_rotation = body_a_rotation(ctx);
+  bnd_quat inv_box_rotation = bnd_qinvert(box_rotation);
+
+  bnd_v3 capsule_center = body_b_center(ctx);
+  float capsule_height = ctx->shape_b.value.capsule.height;
+  float capsule_radius = ctx->shape_b.value.capsule.radius;
+  bnd_quat capsule_rotation = body_b_rotation(ctx);
+
+  bnd_v3 local_caps[2];
+  for (count_t i = 0; i < 2; ++i) {
+    bnd_v3 cap = { 0, (i == 0 ? 1 : -1) * 0.5 * capsule_height, 0 };
+    cap = bnd_v3_rotate(cap, capsule_rotation);
+    cap = bnd_v3_add(cap, capsule_center);
+    cap = bnd_v3_rotate(cap, inv_box_rotation);
+
+    local_caps[i] = cap;
+  }
+
+  float *half_sizes = (float *)&box_half_size;
+  for (count_t axis_normal = 0; axis_normal < 3; ++axis_normal) {
+    count_t axis_a = (axis_normal + 1) % 3;
+    count_t axis_b = (axis_normal + 2) % 3;
+    int sign = 1;
+
+    bnd_v3 p;
+    float *pp = (float *)&p;
+    pp[axis_a] = -half_sizes[axis_a];
+    pp[axis_b] = -half_sizes[axis_b];
+
+    for (count_t i = 0; i < 2; ++i) {
+      pp[axis_normal] = sign * half_sizes[axis_normal];
+
+      bnd_v3 offsets[] = { bnd_v3_sub(local_caps[0], p), bnd_v3_sub(local_caps[1], p) };
+      float *po[] = { (float*)&offsets[0], (float*)&offsets[1] };
+
+      if (sign * po[0][axis_normal] > capsule_radius && sign * po[1][axis_normal] > capsule_radius) {
+        // Both cylinder caps are above the face and further than the radius. Two shapes do not intersect.
+        return 0;
+      }
+
+      if (sign * po[0][axis_normal] < -half_sizes[axis_normal] || sign * po[1][axis_normal] < -half_sizes[axis_normal]) {
+        // A cap is on the other side of the box
+        continue;
+      }
+
+      float a_max = 2.0 * half_sizes[axis_a];
+      float b_max = 2.0 * half_sizes[axis_b];
+
+      // Cohen–Sutherland algorithm to determine if a line intersects a rectangle.
+      // Here it's used to detect if the capsule's axis passes through the face when projected on its plane.
+      //
+      // https://en.wikipedia.org/wiki/Cohen%E2%80%93Sutherland_algorithm
+      uint8_t quad_0 = 0, quad_1 = 0;
+      if (po[0][axis_a] < 0) quad_0 |= 1;
+      else if (po[0][axis_a] > a_max) quad_0 |= 2;
+      if (po[0][axis_b] < 0) quad_0 |= 4;
+      else if (po[0][axis_b] > b_max) quad_0 |= 8;
+
+      if (po[1][axis_a] < 0) quad_1 |= 1;
+      else if (po[1][axis_a] > a_max) quad_1 |= 2;
+      if (po[1][axis_b] < 0) quad_1 |= 4;
+      else if (po[1][axis_b] > b_max) quad_1 |= 8;
+
+      if (quad_0 & quad_1) {
+        // The capsule passes the box's face.
+        continue;
+      }
+
+      sign = -1;
+    }
+  }
+
+  return 0;
+}
+
 static count_t box_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
   bnd_quat box_rotation = ctx->data_a->rotations[ctx->body_a];
   bnd_quat shape_rotation = ctx->shape_a.rotation;
@@ -409,6 +486,9 @@ static count_t box_plane_collision(bnd_world *world, const collision_detection_c
     }
 
     contact *c = new_contact(world, ctx);
+    if (c == NULL) {
+      return 0;
+    }
     c->normal = plane_normal;
     c->point = bnd_v3_add(corner, bnd_v3_scale(plane_normal, -0.5 * distance));
     c->depth = -distance;
@@ -629,16 +709,15 @@ void collision_detection_init(bnd_world *world) {
 
   collision_detection_table[BND_SPHERE][BND_SPHERE] = (collision_detection_entry) { sphere_sphere_collision, true };
   collision_detection_table[BND_BOX][BND_BOX] = (collision_detection_entry) { polytope_polytope_collision, true };
-  collision_detection_table[BND_CAPSULE][BND_CAPSULE] = (collision_detection_entry) { polytope_polytope_collision, true }; // TODO
+  collision_detection_table[BND_CAPSULE][BND_CAPSULE] = (collision_detection_entry) { polytope_polytope_collision, true };
   collision_detection_table[BND_MESH][BND_MESH] = (collision_detection_entry) { polytope_polytope_collision, true };
 
   collision_detection_table[BND_BOX][BND_SPHERE] = (collision_detection_entry) { box_sphere_collision, true };
   collision_detection_table[BND_SPHERE][BND_BOX] = (collision_detection_entry) { box_sphere_collision, false };
-  collision_detection_table[BND_BOX][BND_CAPSULE] = (collision_detection_entry) { polytope_polytope_collision, true }; // TODO
-  collision_detection_table[BND_CAPSULE][BND_BOX] = (collision_detection_entry) { polytope_polytope_collision, false }; // TODO
+  collision_detection_table[BND_BOX][BND_CAPSULE] = (collision_detection_entry) { box_capsule_collision, true };
+  collision_detection_table[BND_CAPSULE][BND_BOX] = (collision_detection_entry) { box_capsule_collision, false };
   collision_detection_table[BND_CAPSULE][BND_SPHERE] = (collision_detection_entry) { capsule_sphere_collision, true };
   collision_detection_table[BND_SPHERE][BND_CAPSULE] = (collision_detection_entry) { capsule_sphere_collision, false };
-
 
   collision_detection_table[BND_MESH][BND_BOX] = (collision_detection_entry) { polytope_polytope_collision, true };
   collision_detection_table[BND_BOX][BND_MESH] = (collision_detection_entry) { polytope_polytope_collision, false };

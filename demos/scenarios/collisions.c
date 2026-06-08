@@ -15,7 +15,7 @@ int case_index, prev_case_index;
 char buffer[1024];
 bool *test_results;
 
-static char *shape_name(bnd_body_shape shape) {
+static const char *shape_name(bnd_body_shape shape) {
   switch (shape.type) {
     case BND_BOX: return "Box";
     case BND_SPHERE: return "Sphere";
@@ -132,10 +132,25 @@ void scenario_build_ui(bnd_world *world) {
           CLAY(CLAY_IDI("ResultsRow", col * results_per_column + i), { .layout = { .childGap = 3 } }) {
             for (count_t j = 0; j < results_per_row; ++j) {
               count_t result_index = column_results_start + i * results_per_row + j;
+
+              Clay_Color passed = { 0, 255, 0, 255 };
+              Clay_Color failed = { 255, 0, 0, 255 };
+              Clay_Color hovered = { 0, 0, 255, 255 };
+
               CLAY_AUTO_ID({
                 .layout = { .sizing = { .width = CLAY_SIZING_FIXED(item_size), .height = CLAY_SIZING_FIXED(item_size) } },
-                .backgroundColor = test_results[result_index] ? (Clay_Color) { 0, 255, 0, 255 } : (Clay_Color) { 255, 0, 0, 255 }
-              }) { }
+                .backgroundColor = Clay_Hovered() ? hovered : (test_results[result_index] ? passed : failed)
+              }) {
+                Clay_PointerDataInteractionState pointer_state = Clay_GetPointerState().state;
+                bool is_hovering = Clay_Hovered();
+
+                if (is_hovering && pointer_state == CLAY_POINTER_DATA_RELEASED_THIS_FRAME) {
+                  case_index = result_index;
+                  update_pair(world, pair_index, case_index);
+                  prev_case_index = case_index;
+                  prev_pair_index = pair_index;
+                }
+              }
             }
           }
         }
