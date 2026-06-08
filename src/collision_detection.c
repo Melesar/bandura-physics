@@ -10,6 +10,13 @@
 
 typedef count_t (*collision_detection_func)(bnd_world *world, const collision_detection_context *ctx);
 
+typedef enum {
+  QUAD_LEFT = 1,
+  QUAD_RIGHT = 2,
+  QUAD_BOTTOM = 4,
+  QUAD_TOP = 8,
+} outcode;
+
 typedef struct {
   collision_detection_func func;
   bool primary;
@@ -408,14 +415,16 @@ static count_t box_capsule_collision(bnd_world *world, const collision_detection
 
       bnd_v3 offsets[] = { bnd_v3_sub(local_caps[0], p), bnd_v3_sub(local_caps[1], p) };
       float *po[] = { (float*)&offsets[0], (float*)&offsets[1] };
+      float distances[] = { sign * po[0][axis_normal], sign * po[1][axis_normal] };
 
-      if (sign * po[0][axis_normal] > capsule_radius && sign * po[1][axis_normal] > capsule_radius) {
+      if (distances[0] > capsule_radius && distances[1] > capsule_radius) {
         // Both cylinder caps are above the face and further than the radius. Two shapes do not intersect.
         return 0;
       }
 
-      if (sign * po[0][axis_normal] < -half_sizes[axis_normal] || sign * po[1][axis_normal] < -half_sizes[axis_normal]) {
+      if (po[0][axis_normal] < -half_sizes[axis_normal] || po[1][axis_normal] < -half_sizes[axis_normal]) {
         // A cap is on the other side of the box
+        sign = -1;
         continue;
       }
 
@@ -426,23 +435,83 @@ static count_t box_capsule_collision(bnd_world *world, const collision_detection
       // Here it's used to detect if the capsule's axis passes through the face when projected on its plane.
       //
       // https://en.wikipedia.org/wiki/Cohen%E2%80%93Sutherland_algorithm
-      uint8_t quad_0 = 0, quad_1 = 0;
-      if (po[0][axis_a] < 0) quad_0 |= 1;
-      else if (po[0][axis_a] > a_max) quad_0 |= 2;
-      if (po[0][axis_b] < 0) quad_0 |= 4;
-      else if (po[0][axis_b] > b_max) quad_0 |= 8;
+      uint8_t outcodes[2];
+      for (count_t k = 0; k < 2; ++k) {
+        if (po[k][axis_a] < 0) outcodes[k] |= QUAD_LEFT;
+        else if (po[k][axis_a] > a_max) outcodes[k] |= QUAD_RIGHT;
+        if (po[k][axis_b] < 0) outcodes[k] |= QUAD_BOTTOM;
+        else if (po[k][axis_b] > b_max) outcodes[k] |= QUAD_TOP;
+      }
 
-      if (po[1][axis_a] < 0) quad_1 |= 1;
-      else if (po[1][axis_a] > a_max) quad_1 |= 2;
-      if (po[1][axis_b] < 0) quad_1 |= 4;
-      else if (po[1][axis_b] > b_max) quad_1 |= 8;
-
-      if (quad_0 & quad_1) {
-        // The capsule passes the box's face.
+      if (outcodes[0] & outcodes[1]) {
+        // The capsule misses the box's face.
+        sign = -1;
         continue;
       }
 
-      sign = -1;
+      bnd_v3 box_center = body_a_center(ctx);
+
+      count_t contacts_count = 0;
+      for (count_t k = 0; k < 2; ++k) {
+        if (distances[k] > capsule_radius) {
+          continue;
+        }
+
+        contact *c = new_contact(world, ctx);
+        if (c == NULL) {
+          return contacts_count;
+        }
+
+        bnd_v3 point = { 0 };
+        pp = (float*)&point;
+        pp[axis_normal] = sign * half_sizes[axis_normal];
+
+        float *pcaps[] = { (float*)&local_caps[0], (float*)&local_caps[1] };
+        if (outcodes[k] == 0) {
+          // Capsule's cap projection is inside the face.
+          pp[axis_a] = pcaps[k][axis_a];
+          pp[axis_b] = pcaps[k][axis_b];
+        } else {
+          // Clip the projection to the face's boundary.
+          float x0 = pcaps[0][axis_a];
+          float x1 = pcaps[1][axis_a];
+          float y0 = pcaps[0][axis_b];
+          float y1 = pcaps[1][axis_b];
+          float xmin = -half_sizes[axis_a];
+          float xmax = half_sizes[axis_a];
+          float ymin = -half_sizes[axis_b];
+          float ymax = half_sizes[axis_b];
+     			if (outcodes[k] & QUAD_TOP) {
+            pp[axis_a] =  + (x1 - x0) * (ymax - y0) / (y1 - y0);
+            pp[axis_b] = ymax;
+   			  } else if (outcodes[k] & QUAD_BOTTOM) {
+            pp[axis_a] = x0 + (x1 - x0) * (ymin - y0) / (y1 - y0);
+            pp[axis_b] = ymin;
+          } else if (outcodes[k] & QUAD_RIGHT) {
+            pp[axis_b] = y0 + (y1 - y0) * (xmax - x0) / (x1 - x0);
+            pp[axis_a] = xmax;
+          } else if (outcodes[k] & QUAD_LEFT) {
+            pp[axis_b] = y0 + (y1 - y0) * (xmin - x0) / (x1 - x0);
+            pp[axis_a] = xmin;
+          }
+        }
+
+        point = bnd_v3_rotate(point, box_rotation);
+        point = bnd_v3_add(point, box_center);
+
+        bnd_v3 normal = { 0 };
+        ((float*)&normal)[axis_normal] = sign;
+        normal = bnd_v3_rotate(normal, box_rotation);
+        normal = bnd_v3_negate(normal);
+
+        c->point = point;
+        c->normal = normal;
+        c->depth = capsule_radius - distances[k];
+
+        contacts_count += 1;
+      }
+
+      return contacts_count;
     }
   }
 
