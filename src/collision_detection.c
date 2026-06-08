@@ -1,4 +1,3 @@
-#include "bandura.h"
 #include "bnd-core.h"
 #include "bnd-math.h"
 
@@ -126,8 +125,11 @@ static support_point capsule_support(const shape_context *ctx, bnd_v3 direction)
   float radius = ctx->shape.value.capsule.radius;
   float height = ctx->shape.value.capsule.height;
 
-  bnd_v3 cap = bnd_v3_add(center, (bnd_v3) { 0, (local_direction.y >= 0 ? 1 : -1) * height * 0.5f, 0 });
+  bnd_v3 cap = { 0, (local_direction.y >= 0 ? 1 : -1) * height * 0.5f, 0 };
   bnd_v3 p = bnd_v3_add(cap, bnd_v3_scale(local_direction, radius));
+
+  p = bnd_v3_rotate(p, rotation);
+  p = bnd_v3_add(p, center);
 
   return (support_point) { p, 0 };
 }
