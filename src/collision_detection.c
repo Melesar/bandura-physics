@@ -415,14 +415,14 @@ static count_t box_capsule_collision(bnd_world *world, const collision_detection
 
       bnd_v3 offsets[] = { bnd_v3_sub(local_caps[0], p), bnd_v3_sub(local_caps[1], p) };
       float *po[] = { (float*)&offsets[0], (float*)&offsets[1] };
-      float distances[] = { sign * po[0][axis_normal], sign * po[1][axis_normal] };
+      float signed_distances[] = {sign * po[0][axis_normal], sign * po[1][axis_normal] };
 
-      if (distances[0] > capsule_radius && distances[1] > capsule_radius) {
+      if (signed_distances[0] > capsule_radius && signed_distances[1] > capsule_radius) {
         // Both cylinder caps are above the face and further than the radius. Two shapes do not intersect.
         return 0;
       }
 
-      if (po[0][axis_normal] < -half_sizes[axis_normal] || po[1][axis_normal] < -half_sizes[axis_normal]) {
+      if (signed_distances[0] < -half_sizes[axis_normal] || signed_distances[1] < -half_sizes[axis_normal]) {
         // A cap is on the other side of the box
         sign = -1;
         continue;
@@ -435,7 +435,7 @@ static count_t box_capsule_collision(bnd_world *world, const collision_detection
       // Here it's used to detect if the capsule's axis passes through the face when projected on its plane.
       //
       // https://en.wikipedia.org/wiki/Cohen%E2%80%93Sutherland_algorithm
-      uint8_t outcodes[2];
+      uint8_t outcodes[2] = { 0 };
       for (count_t k = 0; k < 2; ++k) {
         if (po[k][axis_a] < 0) outcodes[k] |= QUAD_LEFT;
         else if (po[k][axis_a] > a_max) outcodes[k] |= QUAD_RIGHT;
@@ -453,7 +453,7 @@ static count_t box_capsule_collision(bnd_world *world, const collision_detection
 
       count_t contacts_count = 0;
       for (count_t k = 0; k < 2; ++k) {
-        if (distances[k] > capsule_radius) {
+        if (signed_distances[k] > capsule_radius) {
           continue;
         }
 
@@ -481,10 +481,10 @@ static count_t box_capsule_collision(bnd_world *world, const collision_detection
           float xmax = half_sizes[axis_a];
           float ymin = -half_sizes[axis_b];
           float ymax = half_sizes[axis_b];
-     			if (outcodes[k] & QUAD_TOP) {
-            pp[axis_a] =  + (x1 - x0) * (ymax - y0) / (y1 - y0);
+          if (outcodes[k] & QUAD_TOP) {
+            pp[axis_a] = x0 + (x1 - x0) * (ymax - y0) / (y1 - y0);
             pp[axis_b] = ymax;
-   			  } else if (outcodes[k] & QUAD_BOTTOM) {
+          } else if (outcodes[k] & QUAD_BOTTOM) {
             pp[axis_a] = x0 + (x1 - x0) * (ymin - y0) / (y1 - y0);
             pp[axis_b] = ymin;
           } else if (outcodes[k] & QUAD_RIGHT) {
@@ -506,7 +506,7 @@ static count_t box_capsule_collision(bnd_world *world, const collision_detection
 
         c->point = point;
         c->normal = normal;
-        c->depth = capsule_radius - distances[k];
+        c->depth = capsule_radius - signed_distances[k];
 
         contacts_count += 1;
       }
