@@ -16,6 +16,7 @@ char buffer[1024];
 bool *test_results;
 
 bnd_body_handle handles[2];
+int gizmo_ids[2];
 
 static const char *shape_name(bnd_body_shape shape) {
   switch (shape.type) {
@@ -38,6 +39,12 @@ static void update_pair(bnd_world *world) {
 
   bnd_set_rotation(world, handles[0], test_case->rotation_a);
   bnd_set_rotation(world, handles[1], test_case->rotation_b);
+
+  unregister_gizmo(gizmo_ids[0]);
+  unregister_gizmo(gizmo_ids[1]);
+
+  gizmo_ids[0] = register_gizmo(world, handles[0]);
+  gizmo_ids[1] = register_gizmo(world, handles[1]);
 
   prev_pair_index = pair_index;
   prev_case_index = case_index;
@@ -106,6 +113,14 @@ void scenario_build_ui(bnd_world *world) {
     count_t case_id = pair_index * tests->cases_per_pair + case_index;
     ui_label_v3("Position A", tests->cases[case_id].position_a);
     ui_label_v3("Position B", tests->cases[case_id].position_b);
+
+    if (ui_button("Normalize")) {
+      bnd_set_position(world, handles[0], bnd_v3_zero());
+      bnd_set_rotation(world, handles[0], bnd_quat_identity());
+
+      bnd_v3 body_b_position = bnd_v3_rotate(tests->cases[case_id].position_b, bnd_quat_invert(tests->cases[case_id].rotation_a));
+      bnd_set_position(world, handles[1], body_b_position);
+    }
   }
 
   ui_end_area();
