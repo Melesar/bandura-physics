@@ -14,7 +14,7 @@ typedef struct {
 } raycast_context;
 
 static bnd_ray ray_transform(bnd_ray r, bnd_v3 witness, bnd_quat rotation) {
-  bnd_quat inv_rotation = bnd_qinvert(rotation);
+  bnd_quat inv_rotation = bnd_quat_invert(rotation);
   r.origin = bnd_v3_rotate(bnd_v3_sub(r.origin, witness), inv_rotation);
   r.direction = bnd_v3_rotate(r.direction, inv_rotation);
 
@@ -303,7 +303,7 @@ static count_t overlap_typed(const bnd_world *world, bnd_v3 origin, float radius
   data->positions[ephemeral_index] = origin;
   data->aabbs[ephemeral_index] = (bnd_aabb){ origin, (bnd_v3){radius, radius, radius} };
 
-  bnd_body_shape ephemeral_shape = { BND_SPHERE, { .sphere = { radius } }, bnd_v3_zero(), bnd_qidentity() };
+  bnd_body_shape ephemeral_shape = { BND_SPHERE, { .sphere = { radius } }, bnd_v3_zero(), bnd_quat_identity() };
 
   count_t overlap_count = 0;
   simplex s = { 0 };

@@ -130,15 +130,15 @@ static inline bnd_v3 bnd_v3_max(bnd_v3 a, bnd_v3 b) {
   return (bnd_v3){fmaxf(a.x, b.x), fmaxf(a.y, b.y), fmaxf(a.z, b.z)};
 }
 
-static inline bnd_quat bnd_qadd(bnd_quat x, bnd_quat y) {
+static inline bnd_quat bnd_quat_add(bnd_quat x, bnd_quat y) {
   return (bnd_quat){x.x + y.x, x.y + y.y, x.z + y.z, x.w + y.w};
 }
 
-static inline bnd_quat bnd_qscale(bnd_quat x, float y) {
+static inline bnd_quat bnd_quat_scale(bnd_quat x, float y) {
   return (bnd_quat){x.x * y, x.y * y, x.z * y, x.w * y};
 }
 
-static inline bnd_quat bnd_qmul(bnd_quat x, bnd_quat y) {
+static inline bnd_quat bnd_quat_mul(bnd_quat x, bnd_quat y) {
   float qax = x.x, qay = x.y, qaz = x.z, qaw = x.w;
   float qbx = y.x, qby = y.y, qbz = y.z, qbw = y.w;
 
@@ -151,17 +151,17 @@ static inline bnd_quat bnd_qmul(bnd_quat x, bnd_quat y) {
   return result;
 }
 
-static inline bnd_quat bnd_qnormalize(bnd_quat x) {
+static inline bnd_quat bnd_quat_normalize(bnd_quat x) {
   float length = sqrtf(x.x * x.x + x.y * x.y + x.z * x.z + x.w * x.w);
   if (length == 0.0f) {
     length = 1.0f;
   }
   float ilength = 1.0f / length;
 
-  return bnd_qscale(x, ilength);
+  return bnd_quat_scale(x, ilength);
 }
 
-static inline bnd_quat bnd_qinvert(bnd_quat x) {
+static inline bnd_quat bnd_quat_invert(bnd_quat x) {
   bnd_quat result = x;
   float lengthSq = x.x * x.x + x.y * x.y + x.z * x.z + x.w * x.w;
 
@@ -177,7 +177,7 @@ static inline bnd_quat bnd_qinvert(bnd_quat x) {
   return result;
 }
 
-static inline bnd_quat bnd_qidentity() {
+static inline bnd_quat bnd_quat_identity() {
   return (bnd_quat){0, 0, 0, 1};
 }
 

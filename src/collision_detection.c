@@ -57,15 +57,15 @@ bnd_v3 body_center(const shape_context *ctx) {
 }
 
 bnd_quat body_a_rotation(const collision_detection_context *ctx) {
-  return bnd_qmul(ctx->data_a->rotations[ctx->body_a], ctx->shape_a.rotation);
+  return bnd_quat_mul(ctx->data_a->rotations[ctx->body_a], ctx->shape_a.rotation);
 }
 
 bnd_quat body_b_rotation(const collision_detection_context *ctx) {
-  return bnd_qmul(ctx->data_b->rotations[ctx->body_b], ctx->shape_b.rotation);
+  return bnd_quat_mul(ctx->data_b->rotations[ctx->body_b], ctx->shape_b.rotation);
 }
 
 bnd_quat body_rotation(const shape_context *ctx) {
-  return bnd_qmul(ctx->data->rotations[ctx->index], ctx->shape.rotation);
+  return bnd_quat_mul(ctx->data->rotations[ctx->index], ctx->shape.rotation);
 }
 
 bool aabb_intersect(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b) {
@@ -97,7 +97,7 @@ static support_point sphere_support(const shape_context *ctx, bnd_v3 direction) 
 static support_point box_support(const shape_context *ctx, bnd_v3 direction) {
   bnd_v3 center = body_center(ctx);
   bnd_quat rotation = body_rotation(ctx);
-  bnd_quat inv_rotation = bnd_qinvert(rotation);
+  bnd_quat inv_rotation = bnd_quat_invert(rotation);
 
   bnd_v3 local_direction = bnd_v3_normalize(bnd_v3_rotate(direction, inv_rotation));
   bnd_v3 v = (bnd_v3) {
@@ -125,7 +125,7 @@ static support_point box_support(const shape_context *ctx, bnd_v3 direction) {
 static support_point capsule_support(const shape_context *ctx, bnd_v3 direction) {
   bnd_v3 center = body_center(ctx);
   bnd_quat rotation = body_rotation(ctx);
-  bnd_quat inv_rotation = bnd_qinvert(rotation);
+  bnd_quat inv_rotation = bnd_quat_invert(rotation);
 
   bnd_v3 local_direction = bnd_v3_normalize(bnd_v3_rotate(direction, inv_rotation));
 
@@ -147,7 +147,7 @@ static support_point mesh_support(const shape_context *ctx, bnd_v3 direction) {
 
   bnd_quat rotation = body_rotation(ctx);
   bnd_v3 position = body_center(ctx);
-  bnd_v3 local_direction = bnd_v3_rotate(direction, bnd_qinvert(rotation));
+  bnd_v3 local_direction = bnd_v3_rotate(direction, bnd_quat_invert(rotation));
 
   bnd_mesh mesh = meshes->meshes[mesh_handle];
   count_t submesh_start = mesh.submesh_offset;
@@ -229,7 +229,7 @@ static count_t sphere_sphere_collision(bnd_world *world, const collision_detecti
 static count_t capsule_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
   bnd_v3 capsule_center = body_a_center(ctx);
   bnd_quat capsule_rotation = body_a_rotation(ctx);
-  bnd_quat capsule_inv_rotation = bnd_qinvert(capsule_rotation);
+  bnd_quat capsule_inv_rotation = bnd_quat_invert(capsule_rotation);
   float capsule_radius = ctx->shape_a.value.capsule.radius;
   float capsule_half_height = ctx->shape_a.value.capsule.height * 0.5;
 
@@ -318,8 +318,8 @@ static count_t capsule_sphere_collision(bnd_world *world, const collision_detect
 static count_t box_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
   bnd_v3 half_extents = bnd_v3_scale(ctx->shape_a.value.box.size, 0.5);
   bnd_v3 box_center = body_a_center(ctx);
-  bnd_quat box_rotation = bnd_qmul(ctx->data_a->rotations[ctx->body_a], ctx->shape_a.rotation);
-  bnd_quat inv_box_rotation = bnd_qinvert(box_rotation);
+  bnd_quat box_rotation = bnd_quat_mul(ctx->data_a->rotations[ctx->body_a], ctx->shape_a.rotation);
+  bnd_quat inv_box_rotation = bnd_quat_invert(box_rotation);
 
   bnd_v3 sphere_center = bnd_v3_add(ctx->data_b->positions[ctx->body_b], ctx->shape_b.offset);
   bnd_v3 local_sphere_center = bnd_v3_rotate(bnd_v3_sub(sphere_center, box_center), inv_box_rotation);
@@ -382,7 +382,7 @@ static count_t box_sphere_collision(bnd_world *world, const collision_detection_
 static count_t box_capsule_collision(bnd_world *world, const collision_detection_context *ctx) {
   bnd_v3 box_half_size = bnd_v3_scale(ctx->shape_a.value.box.size, 0.5);
   bnd_quat box_rotation = body_a_rotation(ctx);
-  bnd_quat inv_box_rotation = bnd_qinvert(box_rotation);
+  bnd_quat inv_box_rotation = bnd_quat_invert(box_rotation);
 
   bnd_v3 capsule_center = body_b_center(ctx);
   float capsule_height = ctx->shape_b.value.capsule.height;
@@ -597,7 +597,7 @@ static count_t capsule_plane_collision(bnd_world *world, const collision_detecti
   float capsule_radius = ctx->shape_a.value.capsule.radius;
   float capsule_height = ctx->shape_a.value.capsule.height;
 
-  bnd_quat capsule_rotation = bnd_qmul(ctx->data_a->rotations[ctx->body_a], ctx->shape_a.rotation);
+  bnd_quat capsule_rotation = bnd_quat_mul(ctx->data_a->rotations[ctx->body_a], ctx->shape_a.rotation);
   bnd_v3 capsule_axis = bnd_v3_rotate(bnd_v3_up(), capsule_rotation);
   bnd_v3 cap_top = bnd_v3_add(capsule_center, bnd_v3_scale(capsule_axis, capsule_height * 0.5));
   bnd_v3 cap_bottom = bnd_v3_add(capsule_center, bnd_v3_scale(capsule_axis, -capsule_height * 0.5));
@@ -635,8 +635,8 @@ static count_t mesh_plane_collision(bnd_world *world, const collision_detection_
   bnd_v3 plane_normal = ctx->shape_b.value.plane.normal;
 
   bnd_v3 mesh_center = body_a_center(ctx);
-  bnd_quat mesh_rotation = bnd_qmul(ctx->data_a->rotations[ctx->body_a], ctx->shape_a.rotation);
-  bnd_quat inv_mesh_rotation = bnd_qinvert(mesh_rotation);
+  bnd_quat mesh_rotation = bnd_quat_mul(ctx->data_a->rotations[ctx->body_a], ctx->shape_a.rotation);
+  bnd_quat inv_mesh_rotation = bnd_quat_invert(mesh_rotation);
 
   bnd_v3 local_normal = bnd_v3_rotate(plane_normal, inv_mesh_rotation);
   bnd_v3 local_point = bnd_v3_rotate(bnd_v3_sub(plane_point, mesh_center), inv_mesh_rotation);

@@ -164,8 +164,8 @@ static void resolve_interpenetration_contact(bnd_world *world, count_t contact_i
 
     bnd_v3 rotation_delta = deltas[2 * k + 1];
     bnd_quat q_omega = {rotation_delta.x, rotation_delta.y, rotation_delta.z, 0};
-    bnd_quat dq = bnd_qscale(bnd_qmul(q_omega, rotation[k]), 0.5);
-    world->dynamics.rotations[body_index] = bnd_qnormalize(bnd_qadd(rotation[k], dq));
+    bnd_quat dq = bnd_quat_scale(bnd_quat_mul(q_omega, rotation[k]), 0.5);
+    world->dynamics.rotations[body_index] = bnd_quat_normalize(bnd_quat_add(rotation[k], dq));
 
     world->dynamics.inv_intertias[body_index] = bnd_m3_inertia(world->dynamics.inv_inertia_tensors[body_index], world->dynamics.rotations[body_index]);
   }

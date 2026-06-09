@@ -24,9 +24,9 @@ void scenario_setup_scene(bnd_world *world) {
 
   bnd_body_shape ramp_shapes[] = {
       (bnd_body_shape){
-        .type = BND_BOX, .value.box = {.size = (bnd_v3){1, 10, 1}}, .offset = (bnd_v3){0, 5, 0}, .rotation = bnd_qidentity()},
+        .type = BND_BOX, .value.box = {.size = (bnd_v3){1, 10, 1}}, .offset = (bnd_v3){0, 5, 0}, .rotation = bnd_quat_identity()},
       (bnd_body_shape){
-        .type = BND_BOX, .value.box = {.size = (bnd_v3){3, 1, 1}}, .offset = (bnd_v3){1, 10, 0}, .rotation = bnd_qidentity()},
+        .type = BND_BOX, .value.box = {.size = (bnd_v3){3, 1, 1}}, .offset = (bnd_v3){1, 10, 0}, .rotation = bnd_quat_identity()},
   };
 
   bnd_body_handle ramp = bnd_add_compound_body_static(world, ramp_shapes, 2).value;

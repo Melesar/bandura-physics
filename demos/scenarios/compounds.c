@@ -21,7 +21,7 @@ void scenario_setup_scene(bnd_world *world) {
     (bnd_body_shape){ .type = BND_BOX,
       .value = { .box = { .size = (bnd_v3){ .x = 0.3, .y = 3, .z = 0.3 } } },
       .offset = bnd_v3_zero(),
-      .rotation = bnd_qidentity() },
+      .rotation = bnd_quat_identity() },
     (bnd_body_shape){ .type = BND_CAPSULE,
       .value = { .capsule = { .height = 2, .radius = 0.5 } },
       .offset = (bnd_v3){ .x = 0, .y = 1.75, .z = 0 },
@@ -39,12 +39,12 @@ void scenario_setup_scene(bnd_world *world) {
     .offset = bnd_v3_zero(),
     .rotation = QuaternionFromEuler(PI * 0.5, 0, 0) };
   shapes[1] = (bnd_body_shape){
-    .type = BND_SPHERE, .value = { .sphere = { .radius = 0.7 } }, .offset = (bnd_v3){ .x = 0, .y = 0, .z = 1.5 }, .rotation = bnd_qidentity()
+    .type = BND_SPHERE, .value = { .sphere = { .radius = 0.7 } }, .offset = (bnd_v3){ .x = 0, .y = 0, .z = 1.5 }, .rotation = bnd_quat_identity()
   };
   shapes[2] = (bnd_body_shape){ .type = BND_SPHERE,
     .value = { .sphere = { .radius = 0.7 } },
     .offset = (bnd_v3){ .x = 0, .y = 0, .z = -1.5 },
-    .rotation = bnd_qidentity() };
+    .rotation = bnd_quat_identity() };
 
   masses[0] = 3;
   masses[1] = 5;

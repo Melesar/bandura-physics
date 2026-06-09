@@ -170,13 +170,13 @@ bnd_quat integrate_rotation_midpoint(bnd_quat rotation, bnd_v3 angular_momentum,
   bnd_quat half_step;
   if (half_angle < 1e-6f) {
     half_step = (bnd_quat){ omega.x * qdt, omega.y * qdt, omega.z * qdt, 1.0f };
-    half_step = bnd_qnormalize(half_step);
+    half_step = bnd_quat_normalize(half_step);
   } else {
     float scale_factor = sinf(half_angle) / bnd_v3_len(omega);
     half_step = (bnd_quat){ omega.x * scale_factor, omega.y * scale_factor, omega.z * scale_factor, cosf(half_angle) };
   }
 
-  bnd_quat mid_rotation = bnd_qnormalize(bnd_qmul(half_step, rotation));
+  bnd_quat mid_rotation = bnd_quat_normalize(bnd_quat_mul(half_step, rotation));
 
   inv_inertia = bnd_m3_inertia(base_inv_inertia, mid_rotation);
   omega = bnd_m3_rotate(angular_momentum, inv_inertia);
@@ -184,14 +184,14 @@ bnd_quat integrate_rotation_midpoint(bnd_quat rotation, bnd_v3 angular_momentum,
   float angle = bnd_v3_len(omega) * hdt;
   if (angle < 1e-6f) {
     bnd_quat step = (bnd_quat){ omega.x * hdt, omega.y * hdt, omega.z * hdt, 1.0f };
-    step = bnd_qnormalize(step);
-    return bnd_qnormalize(bnd_qmul(step, rotation));
+    step = bnd_quat_normalize(step);
+    return bnd_quat_normalize(bnd_quat_mul(step, rotation));
   }
 
   float scale_factor = sinf(angle) / bnd_v3_len(omega);
   bnd_quat step = (bnd_quat){ omega.x * scale_factor, omega.y * scale_factor, omega.z * scale_factor, cosf(angle) };
 
-  return bnd_qnormalize(bnd_qmul(step, rotation));
+  return bnd_quat_normalize(bnd_quat_mul(step, rotation));
 }
 
 float distance_to_line_segment(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 *closest) {
