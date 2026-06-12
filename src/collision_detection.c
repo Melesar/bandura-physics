@@ -380,6 +380,7 @@ static count_t box_sphere_collision(bnd_world *world, const collision_detection_
 }
 
 static count_t box_capsule_collision(bnd_world *world, const collision_detection_context *ctx) {
+  bnd_v3 box_center = body_a_center(ctx);
   bnd_v3 box_half_size = bnd_v3_scale(ctx->shape_a.value.box.size, 0.5);
   bnd_quat box_rotation = body_a_rotation(ctx);
   bnd_quat inv_box_rotation = bnd_quat_invert(box_rotation);
@@ -394,6 +395,7 @@ static count_t box_capsule_collision(bnd_world *world, const collision_detection
     bnd_v3 cap = { 0, (i == 0 ? 1 : -1) * 0.5 * capsule_height, 0 };
     cap = bnd_v3_rotate(cap, capsule_rotation);
     cap = bnd_v3_add(cap, capsule_center);
+    cap = bnd_v3_sub(cap, box_center);
     cap = bnd_v3_rotate(cap, inv_box_rotation);
 
     local_caps[i] = cap;
@@ -449,7 +451,6 @@ static count_t box_capsule_collision(bnd_world *world, const collision_detection
         continue;
       }
 
-      bnd_v3 box_center = body_a_center(ctx);
 
       count_t contacts_count = 0;
       for (count_t k = 0; k < 2; ++k) {
