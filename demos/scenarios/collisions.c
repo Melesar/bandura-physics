@@ -80,7 +80,8 @@ void scenario_setup_scene(bnd_world *world) {
     }
   }
 
-  pair_index = case_index = 0;
+  pair_index = 3;
+  case_index = 0;
   update_pair(world);
 }
 
@@ -102,6 +103,7 @@ void scenario_handle_input(bnd_world *world, Camera *cam) {
 }
 
 void scenario_draw_scene(bnd_world *world) {
+
 }
 
 void scenario_build_ui(bnd_world *world) {
@@ -111,15 +113,24 @@ void scenario_build_ui(bnd_world *world) {
 
   if (pair_index < tests->num_pairs || case_index < tests->cases_per_pair) {
     count_t case_id = pair_index * tests->cases_per_pair + case_index;
-    ui_label_v3("Position A", tests->cases[case_id].position_a);
-    ui_label_v3("Position B", tests->cases[case_id].position_b);
+    collision_test_case test_case = tests->cases[case_id];
+
+    ui_label_v3("Position A", test_case.position_a);
+    ui_label_v3("Position B", test_case.position_b);
 
     if (ui_button("Normalize")) {
+      bnd_quat inv_rotation_a = bnd_quat_invert(test_case.rotation_a);
+
+      bnd_v3 pos = bnd_v3_sub(test_case.position_b, test_case.position_a);
+      pos = bnd_v3_rotate(pos, inv_rotation_a);
+
+      bnd_quat rot = bnd_quat_mul(inv_rotation_a, test_case.rotation_b);
+
       bnd_set_position(world, handles[0], bnd_v3_zero());
       bnd_set_rotation(world, handles[0], bnd_quat_identity());
 
-      bnd_v3 body_b_position = bnd_v3_rotate(tests->cases[case_id].position_b, bnd_quat_invert(tests->cases[case_id].rotation_a));
-      bnd_set_position(world, handles[1], body_b_position);
+      bnd_set_position(world, handles[1], pos);
+      bnd_set_rotation(world, handles[1], rot);
     }
   }
 
@@ -176,6 +187,33 @@ void scenario_build_ui(bnd_world *world) {
       }
     }
   }
+
+  if (pair_index != 3) {
+    ui_end_area();
+    return;
+  }
+
+  bnd_body_shape shape;
+  bnd_get_shapes(world, handles[1], &shape, 1);
+
+  if (shape.type != BND_CAPSULE) {
+    ui_end_area();
+    return;
+  }
+
+  int sign = 1;
+  bnd_v3 caps[2];
+  for (count_t i = 0; i < 2; ++i) {
+    caps[i] = (bnd_v3) { 0, 0.5 * sign * shape.value.capsule.height, 0 };
+    caps[i] = bnd_v3_rotate(caps[i], bnd_get_rotation(world, handles[1]).value);
+    caps[i] = bnd_v3_add(caps[i], bnd_get_position(world, handles[1]).value);
+
+    sign = -1;
+  }
+
+  ui_label("Capsule caps:");
+  ui_label_v3("", caps[0]);
+  ui_label_v3("", caps[1]);
 
   ui_end_area();
 }

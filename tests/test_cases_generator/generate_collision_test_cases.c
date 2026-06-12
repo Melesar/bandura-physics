@@ -153,11 +153,13 @@ ccd_quat_t random_orinetation() {
   return q;
 }
 
-int generate_test_cases(generator_state *state, int num_cases, float r_min, float r_max) {
+int generate_test_cases(generator_state *state, int num_cases, float r_a, float r_min, float r_max) {
   for (int i = 0; i < ROLLS_COUNT; ++i) {
     float r = r_min + (float)rand() / RAND_MAX * (r_max - r_min);
 
+    state->a->position = random_position(r_a);
     state->b->position = random_position(r);
+    ccdVec3Add(&state->b->position, &state->a->position);
 
     state->a->orientation = random_orinetation();
     state->b->orientation = random_orinetation();
@@ -263,13 +265,13 @@ void generate_cases_for_bodies(generator_state *state) {
   int num_cases = 0;
 
   float no_collision_radius = bbr_a + bbr_b;
-  num_cases += generate_test_cases(state, num_cases, no_collision_radius + 0.1f, no_collision_radius + 10.0f);
+  num_cases += generate_test_cases(state, num_cases, bbr_a, no_collision_radius + 0.1f, no_collision_radius + 10.0f);
 
   float some_collisions_radius = bbr_a + 0.5 * bbr_b;
-  num_cases += generate_test_cases(state, num_cases, some_collisions_radius, no_collision_radius);
+  num_cases += generate_test_cases(state, num_cases, bbr_a, some_collisions_radius, no_collision_radius);
 
   float all_collisions_radius = bbr_a;
-  num_cases += generate_test_cases(state, num_cases, all_collisions_radius, some_collisions_radius);
+  num_cases += generate_test_cases(state, num_cases, bbr_a, all_collisions_radius, some_collisions_radius);
 
   state->num_pairs += 1;
 }

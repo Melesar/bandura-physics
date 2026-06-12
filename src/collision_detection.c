@@ -391,9 +391,17 @@ static count_t box_capsule_collision(bnd_world *world, const collision_detection
   float capsule_radius = ctx->shape_b.value.capsule.radius;
   bnd_quat capsule_rotation = body_b_rotation(ctx);
 
-  bnd_v3 local_caps[2];
-  for (count_t i = 0; i < 2; ++i) {
-    bnd_v3 cap = { 0, (i == 0 ? 1 : -1) * 0.5 * capsule_height, 0 };
+  bnd_v3 local_caps[] = {
+    // Cap bases
+    { 0, 0.5 * capsule_height, 0},
+    { 0, -0.5 * capsule_height, 0},
+
+    // Cap ends
+    { 0, 0.5 * capsule_height + capsule_radius, 0},
+    { 0, -0.5 * capsule_height - capsule_radius, 0},
+  };
+  for (count_t i = 0; i < 4; ++i) {
+    bnd_v3 cap = local_caps[i];
     cap = bnd_v3_rotate(cap, capsule_rotation);
     cap = bnd_v3_add(cap, capsule_center);
     cap = bnd_v3_sub(cap, box_center);
@@ -416,9 +424,16 @@ static count_t box_capsule_collision(bnd_world *world, const collision_detection
     for (count_t i = 0; i < 2; ++i) {
       pp[axis_normal] = sign * half_sizes[axis_normal];
 
-      bnd_v3 offsets[] = { bnd_v3_sub(local_caps[0], p), bnd_v3_sub(local_caps[1], p) };
-      float *po[] = { (float*)&offsets[0], (float*)&offsets[1] };
-      float signed_distances[] = {sign * po[0][axis_normal], sign * po[1][axis_normal] };
+      bnd_v3 offsets[4];
+      float *po[4];
+      float *pcaps[4];
+      float signed_distances[4];
+      for (count_t k = 0; k < 4; ++k) {
+        offsets[k] = bnd_v3_sub(local_caps[k], p);
+        po[k] = (float*)&offsets[k];
+        pcaps[k] = (float*)&local_caps[k];
+        signed_distances[k] = sign * po[k][axis_normal];
+      }
 
       if (signed_distances[0] > capsule_radius && signed_distances[1] > capsule_radius) {
         // Both cylinder caps are above the face and further than the radius. Two shapes do not intersect.
@@ -438,20 +453,19 @@ static count_t box_capsule_collision(bnd_world *world, const collision_detection
       // Here it's used to detect if the capsule's axis passes through the face when projected on its plane.
       //
       // https://en.wikipedia.org/wiki/Cohen%E2%80%93Sutherland_algorithm
-      uint8_t outcodes[2] = { 0 };
-      for (count_t k = 0; k < 2; ++k) {
+      uint8_t outcodes[4] = { 0 };
+      for (count_t k = 0; k < 4; ++k) {
         if (po[k][axis_a] < 0) outcodes[k] |= QUAD_LEFT;
         else if (po[k][axis_a] > a_max) outcodes[k] |= QUAD_RIGHT;
         if (po[k][axis_b] < 0) outcodes[k] |= QUAD_BOTTOM;
         else if (po[k][axis_b] > b_max) outcodes[k] |= QUAD_TOP;
       }
 
-      if (outcodes[0] & outcodes[1]) {
+      if (outcodes[2] & outcodes[3]) {
         // The capsule misses the box's face.
         sign = -1;
         continue;
       }
-
 
       count_t contacts_count = 0;
       for (count_t k = 0; k < 2; ++k) {
@@ -468,8 +482,10 @@ static count_t box_capsule_collision(bnd_world *world, const collision_detection
         pp = (float*)&point;
         pp[axis_normal] = sign * half_sizes[axis_normal];
 
-        float *pcaps[] = { (float*)&local_caps[0], (float*)&local_caps[1] };
-        if (outcodes[k] == 0) {
+        if (outcodes[0] & outcodes[1]) {
+          pp[axis_a] = fminf(fmaxf(pcaps[k + 2][axis_a], 0), a_max);
+          pp[axis_b] = fminf(fmaxf(pcaps[k + 2][axis_b], 0), b_max);
+        } else if (outcodes[k] == 0) {
           // Capsule's cap projection is inside the face.
           pp[axis_a] = pcaps[k][axis_a];
           pp[axis_b] = pcaps[k][axis_b];
