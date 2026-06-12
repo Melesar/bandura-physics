@@ -199,6 +199,7 @@ static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allo
 
   world->dynamics.awake_count = 0;
   world->generation = 0;
+  world->age = 0;
 
   INVOKE(contacts_init(world))
   INVOKE(joints_init(world))

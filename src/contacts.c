@@ -65,6 +65,7 @@ bnd_error contacts_init(bnd_world *world) {
   contacts->dynamic_count = 0;
 
   collision_detection_init(world);
+  PROPAGATE_ERROR(contacts_cache_init(world));
 
   return OK;
 }
@@ -111,4 +112,13 @@ contact *contacts_new_default(bnd_world *world, count_t body_a, count_t body_b) 
   c->restitution = world->config.simulation.bounciness;
 
   return c;
+}
+
+bnd_error contacts_cache_init(bnd_world *world) {
+
+  return OK;
+}
+
+count_t contacts_cache_spawn_and_update(bnd_world *world, count_t first, count_t count) {
+  return 0;
 }

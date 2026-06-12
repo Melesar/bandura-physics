@@ -979,6 +979,8 @@ void bnd_simulate(bnd_world *world, float dt) {
     contacts_resolve(world, dt);
     update_awake_statuses(world, dt);
     clear_forces(world);
+
+    world->age += 1;
   }
 
 #ifdef BND_PROFILING

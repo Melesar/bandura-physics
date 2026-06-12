@@ -80,6 +80,10 @@ typedef struct {
 } joints;
 
 typedef struct {
+
+} contacts_cache;
+
+typedef struct {
   contact *values;
 
   count_t capacity;
@@ -228,6 +232,7 @@ struct bnd_world_t {
   joints joints;
   mesh_storage meshes;
   events_storage events;
+  contacts_cache contacts_cache;
 
   shapes_bracket shape_brackets[BRACKET_COUNT];
 
@@ -236,6 +241,7 @@ struct bnd_world_t {
   bnd_allocator allocator;
 
   count_t generation;
+  count_t age;
 };
 
 typedef struct {
@@ -301,6 +307,9 @@ bnd_error contacts_ensure_capacity(bnd_world *world, count_t additional_count);
 contact *contacts_new_default(bnd_world *world, count_t body_a, count_t body_b);
 void contacts_generate(bnd_world *world);
 void contacts_resolve(bnd_world *world, float dt);
+
+bnd_error contacts_cache_init(bnd_world *world);
+count_t contacts_cache_spawn_and_update(bnd_world *world, count_t first, count_t count);
 
 void collision_detection_init(bnd_world *world);
 count_t collisions_detect_dynamic(bnd_world *world);
