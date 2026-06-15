@@ -425,16 +425,16 @@ static void epa_calculate_contact(const polytope *polytope, contact *contact) {
   uint16_t *edge_verts_1 = polytope->nodes[e1].value.edge.verticies;
   uint16_t *edge_verts_2 = polytope->nodes[e2].value.edge.verticies;
 
-  body_support v1 = polytope->nodes[edge_verts_1[0]].value.vertex.v;
-  body_support v2 = polytope->nodes[edge_verts_1[1]].value.vertex.v;
+  body_support v0 = polytope->nodes[edge_verts_1[0]].value.vertex.v;
+  body_support v1 = polytope->nodes[edge_verts_1[1]].value.vertex.v;
 
-  body_support vv3 = edge_verts_2[1] != edge_verts_1[1] && edge_verts_2[1] != edge_verts_1[0]
+  body_support v2 = edge_verts_2[1] != edge_verts_1[1] && edge_verts_2[1] != edge_verts_1[0]
     ? polytope->nodes[edge_verts_2[1]].value.vertex.v
     : polytope->nodes[edge_verts_2[0]].value.vertex.v;
 
-  bnd_v3 barycenter = bnd_v3_barycentric(bnd_v3_zero(), v1.p, v2.p, vv3.p);
-  bnd_v3 p1 = bnd_v3_add(bnd_v3_scale(v1.p1.point, barycenter.x), bnd_v3_add(bnd_v3_scale(v2.p1.point, barycenter.y), bnd_v3_scale(vv3.p1.point, barycenter.z)));
-  bnd_v3 p2 = bnd_v3_add(bnd_v3_scale(v1.p2.point, barycenter.x), bnd_v3_add(bnd_v3_scale(v2.p2.point, barycenter.y), bnd_v3_scale(vv3.p2.point, barycenter.z)));
+  bnd_v3 barycenter = bnd_v3_barycentric(bnd_v3_zero(), v0.p, v1.p, v2.p);
+  bnd_v3 p1 = bnd_v3_add(bnd_v3_scale(v0.p1.point, barycenter.x), bnd_v3_add(bnd_v3_scale(v1.p1.point, barycenter.y), bnd_v3_scale(v2.p1.point, barycenter.z)));
+  bnd_v3 p2 = bnd_v3_add(bnd_v3_scale(v0.p2.point, barycenter.x), bnd_v3_add(bnd_v3_scale(v1.p2.point, barycenter.y), bnd_v3_scale(v2.p2.point, barycenter.z)));
 
   contact->point = bnd_v3_scale(bnd_v3_add(p1, p2), 0.5);
   contact->depth = sqrt(node.value.face.distance);
@@ -445,8 +445,15 @@ static void epa_calculate_contact(const polytope *polytope, contact *contact) {
   } else {
     contact->normal = bnd_v3_up();
   }
-}
 
+  contact->features.body_a[0] = v0.p1.id;
+  contact->features.body_a[1] = v1.p1.id;
+  contact->features.body_a[2] = v2.p1.id;
+
+  contact->features.body_b[0] = v0.p2.id;
+  contact->features.body_b[1] = v1.p2.id;
+  contact->features.body_b[2] = v2.p2.id;
+}
 
 void epa_get_final_points(bnd_v3 *points) {
   const polytope_node *node = &pt->nodes[pt->nearest];

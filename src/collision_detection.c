@@ -721,7 +721,7 @@ static count_t polytope_polytope_collision(bnd_world *world, const collision_det
   return 1;
 }
 
-static count_t collisions_detect(bnd_world *world, const common_data *data_b, bool loop_all) {
+static count_t collisions_detect(bnd_world *world, const common_data *data_b, bool is_dynamic) {
   const common_data *dynamics = (common_data *)&world->dynamics;
 
   collision_detection_context ctx = {
@@ -733,7 +733,7 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
   count_t count = 0;
 
   for (count_t i = 0; i < dynamics->count; ++i) {
-    count_t until = loop_all ? data_b->count : i;
+    count_t until = is_dynamic ? i : data_b->count;
     for (count_t j = 0; j < until; ++j) {
       if (!aabb_intersect(dynamics, data_b, i, j)) {
         continue;
@@ -774,7 +774,7 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
           }
 
           if (entry.use_cache) {
-            new_contacts += contacts_cache_spawn_and_update(world, world->contacts.count - new_contacts, new_contacts);
+            new_contacts += contacts_cache_spawn_and_update(world, world->contacts.count - new_contacts, new_contacts, is_dynamic);
           }
 
           count += new_contacts;
@@ -788,12 +788,12 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
 
 count_t collisions_detect_dynamic(bnd_world *world) {
   const common_data *dynamics = (common_data *)&world->dynamics;
-  return collisions_detect(world, dynamics, false);
+  return collisions_detect(world, dynamics, true);
 }
 
 void collisions_detect_static(bnd_world *world) {
   const common_data *statics = (common_data *)&world->statics;
-  collisions_detect(world, statics, true);
+  collisions_detect(world, statics, false);
 }
 
 void collision_detection_init(bnd_world *world) {

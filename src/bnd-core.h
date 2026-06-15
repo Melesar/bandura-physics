@@ -56,11 +56,17 @@
 typedef uint32_t count_t;
 
 typedef struct {
+  uint16_t body_a[3];
+  uint16_t body_b[3];
+} contact_features;
+
+typedef struct {
   bnd_v3 point;
   bnd_v3 normal;
   float depth;
   count_t index_a, index_b;
   float friction, restitution;
+  contact_features features;
 
   bnd_m3 basis;
   bnd_v3 relative_position[2];
@@ -79,7 +85,24 @@ typedef struct {
   count_t dynamic_count;
 } joints;
 
+typedef struct cache_entry cache_entry;
+
+struct cache_entry {
+  cache_entry *next_free;
+  cache_entry *prev_free;
+
+  contact_features features;
+  count_t age;
+};
+
 typedef struct {
+  count_t *hash_table;
+  count_t hash_table_capacity;
+
+  cache_entry *first_free_entry;
+  cache_entry *entries;
+  count_t entry_count;
+  count_t buffer_capacity;
 
 } contacts_cache;
 
@@ -309,7 +332,7 @@ void contacts_generate(bnd_world *world);
 void contacts_resolve(bnd_world *world, float dt);
 
 bnd_error contacts_cache_init(bnd_world *world);
-count_t contacts_cache_spawn_and_update(bnd_world *world, count_t first, count_t count);
+count_t contacts_cache_spawn_and_update(bnd_world *world, count_t first, count_t count, bool is_dynamic);
 
 void collision_detection_init(bnd_world *world);
 count_t collisions_detect_dynamic(bnd_world *world);

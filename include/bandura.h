@@ -194,6 +194,11 @@ typedef struct {
 } bnd_config_simulation;
 
 typedef struct {
+  uint32_t hash_table_capacity;
+  uint32_t buffer_capacity;
+} bnd_config_contacts_cache;
+
+typedef struct {
   uint32_t epa_max_nodes;
   uint32_t shapes_brackets_capacity[5];
   uint32_t max_gjk_iterations;
@@ -201,6 +206,7 @@ typedef struct {
   uint32_t resolution_attempts_factor;
   float penetration_epsilon;
   float velocity_epsilon;
+  bnd_config_contacts_cache contacts_cache;
 } bnd_config_advanced;
 
 typedef struct {

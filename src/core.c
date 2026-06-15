@@ -166,6 +166,10 @@ bnd_config bnd_default_config() {
       .penetration_epsilon = 0.01,
       .velocity_epsilon = 0.01,
       .shapes_brackets_capacity = {64, 1, 1, 1, 1},
+      .contacts_cache = {
+        .hash_table_capacity = 256,
+        .buffer_capacity = 64,
+      }
     },
   };
 }
