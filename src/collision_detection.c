@@ -483,8 +483,8 @@ static count_t box_capsule_collision(bnd_world *world, const collision_detection
         pp[axis_normal] = sign * half_sizes[axis_normal];
 
         if (outcodes[0] & outcodes[1]) {
-          pp[axis_a] = fminf(fmaxf(pcaps[k + 2][axis_a], 0), a_max);
-          pp[axis_b] = fminf(fmaxf(pcaps[k + 2][axis_b], 0), b_max);
+          pp[axis_a] = fminf(fmaxf(pcaps[k + 2][axis_a], -half_sizes[axis_a]), half_sizes[axis_a]);
+          pp[axis_b] = fminf(fmaxf(pcaps[k + 2][axis_b], -half_sizes[axis_b]), half_sizes[axis_b]);
         } else if (outcodes[k] == 0) {
           // Capsule's cap projection is inside the face.
           pp[axis_a] = pcaps[k][axis_a];
