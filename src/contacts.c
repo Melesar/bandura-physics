@@ -35,13 +35,31 @@ static void emit_collision_events(bnd_world *world, bnd_body_type type, count_t 
 }
 
 static uint64_t cache_key_make(bnd_world *world, contact *c, bool is_dynamic) {
-  uint64_t key = (is_dynamic ? (1ULL << 63) : 0);
-  uint64_t index_a = (uint64_t) world->dynamics.inner_lookup[c->index_a];
-  uint64_t index_b = (uint64_t) as_common(world, is_dynamic ? BND_BODY_DYNAMIC : BND_BODY_STATIC)->inner_lookup[c->index_b];
+  const common_data *data_a = as_common_const(world, BND_BODY_DYNAMIC);
+  const common_data *data_b = as_common_const(world, is_dynamic ? BND_BODY_DYNAMIC : BND_BODY_STATIC);
 
-  const uint64_t mask_30bit = 0x3FFFFFFF;
-  key |= (index_a & mask_30bit) << 30;
-  key |= index_b & mask_30bit;
+  uint64_t index_a = (uint64_t) data_a->inner_lookup[c->index_a];
+  uint64_t index_b = (uint64_t) data_b->inner_lookup[c->index_b];
+  uint64_t gen_a = data_a->generations[index_a];
+  uint64_t gen_b = data_b->generations[index_b];
+
+  if (index_a > index_b) {
+    uint64_t tmp = index_a;
+    index_a = index_b;
+    index_b = tmp;
+
+    tmp = gen_a;
+    gen_a = gen_b;
+    gen_b = tmp;
+  }
+
+  const uint64_t mask_23bit = 0x7FFFFF;
+
+  uint64_t key = (uint64_t)is_dynamic << 62;
+  key |= gen_a << 53;
+  key |= (index_a & mask_23bit) << 31;
+  key |= gen_b << 23;
+  key |= index_b & mask_23bit;
 
   return key;
 }
@@ -54,7 +72,7 @@ static inline uint64_t cache_key_hash(uint64_t key) {
   return key;
 }
 
-static bnd_error cache_table_insert(bnd_world *world, uint64_t hash, const contact *c, count_t *buffer_index) {
+static bnd_error cache_table_realloc_if_needed(bnd_world *world) {
   contacts_cache *cache = &world->contacts_cache;
 
   if (cache->hash_table_capacity * 0.75f < cache->entry_count) {
@@ -71,8 +89,17 @@ static bnd_error cache_table_insert(bnd_world *world, uint64_t hash, const conta
     cache->buffer_capacity = new_capacity;
   }
 
-  count_t index = (hash & (cache->hash_table_capacity - 1)) + 1;
-  for (count_t i = index; i < cache->entry_count; ++i) {
+  return OK;
+}
+
+static bnd_error cache_table_insert(bnd_world *world, uint64_t key, const contact *c, count_t *buffer_index) {
+  contacts_cache *cache = &world->contacts_cache;
+
+  PROPAGATE_ERROR(cache_table_realloc_if_needed(world));
+
+  uint64_t hash = cache_key_hash(key);
+  count_t hash_table_index = hash & (cache->hash_table_capacity - 1);
+  for (count_t i = hash_table_index; i < cache->entry_count; ++i) {
     count_t *table_entry = &cache->hash_table[i];
 
     if (*table_entry == HASH_TABLE_EMPTY || *table_entry == HASH_TABLE_TOMBSTONE) {
@@ -221,10 +248,9 @@ count_t contacts_cache_spawn_and_update(bnd_world *world, count_t first, count_t
   for (count_t i = first; i < last; ++i) {
     contact *c = &world->contacts.values[i];
     uint64_t key = cache_key_make(world, c, is_dynamic);
-    uint64_t hash = cache_key_hash(key);
 
     count_t buffer_index;
-    bnd_error e = cache_table_insert(world, hash, c, &buffer_index);
+    bnd_error e = cache_table_insert(world, key, c, &buffer_index);
     if (e.type != BND_OK) {
       return additional_contacts;
     }
