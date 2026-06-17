@@ -88,11 +88,12 @@ typedef struct {
 typedef struct cache_entry cache_entry;
 
 struct cache_entry {
-  cache_entry *next_free;
-  cache_entry *prev_free;
+  cache_entry *next;
+  cache_entry *prev;
 
-  contact_features features;
-  count_t age;
+  count_t index;
+  count_t count;
+  count_t access_time;
 };
 
 typedef struct {
@@ -100,8 +101,14 @@ typedef struct {
   count_t hash_table_capacity;
 
   cache_entry *first_free_entry;
+  cache_entry *first_used_entry;
+
+  uint64_t *keys;
   cache_entry *entries;
+  contact_features *features;
+
   count_t entry_count;
+  count_t first_available_index;
   count_t buffer_capacity;
 
 } contacts_cache;
@@ -332,7 +339,7 @@ void contacts_generate(bnd_world *world);
 void contacts_resolve(bnd_world *world, float dt);
 
 bnd_error contacts_cache_init(bnd_world *world);
-count_t contacts_cache_spawn_and_update(bnd_world *world, count_t first, count_t count, bool is_dynamic);
+const cache_entry *contacts_cache_spawn_and_update(bnd_world *world, count_t contact_index, bool is_dynamic);
 
 void collision_detection_init(bnd_world *world);
 count_t collisions_detect_dynamic(bnd_world *world);

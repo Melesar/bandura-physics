@@ -75,59 +75,70 @@ static inline uint64_t cache_key_hash(uint64_t key) {
 static bnd_error cache_table_realloc_if_needed(bnd_world *world) {
   contacts_cache *cache = &world->contacts_cache;
 
-  if (cache->hash_table_capacity * 0.75f < cache->entry_count) {
+  if (cache->hash_table_capacity * 0.75f < cache->first_available_index) {
     count_t new_capacity = cache->hash_table_capacity * 2;
     REALLOC_BUFFER4(cache->hash_table, world->allocator, sizeof(count_t), cache->hash_table_capacity, new_capacity)
     memset(cache->hash_table + cache->hash_table_capacity, 0, (new_capacity - cache->hash_table_capacity) * sizeof(uint32_t));
+
+    cache_entry *entry = cache->first_used_entry;
+    while (entry) {
+      uint64_t key = cache->keys[entry->index];
+      uint64_t new_index = cache_key_hash(key) & (new_capacity - 1);
+      cache->hash_table[new_index] = entry->index;
+
+      entry = entry->next;
+    }
+
     cache->hash_table_capacity = new_capacity;
   }
 
   if (cache->entry_count >= cache->buffer_capacity) {
     count_t new_capacity = cache->buffer_capacity * 2;
-    REALLOC_BUFFER8(cache->entries, world->allocator, MAX_CACHE_ENTRIES_PER_PAIR * sizeof(cache_entry), cache->buffer_capacity, new_capacity);
-    memset(cache->entries + cache->buffer_capacity, 0, (new_capacity - cache->buffer_capacity) * MAX_CACHE_ENTRIES_PER_PAIR * sizeof(cache_entry));
+
+    REALLOC_BUFFER8(cache->keys, world->allocator, sizeof(uint64_t), cache->buffer_capacity, new_capacity);
+    REALLOC_BUFFER8(cache->entries, world->allocator, sizeof(cache_entry), cache->buffer_capacity, new_capacity);
+    REALLOC_BUFFER2(cache->features, world->allocator, MAX_CACHE_ENTRIES_PER_PAIR * sizeof(contact_features), cache->buffer_capacity, new_capacity)
+
     cache->buffer_capacity = new_capacity;
   }
 
   return OK;
 }
 
-static bnd_error cache_table_insert(bnd_world *world, uint64_t key, const contact *c, count_t *buffer_index) {
+static bnd_error cache_table_insert(bnd_world *world, uint64_t key, const contact *c, count_t *entry_index) {
   contacts_cache *cache = &world->contacts_cache;
 
   PROPAGATE_ERROR(cache_table_realloc_if_needed(world));
 
   uint64_t hash = cache_key_hash(key);
   count_t hash_table_index = hash & (cache->hash_table_capacity - 1);
-  for (count_t i = hash_table_index; i < cache->entry_count; ++i) {
+  for (count_t i = hash_table_index; i < cache->hash_table_capacity; ++i) {
     count_t *table_entry = &cache->hash_table[i];
 
-    if (*table_entry == HASH_TABLE_EMPTY || *table_entry == HASH_TABLE_TOMBSTONE) {
+    if (*table_entry == HASH_TABLE_EMPTY) {
       count_t insertion_index;
       cache_entry *first_free = cache->first_free_entry;
       if (first_free) {
         count_t free_index = first_free - cache->entries;
 
-        cache->first_free_entry = first_free->next_free;
-        first_free->next_free->prev_free = NULL;
-        first_free->next_free = first_free->prev_free = NULL;
+        cache->first_free_entry = first_free->next;
+        if (first_free->next) {
+          first_free->next->prev = NULL;
+        }
+        first_free->next = first_free->prev = NULL;
 
         insertion_index = free_index;
       } else {
-        insertion_index = cache->entry_count++;
+        insertion_index = ++cache->first_available_index;
       }
 
       cache->entry_count += 1;
       cache->hash_table[i] = insertion_index;
 
-      *buffer_index = insertion_index;
+      cache_entry *entry = &cache->entries[insertion_index];
 
-      count_t first_entry_index = insertion_index * MAX_CACHE_ENTRIES_PER_PAIR;
-      count_t last_entry_index = first_entry_index + MAX_CACHE_ENTRIES_PER_PAIR - 1;
-      for (count_t k = first_entry_index; k <= last_entry_index; ++k) {
-        // TODO find a slot and insert the contact
-      }
 
+      *entry_index = insertion_index;
       break;
     }
   }
@@ -224,6 +235,8 @@ bnd_error contacts_cache_init(bnd_world *world) {
   contacts_cache *cache = &world->contacts_cache;
 
   cache->entry_count = 0;
+  cache->first_available_index = 0;
+  cache->first_used_entry = NULL;
   cache->first_free_entry = NULL;
   cache->buffer_capacity = world->config.advanced.contacts_cache.buffer_capacity;
 
@@ -234,26 +247,24 @@ bnd_error contacts_cache_init(bnd_world *world) {
   }
 
   ALLOC_BUFFER4(cache->hash_table, cache->hash_table_capacity * sizeof(uint32_t));
-  ALLOC_BUFFER8(cache->entries, MAX_CACHE_ENTRIES_PER_PAIR * cache->buffer_capacity * sizeof(cache_entry));
+  ALLOC_BUFFER8(cache->keys, cache->buffer_capacity * sizeof(uint64_t));
+  ALLOC_BUFFER2(cache->features, MAX_CACHE_ENTRIES_PER_PAIR * cache->buffer_capacity * sizeof(contact_features));
+  ALLOC_BUFFER8(cache->entries, cache->buffer_capacity * sizeof(cache_entry));
 
   memset(cache->hash_table, 0, cache->hash_table_capacity * sizeof(uint32_t));
-  memset(cache->entries, 0, MAX_CACHE_ENTRIES_PER_PAIR * cache->buffer_capacity * sizeof(cache_entry));
 
   return OK;
 }
 
-count_t contacts_cache_spawn_and_update(bnd_world *world, count_t first, count_t count, bool is_dynamic) {
-  count_t last = first + count;
-  count_t additional_contacts = 0;
-  for (count_t i = first; i < last; ++i) {
-    contact *c = &world->contacts.values[i];
-    uint64_t key = cache_key_make(world, c, is_dynamic);
+const cache_entry *contacts_cache_spawn_and_update(bnd_world *world, count_t contact_index, bool is_dynamic) {
+  contact *c = &world->contacts.values[contact_index];
+  uint64_t key = cache_key_make(world, c, is_dynamic);
 
-    count_t buffer_index;
-    bnd_error e = cache_table_insert(world, key, c, &buffer_index);
-    if (e.type != BND_OK) {
-      return additional_contacts;
-    }
+  count_t buffer_index;
+  bnd_error e = cache_table_insert(world, key, c, &buffer_index);
+  if (e.type != BND_OK) {
+    return NULL;
+  }
 
     /*
      * TODO:
@@ -262,7 +273,6 @@ count_t contacts_cache_spawn_and_update(bnd_world *world, count_t first, count_t
      *  - Transfer the valid ones to the contacts buffer
      *  - Update the ages
      */
-  }
 
-  return additional_contacts;
+  return NULL;
 }
