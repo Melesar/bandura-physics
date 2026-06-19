@@ -313,83 +313,86 @@ typedef struct {
 
 typedef support_point (*support_func)(const shape_context *, bnd_v3);
 
-bnd_allocator bnd_default_allocator();
+bnd_allocator         bnd_default_allocator();
 
-bnd_body_handle make_body_handle(const bnd_world *world, bnd_body_type type, count_t index);
-count_t handle_to_inner_index(const bnd_world *world, bnd_body_handle handle);
+bnd_body_handle       make_body_handle(const bnd_world *world, bnd_body_type type, count_t index);
+count_t               handle_to_inner_index(const bnd_world *world, bnd_body_handle handle);
 
-common_data *as_common(bnd_world *world, bnd_body_type type);
-const common_data *as_common_const(const bnd_world *world, bnd_body_type type);
+common_data          *as_common(bnd_world *world, bnd_body_type type);
+const common_data    *as_common_const(const bnd_world *world, bnd_body_type type);
 
-bnd_error contacts_init(bnd_world *world);
-void contacts_teardown(bnd_world *world);
-void contacts_reset(bnd_world *world);
-bnd_error contacts_ensure_capacity(bnd_world *world, count_t additional_count);
-contact *contacts_new_default(bnd_world *world, count_t body_a, count_t body_b);
-void contacts_generate(bnd_world *world);
-void contacts_resolve(bnd_world *world, float dt);
+bnd_error             contacts_init(bnd_world *world);
+void                  contacts_teardown(bnd_world *world);
+void                  contacts_reset(bnd_world *world);
+bnd_error             contacts_ensure_capacity(bnd_world *world, count_t additional_count);
+contact              *contacts_new_default(bnd_world *world, count_t body_a, count_t body_b);
+void                  contacts_generate(bnd_world *world);
+void                  contacts_resolve(bnd_world *world, float dt);
 
-bnd_error contacts_cache_init(bnd_world *world);
-const cache_entry *contacts_cache_spawn_and_update(bnd_world *world, count_t contact_index, bool is_dynamic);
-void contacts_cache_prune(bnd_world *world);
+bnd_error             contacts_cache_init(bnd_world *world);
+const cache_entry    *contacts_cache_query_and_update(bnd_world *world, count_t contact_index, bool is_dynamic);
+bool                  contacts_cache_features_equal(const contact_features *a, const contact_features *b);
+void                  contacts_cache_prune(bnd_world *world);
 
-void collision_detection_init(bnd_world *world);
-count_t collisions_detect_dynamic(bnd_world *world);
-void collisions_detect_static(bnd_world *world);
+void                  collision_detection_init(bnd_world *world);
+count_t               collisions_detect_dynamic(bnd_world *world);
+void                  collisions_detect_static(bnd_world *world);
 
-bnd_error joints_init(bnd_world *world);
-void joints_teardown(bnd_world *world);
-void joints_reset(bnd_world *world);
-count_t joints_generate_dynamic(bnd_world *world);
-void joints_generate_static(bnd_world *world);
+bnd_error             joints_init(bnd_world *world);
+void                  joints_teardown(bnd_world *world);
+void                  joints_reset(bnd_world *world);
+count_t               joints_generate_dynamic(bnd_world *world);
+void                  joints_generate_static(bnd_world *world);
 
-bnd_error meshes_init(bnd_world *world);
-void meshes_teardown(bnd_world *world);
+bnd_error             meshes_init(bnd_world *world);
+void                  meshes_teardown(bnd_world *world);
 
-bnd_error shapes_init(bnd_world *world);
-void shapes_teardown(bnd_world *world);
-void shapes_reset(bnd_world *world);
-void shapes_get_bracket_properties(const bnd_config *config, count_t bracket_index, count_t *blocks, count_t *shapes, count_t *capacity);
-bool shapes_any_slot_available(const bnd_world *world, shape_dimension_bracket bracket);
-bnd_error shapes_expand_bracket(bnd_world *world, shape_dimension_bracket bracket);
-bool shapes_put_into_empty_slot(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes, count_t shapes_count, count_t *slot_number);
-void shapes_clear_slot(bnd_world *world, shape_dimension_bracket bracket, count_t slot);
-body_shapes shapes_write(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes, count_t count);
-bnd_body_shape *shapes_get(const bnd_world *world, body_shapes shapes);
+bnd_error             shapes_init(bnd_world *world);
+void                  shapes_teardown(bnd_world *world);
+void                  shapes_reset(bnd_world *world);
+void                  shapes_get_bracket_properties(const bnd_config *config, count_t bracket_index, count_t *blocks, count_t *shapes, count_t *capacity);
+bool                  shapes_any_slot_available(const bnd_world *world, shape_dimension_bracket bracket);
+bnd_error             shapes_expand_bracket(bnd_world *world, shape_dimension_bracket bracket);
+bool                  shapes_put_into_empty_slot(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes, count_t shapes_count, count_t *slot_number);
+void                  shapes_clear_slot(bnd_world *world, shape_dimension_bracket bracket, count_t slot);
+body_shapes           shapes_write(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes, count_t count);
+bnd_body_shape       *shapes_get(const bnd_world *world, body_shapes shapes);
 
-count_t ephemeral_body_index(const common_data *data);
+count_t               ephemeral_body_index(const common_data *data);
 
-bnd_error events_init(bnd_world *world);
-void events_teardown(bnd_world *world);
-void events_reset(bnd_world *world);
-bool events_subscribed(const common_data *data, count_t index, bnd_event_type event_type);
-bnd_error events_push(bnd_world *world, common_data *data, count_t index, bnd_event event);
+bnd_error             events_init(bnd_world *world);
+void                  events_teardown(bnd_world *world);
+void                  events_reset(bnd_world *world);
+bool                  events_subscribed(const common_data *data, count_t index, bnd_event_type event_type);
+bnd_error             events_push(bnd_world *world, common_data *data, count_t index, bnd_event event);
 
-bnd_quat integrate_rotation_midpoint(bnd_quat rotation, bnd_v3 angular_momentum, bnd_m3 base_inv_inertia, float dt);
-bool gjk_check_intersection(const bnd_world *world, const collision_detection_context *ctx, simplex *simplex);
-bnd_error epa_init(bnd_world *world);
-void epa_get_contact(const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact);
-void epa_get_final_points(bnd_v3 *points);
-body_support support(const collision_detection_context *ctx, bnd_v3 direction);
-uint32_t polytope_memory_size(uint16_t max_nodes);
+bnd_quat              integrate_rotation_midpoint(bnd_quat rotation, bnd_v3 angular_momentum, bnd_m3 base_inv_inertia, float dt);
 
-float distance_to_triangle(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_v3 *closest);
-float distance_to_line_segment(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 *closest);
-bool aabb_intersect(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b);
+bool                  gjk_check_intersection(const bnd_world *world, const collision_detection_context *ctx, simplex *simplex);
 
-bnd_v3 body_center(const shape_context *ctx);
-bnd_quat body_rotation(const shape_context *ctx);
+uint32_t              polytope_memory_size(uint16_t max_nodes);
+bnd_error             epa_init(bnd_world *world);
+void                  epa_get_contact(const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact);
+void                  epa_get_final_points(bnd_v3 *points);
+body_support          support(const collision_detection_context *ctx, bnd_v3 direction);
 
-bnd_m3 quat_as_matrix(bnd_quat q);
+float                 distance_to_triangle(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_v3 *closest);
+float                 distance_to_line_segment(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 *closest);
+bool                  aabb_intersect(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b);
 
-bnd_v3 bnd_m3_rotate_inverse(bnd_v3 v, bnd_m3 m);
-bnd_m3 bnd_m3_from_basis(bnd_v3 x, bnd_v3 y, bnd_v3 z);
-bnd_m3 bnd_m3_skew_symmetric(bnd_v3 v);
-bnd_m3 bnd_m3_initial_inertia(bnd_v3 inertia);
-bnd_m3 bnd_m3_inertia(bnd_m3 initial_inertia, bnd_quat rotation);
-bnd_m3 bnd_m3_displacement_inertia(bnd_m3 i0, bnd_v3 offset, float mass);
+bnd_v3                body_center(const shape_context *ctx);
+bnd_quat              body_rotation(const shape_context *ctx);
+
+bnd_m3                quat_as_matrix(bnd_quat q);
+
+bnd_v3                bnd_m3_rotate_inverse(bnd_v3 v, bnd_m3 m);
+bnd_m3                bnd_m3_from_basis(bnd_v3 x, bnd_v3 y, bnd_v3 z);
+bnd_m3                bnd_m3_skew_symmetric(bnd_v3 v);
+bnd_m3                bnd_m3_initial_inertia(bnd_v3 inertia);
+bnd_m3                bnd_m3_inertia(bnd_m3 initial_inertia, bnd_quat rotation);
+bnd_m3                bnd_m3_displacement_inertia(bnd_m3 i0, bnd_v3 offset, float mass);
 
 collision_test_suite *collision_tests_load();
-void collision_tests_pair_spawn(bnd_world *world, const collision_test_pair *pair, bnd_body_handle *pair_handles);
-void collision_tests_free(collision_test_suite *tests);
+void                  collision_tests_pair_spawn(bnd_world *world, const collision_test_pair *pair, bnd_body_handle *pair_handles);
+void                  collision_tests_free(collision_test_suite *tests);
 #endif

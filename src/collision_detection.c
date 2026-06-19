@@ -721,6 +721,10 @@ static count_t polytope_polytope_collision(bnd_world *world, const collision_det
   return 1;
 }
 
+static bool check_cached_features(bnd_world *world, const collision_detection_context *ctx, const contact_features *cached_features) {
+  return false;
+}
+
 static count_t collisions_detect(bnd_world *world, const common_data *data_b, bool is_dynamic) {
   const common_data *dynamics = (common_data *)&world->dynamics;
 
@@ -758,13 +762,10 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
             continue;
           }
 
-          count_t new_contacts;
-          if (entry.primary) {
-            new_contacts = entry.func(world, &ctx);
-          } else {
-            collision_detection_context inv_ctx = ctx_inverse(ctx);
-            new_contacts = entry.func(world, &inv_ctx);
+          collision_detection_context context = entry.primary ? ctx : ctx_inverse(ctx);
+          count_t new_contacts = entry.func(world, &context);
 
+          if (!entry.primary) {
             for (count_t k = world->contacts.count - new_contacts; k < world->contacts.count; ++k) {
               contact *c = &world->contacts.values[k];
               c->index_a = ctx.body_a;
@@ -774,7 +775,23 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
           }
 
           if (entry.use_cache) {
-            new_contacts += contacts_cache_spawn_and_update(world, world->contacts.count - new_contacts, new_contacts, is_dynamic);
+            for (count_t k = 0; k < new_contacts; ++k) {
+              uint8_t picked_features = 0;
+              count_t contact_index = world->contacts.count - new_contacts + k;
+              const cache_entry *cache_entry = contacts_cache_query_and_update(world, contact_index, is_dynamic);
+
+              for (count_t h = 0; h < cache_entry->feature_count; ++h) {
+                const contact_features *cached_features = &cache_entry->features[h];
+                if ((picked_features & (1 << h)) || contacts_cache_features_equal(cached_features, &world->contacts.values[contact_index].features)) {
+                  continue;
+                }
+
+                count += check_cached_features(world, &context, cached_features);
+
+                picked_features |= 1 << h;
+              }
+
+            }
           }
 
           count += new_contacts;

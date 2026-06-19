@@ -107,15 +107,16 @@ static bnd_error cache_table_realloc_if_needed(bnd_world *world) {
   return OK;
 }
 
-static bnd_error cache_table_insert(bnd_world *world, uint64_t key, const contact *c, count_t *entry_index) {
+static bnd_result_u32 cache_table_insert(bnd_world *world, uint64_t key, const contact *c) {
   contacts_cache *cache = &world->contacts_cache;
 
-  PROPAGATE_ERROR(cache_table_realloc_if_needed(world));
+  PROPAGATE_RESULT(u32, cache_table_realloc_if_needed(world));
 
   uint64_t hash = cache_key_hash(key);
   count_t hash_table_index = hash & (cache->hash_table_capacity - 1);
 
-  for (count_t i = hash_table_index; i < cache->hash_table_capacity; ++i) {
+  count_t i = hash_table_index;
+  do {
     count_t index = cache->hash_table[i];
     cache_entry *entry = &cache->entries[index];
 
@@ -125,16 +126,22 @@ static bnd_error cache_table_insert(bnd_world *world, uint64_t key, const contac
       entry->feature_count = 1;
       entry->features[0] = c->features;
 
-      cache->hash_table[i] = ++cache->entry_count; // Prefix-increment because we want to skip 0 index
+      index = ++cache->entry_count;
+      cache->hash_table[i] = index; // Prefix-increment because we want to skip 0 index
     } else if (entry->key == key) {
       entry->access_time = world->age;
       if (entry->feature_count < MAX_CACHE_ENTRIES_PER_PAIR) {
         entry->features[entry->feature_count++] = c->features;
       }
+    } else {
+      i = (i + 1) & (cache->hash_table_capacity - 1);
+      continue;
     }
-  }
 
-  return OK;
+    return BND_RESULT_OK(u32, index);
+  } while(i != hash_table_index);
+
+  return BND_RESULT_ERR(u32, BND_ERROR_OUT_OF_MEMORY, "Hash table is full");
 }
 
 void contacts_generate(bnd_world *world) {
@@ -242,25 +249,20 @@ bnd_error contacts_cache_init(bnd_world *world) {
   return OK;
 }
 
-const cache_entry *contacts_cache_spawn_and_update(bnd_world *world, count_t contact_index, bool is_dynamic) {
+const cache_entry *contacts_cache_query_and_update(bnd_world *world, count_t contact_index, bool is_dynamic) {
   contact *c = &world->contacts.values[contact_index];
   uint64_t key = cache_key_make(world, c, is_dynamic);
 
-  count_t buffer_index;
-  bnd_error e = cache_table_insert(world, key, c, &buffer_index);
-  if (e.type != BND_OK) {
+  bnd_result_u32 index = cache_table_insert(world, key, c);
+  if (index.error.type != BND_OK) {
     return NULL;
   }
 
-    /*
-     * TODO:
-     *  - Audit 4 cache entries in the bucket
-     *  - Prune stale entries
-     *  - Transfer the valid ones to the contacts buffer
-     *  - Update the ages
-     */
+  return &world->contacts_cache.entries[index.value];
+}
 
-  return NULL;
+bool contacts_cache_features_equal(const contact_features *a, const contact_features *b) {
+  return false;
 }
 
 void contacts_cache_prune(bnd_world *world) {
