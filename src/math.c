@@ -194,7 +194,7 @@ bnd_quat integrate_rotation_midpoint(bnd_quat rotation, bnd_v3 angular_momentum,
   return bnd_quat_normalize(bnd_quat_mul(step, rotation));
 }
 
-float distance_to_line_segment(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 *closest) {
+float sqr_distance_to_line_segment(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 *closest) {
   bnd_v3 d = bnd_v3_sub(b, a);
   bnd_v3 ao = bnd_v3_sub(a, from);
 
@@ -214,7 +214,7 @@ float distance_to_line_segment(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 *closest)
   }
 }
 
-float distance_to_triangle(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_v3 *closest) {
+float sqr_distance_to_triangle(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_v3 *closest) {
   bnd_v3 d1 = bnd_v3_sub(b, a);
   bnd_v3 d2 = bnd_v3_sub(c, a);
   bnd_v3 ao = bnd_v3_sub(a, from);
@@ -242,16 +242,16 @@ float distance_to_triangle(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_v3 *cl
     *closest = bnd_v3_add(a, bnd_v3_add(d1, d2));
     distance = bnd_v3_distancesqr(*closest, from);
   } else {
-    distance = distance_to_line_segment(from, a, b, closest);
+    distance = sqr_distance_to_line_segment(from, a, b, closest);
 
     bnd_v3 closest_2;
-    float distance2 = distance_to_line_segment(from, a, c, &closest_2);
+    float distance2 = sqr_distance_to_line_segment(from, a, c, &closest_2);
     if (distance2 < distance) {
       distance = distance2;
       *closest = closest_2;
     }
 
-    distance2 = distance_to_line_segment(from, b, c, &closest_2);
+    distance2 = sqr_distance_to_line_segment(from, b, c, &closest_2);
     if (distance2 < distance) {
       distance = distance2;
       *closest = closest_2;

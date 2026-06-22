@@ -376,8 +376,8 @@ void                  epa_get_contact(const collision_detection_context *ctx, co
 void                  epa_get_final_points(bnd_v3 *points);
 body_support          support(const collision_detection_context *ctx, bnd_v3 direction);
 
-float                 distance_to_triangle(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_v3 *closest);
-float                 distance_to_line_segment(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 *closest);
+float                 sqr_distance_to_triangle(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_v3 *closest);
+float                 sqr_distance_to_line_segment(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 *closest);
 bool                  aabb_intersect(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b);
 
 bnd_v3                body_center(const shape_context *ctx);

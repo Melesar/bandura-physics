@@ -34,42 +34,34 @@ static void emit_collision_events(bnd_world *world, bnd_body_type type, count_t 
   }
 }
 
-static uint64_t cache_key_make(bnd_world *world, contact *c, bool is_dynamic) {
-  const common_data *data_a = as_common_const(world, BND_BODY_DYNAMIC);
-  const common_data *data_b = as_common_const(world, is_dynamic ? BND_BODY_DYNAMIC : BND_BODY_STATIC);
-
-  uint64_t index_a = data_a->inner_lookup[c->index_a];
-  uint64_t index_b = data_b->inner_lookup[c->index_b];
-  uint64_t gen_a = data_a->generations[index_a];
-  uint64_t gen_b = data_b->generations[index_b];
-
-  if (index_a > index_b) {
-    uint64_t tmp = index_a;
-    index_a = index_b;
-    index_b = tmp;
-
-    tmp = gen_a;
-    gen_a = gen_b;
-    gen_b = tmp;
-  }
-
-  const uint64_t mask_23bit = 0x7FFFFF;
-
-  uint64_t key = (uint64_t)is_dynamic << 62;
-  key |= gen_a << 53;
-  key |= (index_a & mask_23bit) << 31;
-  key |= gen_b << 23;
-  key |= index_b & mask_23bit;
-
-  return key;
-}
-
 static inline uint64_t cache_key_hash(uint64_t key) {
   key ^= key >> 30; key *= 0xbf58476d1ce4e5b9ULL;
   key ^= key >> 27; key *= 0x94d049bb133111ebULL;
   key ^= key >> 31;
 
   return key;
+}
+
+static bnd_result_u32 cache_table_free_slot(bnd_world *world, uint64_t key) {
+  contacts_cache *cache = &world->contacts_cache;
+
+  uint64_t hash = cache_key_hash(key);
+  count_t hash_table_index = hash & (cache->hash_table_capacity - 1);
+
+  count_t i = hash_table_index;
+  do {
+    count_t index = cache->hash_table[i];
+    cache_entry *entry = &cache->entries[index];
+
+    if (index != HASH_TABLE_EMPTY && index != HASH_TABLE_TOMBSTONE && entry->key != key) {
+      i = (i + 1) & (cache->hash_table_capacity - 1);
+      continue;
+    }
+
+    return BND_RESULT_OK(u32, i);
+  } while(i != hash_table_index);
+
+  return BND_RESULT_ERR(u32, BND_ERROR_OUT_OF_MEMORY, "Hash table is full");
 }
 
 static bnd_error cache_table_realloc_if_needed(bnd_world *world) {
@@ -80,17 +72,14 @@ static bnd_error cache_table_realloc_if_needed(bnd_world *world) {
     REALLOC_BUFFER4(cache->hash_table, world->allocator, sizeof(count_t), cache->hash_table_capacity, new_capacity)
     memset(cache->hash_table, 0, new_capacity * sizeof(count_t));
 
-    for (count_t i = 0; i < cache->entry_count; ++i) {
+    for (count_t i = 1; i <= cache->entry_count; ++i) {
       uint64_t key = cache->entries[i].key;
-      uint64_t hash = cache_key_hash(key);
-      uint64_t new_index = hash & (new_capacity - 1);
-
-      for (count_t k = new_index; k < new_capacity; ++k) {
-        if (cache->hash_table[k] == HASH_TABLE_EMPTY) {
-          cache->hash_table[k] = i;
-          break;
-        }
+      bnd_result_u32 index = cache_table_free_slot(world, key);
+      if (index.error.type != BND_OK) {
+        return index.error;
       }
+
+      cache->hash_table[index.value] = i;
     }
 
     cache->hash_table_capacity = new_capacity;
@@ -112,36 +101,29 @@ static bnd_result_u32 cache_table_insert(bnd_world *world, uint64_t key, const c
 
   PROPAGATE_RESULT(u32, cache_table_realloc_if_needed(world));
 
-  uint64_t hash = cache_key_hash(key);
-  count_t hash_table_index = hash & (cache->hash_table_capacity - 1);
+  bnd_result_u32 hash_table_slot = cache_table_free_slot(world, key);
+  if (hash_table_slot.error.message != BND_OK) {
+    return hash_table_slot;
+  }
 
-  count_t i = hash_table_index;
-  do {
-    count_t index = cache->hash_table[i];
-    cache_entry *entry = &cache->entries[index];
+  count_t entry_index = cache->hash_table[hash_table_slot.value];
+  cache_entry *entry = &cache->entries[entry_index];
+  if (entry_index == HASH_TABLE_EMPTY || entry_index == HASH_TABLE_TOMBSTONE) {
+    entry->key = key;
+    entry->access_time = world->age;
+    entry->feature_count = 1;
+    entry->features[0] = c->features;
 
-    if (index == HASH_TABLE_EMPTY || index == HASH_TABLE_TOMBSTONE) {
-      entry->key = key;
-      entry->access_time = world->age;
-      entry->feature_count = 1;
-      entry->features[0] = c->features;
-
-      index = ++cache->entry_count;
-      cache->hash_table[i] = index; // Prefix-increment because we want to skip 0 index
-    } else if (entry->key == key) {
-      entry->access_time = world->age;
-      if (entry->feature_count < MAX_CACHE_ENTRIES_PER_PAIR) {
-        entry->features[entry->feature_count++] = c->features;
-      }
-    } else {
-      i = (i + 1) & (cache->hash_table_capacity - 1);
-      continue;
+    entry_index = ++cache->entry_count; // Prefix-increment because we want to skip 0 index
+    cache->hash_table[hash_table_slot.value] = entry_index;
+  } else if (entry->key == key) {
+    entry->access_time = world->age;
+    if (entry->feature_count < MAX_CACHE_ENTRIES_PER_PAIR) {
+      entry->features[entry->feature_count++] = c->features;
     }
+  }
 
-    return BND_RESULT_OK(u32, index);
-  } while(i != hash_table_index);
-
-  return BND_RESULT_ERR(u32, BND_ERROR_OUT_OF_MEMORY, "Hash table is full");
+  return BND_RESULT_OK(u32, entry_index);
 }
 
 void contacts_generate(bnd_world *world) {
@@ -251,7 +233,37 @@ bnd_error contacts_cache_init(bnd_world *world) {
 
 const cache_entry *contacts_cache_query_and_update(bnd_world *world, count_t contact_index, bool is_dynamic) {
   contact *c = &world->contacts.values[contact_index];
-  uint64_t key = cache_key_make(world, c, is_dynamic);
+
+  const common_data *data_a = as_common_const(world, BND_BODY_DYNAMIC);
+  const common_data *data_b = as_common_const(world, is_dynamic ? BND_BODY_DYNAMIC : BND_BODY_STATIC);
+
+  uint64_t index_a = data_a->inner_lookup[c->index_a];
+  uint64_t index_b = data_b->inner_lookup[c->index_b];
+  uint64_t gen_a = data_a->generations[index_a];
+  uint64_t gen_b = data_b->generations[index_b];
+
+  if (index_a > index_b) {
+    uint64_t tmp = index_a;
+    index_a = index_b;
+    index_b = tmp;
+
+    tmp = gen_a;
+    gen_a = gen_b;
+    gen_b = tmp;
+
+    uint16_t tmp_f[3];
+    memcpy(tmp_f, c->features.body_a, sizeof(tmp_f));
+    memcpy(c->features.body_a, c->features.body_b, sizeof(tmp_f));
+    memcpy(c->features.body_b, tmp_f, sizeof(tmp_f));
+  }
+
+  const uint64_t mask_23bit = 0x7FFFFF;
+
+  uint64_t key = (uint64_t)is_dynamic << 62;
+  key |= gen_a << 53;
+  key |= (index_a & mask_23bit) << 31;
+  key |= gen_b << 23;
+  key |= index_b & mask_23bit;
 
   bnd_result_u32 index = cache_table_insert(world, key, c);
   if (index.error.type != BND_OK) {
@@ -262,7 +274,8 @@ const cache_entry *contacts_cache_query_and_update(bnd_world *world, count_t con
 }
 
 bool contacts_cache_features_equal(const contact_features *a, const contact_features *b) {
-  return false;
+  return a->body_a[0] == b->body_a[0] && a->body_a[1] == b->body_a[1] && a->body_a[2] == b->body_a[2] &&
+         a->body_b[0] == b->body_b[0] && a->body_b[1] == b->body_b[1] && a->body_b[2] == b->body_b[2];
 }
 
 void contacts_cache_prune(bnd_world *world) {

@@ -305,7 +305,7 @@ static uint16_t polytope_add_face(polytope *polytope, uint16_t e1, uint16_t e2, 
     return NIL;
   }
 
-  node->value.face.distance = distance_to_triangle(bnd_v3_zero(), v1, v2, v3, &node->value.face.normal);
+  node->value.face.distance = sqr_distance_to_triangle(bnd_v3_zero(), v1, v2, v3, &node->value.face.normal);
 
   polytope_attach_face(polytope, index, e1);
   polytope_attach_face(polytope, index, e2);
@@ -638,7 +638,7 @@ void epa_get_contact(const collision_detection_context *ctx, const simplex *simp
 
     bnd_v3 a, b, c, closest;
     polytope_get_face_verticies(pt, pt->nearest, &a, &b, &c);
-    distance = distance_to_triangle(support_point.p, a, b, c, &closest);
+    distance = sqr_distance_to_triangle(support_point.p, a, b, c, &closest);
 
     if (distance < tolerance) {
       epa_calculate_contact(pt, contact);
