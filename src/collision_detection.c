@@ -32,6 +32,17 @@ typedef struct {
 
 static collision_detection_entry collision_detection_table[BND_SHAPES_COUNT][BND_SHAPES_COUNT];
 
+static void box_corners(bnd_v3 half_extents, bnd_v3 corners[8])  {
+  corners[0] = (bnd_v3){ half_extents.x, half_extents.y, half_extents.z };
+  corners[1] = (bnd_v3){ half_extents.x, half_extents.y, -half_extents.z };
+  corners[2] = (bnd_v3){ half_extents.x, -half_extents.y, half_extents.z };
+  corners[3] = (bnd_v3){ half_extents.x, -half_extents.y, -half_extents.z };
+  corners[4] = (bnd_v3){ -half_extents.x, half_extents.y, half_extents.z };
+  corners[5] = (bnd_v3){ -half_extents.x, half_extents.y, -half_extents.z };
+  corners[6] = (bnd_v3){ -half_extents.x, -half_extents.y, half_extents.z };
+  corners[7] = (bnd_v3){ -half_extents.x, -half_extents.y, -half_extents.z };
+}
+
 static collision_detection_context ctx_inverse(collision_detection_context ctx) {
   return (collision_detection_context){
     .world = ctx.world,
@@ -54,20 +65,36 @@ static void triangles_from_features(const collision_detection_context *ctx, cons
 
   for (int i = 0; i < 2; i++) {
     shape_context *context = &shape_ctxs[i];
+    uint16_t f0 = i == 0 ? features->body_a[0] : features->body_b[0];
+    uint16_t f1 = i == 0 ? features->body_a[1] : features->body_b[1];
+    uint16_t f2 = i == 0 ? features->body_a[2] : features->body_b[2];
 
+    bnd_v3 corners[8];
     switch(context->shape.type) {
       case BND_BOX:
-
+        box_corners(bnd_v3_scale(context->shape.value.box.size, 0.5), corners);
+        tris[i]->p0 = corners[f0];
+        tris[i]->p1 = corners[f1];
+        tris[i]->p2 = corners[f2];
         break;
 
       case BND_MESH:
+        tris[i]->p0 = ctx->world->meshes.verticies[f0];
+        tris[i]->p1 = ctx->world->meshes.verticies[f1];
+        tris[i]->p2 = ctx->world->meshes.verticies[f2];
         break;
 
       default:
         break;
     }
-  }
 
+    bnd_quat rotation = body_rotation(context);
+    bnd_v3 center = body_center(context);
+
+    tris[i]->p0 = bnd_v3_add(center, bnd_v3_rotate(tris[i]->p0, rotation));
+    tris[i]->p1 = bnd_v3_add(center, bnd_v3_rotate(tris[i]->p1, rotation));
+    tris[i]->p2 = bnd_v3_add(center, bnd_v3_rotate(tris[i]->p2, rotation));
+  }
 }
 
 static bnd_v3 body_center_ex(bnd_v3 shape_offset, bnd_quat global_rotation, bnd_v3 body_position) {
@@ -579,16 +606,8 @@ static count_t box_plane_collision(bnd_world *world, const collision_detection_c
   bnd_v3 plane_normal = ctx->shape_b.value.plane.normal;
   bnd_v3 plane_point = ctx->data_b->positions[ctx->body_b];
 
-  bnd_v3 corners[] = {
-    { extents.x, extents.y, extents.z },
-    { extents.x, extents.y, -extents.z },
-    { extents.x, -extents.y, extents.z },
-    { extents.x, -extents.y, -extents.z },
-    { -extents.x, extents.y, extents.z },
-    { -extents.x, extents.y, -extents.z },
-    { -extents.x, -extents.y, extents.z },
-    { -extents.x, -extents.y, -extents.z },
-  };
+  bnd_v3 corners[8];
+  box_corners(extents, corners);
 
   const count_t max_contacts = 4;
 
@@ -870,7 +889,7 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
                 continue;
               }
 
-              count += check_cached_features(world, &context, cached_features);
+              count += check_cached_features(world, &ctx, cached_features);
 
               picked_features |= 1 << h;
             }
