@@ -889,9 +889,10 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
                 continue;
               }
 
-              count += check_cached_features(world, &ctx, cached_features);
-
-              picked_features |= 1 << h;
+              if (check_cached_features(world, &ctx, cached_features)) {
+                count += 1;
+                picked_features |= 1 << h;
+              }
             }
           }
 

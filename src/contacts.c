@@ -106,17 +106,20 @@ static bnd_result_u32 cache_table_insert(bnd_world *world, uint64_t key, const c
     return hash_table_slot;
   }
 
+  cache_entry *entry;
   count_t entry_index = cache->hash_table[hash_table_slot.value];
-  cache_entry *entry = &cache->entries[entry_index];
   if (entry_index == HASH_TABLE_EMPTY || entry_index == HASH_TABLE_TOMBSTONE) {
+    entry_index = ++cache->entry_count; // Prefix-increment because we want to skip 0 index
+
+    entry = &cache->entries[entry_index];
     entry->key = key;
     entry->access_time = world->age;
     entry->feature_count = 1;
     entry->features[0] = c->features;
 
-    entry_index = ++cache->entry_count; // Prefix-increment because we want to skip 0 index
     cache->hash_table[hash_table_slot.value] = entry_index;
-  } else if (entry->key == key) {
+  } else if (cache->entries[entry_index].key == key) {
+    entry = &cache->entries[entry_index];
     entry->access_time = world->age;
     if (entry->feature_count < MAX_CACHE_ENTRIES_PER_PAIR) {
       entry->features[entry->feature_count++] = c->features;
