@@ -332,6 +332,7 @@ void                  contacts_resolve(bnd_world *world, float dt);
 bnd_error             contacts_cache_init(bnd_world *world);
 const cache_entry    *contacts_cache_query_and_update(bnd_world *world, count_t contact_index, bool is_dynamic);
 bool                  contacts_cache_features_equal(const contact_features *a, const contact_features *b);
+void                  contacts_cache_features_sort(contact_features *features);
 void                  contacts_cache_prune(bnd_world *world);
 
 void                  collision_detection_init(bnd_world *world);

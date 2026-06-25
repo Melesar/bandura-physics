@@ -281,6 +281,26 @@ bool contacts_cache_features_equal(const contact_features *a, const contact_feat
          a->body_b[0] == b->body_b[0] && a->body_b[1] == b->body_b[1] && a->body_b[2] == b->body_b[2];
 }
 
+void contacts_cache_features_sort(contact_features *features) {
+  count_t lookup[] = { 0, 1, 0 };
+  count_t tmp;
+
+  for (count_t i = 0; i < 3; ++i) {
+    count_t index = lookup[i];
+    if (features->body_a[index] > features->body_a[index + 1]) {
+      tmp = features->body_a[index];
+      features->body_a[index] = features->body_a[index + 1];
+      features->body_a[index + 1] = tmp;
+    }
+
+    if (features->body_b[index] > features->body_b[index + 1]) {
+      tmp = features->body_b[index];
+      features->body_b[index] = features->body_b[index + 1];
+      features->body_b[index + 1] = tmp;
+    }
+  }
+}
+
 void contacts_cache_prune(bnd_world *world) {
 
 }

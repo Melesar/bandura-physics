@@ -872,6 +872,10 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
             continue;
           }
 
+          for (count_t k = world->contacts.count - new_contacts; k < world->contacts.count; ++k) {
+            contacts_cache_features_sort(&world->contacts.values[k].features);
+          }
+
           uint8_t picked_features = 0;
           count_t first_contact_index = world->contacts.count - new_contacts;
 
