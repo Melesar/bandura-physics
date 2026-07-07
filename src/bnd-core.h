@@ -56,8 +56,8 @@
 typedef uint32_t count_t;
 
 typedef struct {
-  uint16_t body_a[3];
-  uint16_t body_b[3];
+  bnd_v3 witness_a, witness_b;
+  bnd_v3 normal;
 } contact_features;
 
 typedef struct {
@@ -330,7 +330,7 @@ void                  contacts_generate(bnd_world *world);
 void                  contacts_resolve(bnd_world *world, float dt);
 
 bnd_error             contacts_cache_init(bnd_world *world);
-const cache_entry    *contacts_cache_query_and_update(bnd_world *world, count_t contact_index, bool is_dynamic);
+cache_entry          *contacts_cache_query(bnd_world *world, count_t contact_index, bool is_dynamic);
 bool                  contacts_cache_features_equal(const contact_features *a, const contact_features *b);
 void                  contacts_cache_features_sort(contact_features *features);
 void                  contacts_cache_prune(bnd_world *world);

@@ -55,48 +55,6 @@ static collision_detection_context ctx_inverse(collision_detection_context ctx) 
   };
 }
 
-static void triangles_from_features(const collision_detection_context *ctx, const contact_features *features, triangle_t *tris_a, triangle_t *tris_b) {
-  shape_context shape_ctxs[] = {
-    { .world = ctx->world, .data = ctx->data_a, .shape = ctx->shape_a, .index = ctx->body_a },
-    { .world = ctx->world, .data = ctx->data_b, .shape = ctx->shape_b, .index = ctx->body_b }
-  };
-
-  triangle_t *tris[] = { tris_a, tris_b };
-
-  for (int i = 0; i < 2; i++) {
-    shape_context *context = &shape_ctxs[i];
-    uint16_t f0 = i == 0 ? features->body_a[0] : features->body_b[0];
-    uint16_t f1 = i == 0 ? features->body_a[1] : features->body_b[1];
-    uint16_t f2 = i == 0 ? features->body_a[2] : features->body_b[2];
-
-    bnd_v3 corners[8];
-    switch(context->shape.type) {
-      case BND_BOX:
-        box_corners(bnd_v3_scale(context->shape.value.box.size, 0.5), corners);
-        tris[i]->p0 = corners[f0];
-        tris[i]->p1 = corners[f1];
-        tris[i]->p2 = corners[f2];
-        break;
-
-      case BND_MESH:
-        tris[i]->p0 = ctx->world->meshes.verticies[f0];
-        tris[i]->p1 = ctx->world->meshes.verticies[f1];
-        tris[i]->p2 = ctx->world->meshes.verticies[f2];
-        break;
-
-      default:
-        break;
-    }
-
-    bnd_quat rotation = body_rotation(context);
-    bnd_v3 center = body_center(context);
-
-    tris[i]->p0 = bnd_v3_add(center, bnd_v3_rotate(tris[i]->p0, rotation));
-    tris[i]->p1 = bnd_v3_add(center, bnd_v3_rotate(tris[i]->p1, rotation));
-    tris[i]->p2 = bnd_v3_add(center, bnd_v3_rotate(tris[i]->p2, rotation));
-  }
-}
-
 static bnd_v3 body_center_ex(bnd_v3 shape_offset, bnd_quat global_rotation, bnd_v3 body_position) {
   bnd_v3 center = shape_offset;
   center = bnd_v3_rotate(center, global_rotation);
@@ -774,49 +732,7 @@ static count_t polytope_polytope_collision(bnd_world *world, const collision_det
 }
 
 static bool check_cached_features(bnd_world *world, const collision_detection_context *ctx, const contact_features *cached_features) {
-  if (ctx->shape_b.type == BND_PLANE) {
-    // TODO
-    return false;
-  }
-
-  count_t index_a = ctx->data_a->inner_lookup[ctx->body_a];
-  count_t index_b = ctx->data_b->inner_lookup[ctx->body_b];
-
-  triangle_t tris_a, tris_b;
-  if (index_a < index_b) {
-    triangles_from_features(ctx, cached_features, &tris_a, &tris_b);
-  } else {
-    triangles_from_features(ctx, cached_features, &tris_b, &tris_a);
-  }
-
-  triangle_t diff = {
-    .p0 = bnd_v3_sub(tris_a.p0, tris_b.p0),
-    .p1 = bnd_v3_sub(tris_a.p1, tris_b.p1),
-    .p2 = bnd_v3_sub(tris_a.p2, tris_b.p2),
-  };
-
-  bnd_v3 closest_point;
-  float distance = sqr_distance_to_triangle(bnd_v3_zero(), diff.p0, diff.p1, diff.p2, &closest_point);
-  if (distance > world->config.advanced.epa_tolerance * world->config.advanced.epa_tolerance) {
-    return false;
-  }
-
-  contact *c = new_contact(world, ctx);
-  bnd_v3 barycenter = bnd_v3_barycentric(bnd_v3_zero(), diff.p0, diff.p1, diff.p2);
-  bnd_v3 p1 = bnd_v3_add(bnd_v3_scale(tris_a.p0, barycenter.x), bnd_v3_add(bnd_v3_scale(tris_a.p1, barycenter.y), bnd_v3_scale(tris_a.p2, barycenter.z)));
-  bnd_v3 p2 = bnd_v3_add(bnd_v3_scale(tris_b.p0, barycenter.x), bnd_v3_add(bnd_v3_scale(tris_b.p1, barycenter.y), bnd_v3_scale(tris_b.p2, barycenter.z)));
-
-  c->point = bnd_v3_scale(bnd_v3_add(p1, p2), 0.5);
-  c->depth = sqrt(distance);
-
-  float length = bnd_v3_len(closest_point);
-  if (length > EPSILON) {
-    c->normal = bnd_v3_scale(closest_point, -1.0 / length);
-  } else {
-    c->normal = bnd_v3_up();
-  }
-
-  return true;
+  return false;
 }
 
 static count_t collisions_detect(bnd_world *world, const common_data *data_b, bool is_dynamic) {
@@ -872,31 +788,34 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
             continue;
           }
 
-          for (count_t k = world->contacts.count - new_contacts; k < world->contacts.count; ++k) {
-            contacts_cache_features_sort(&world->contacts.values[k].features);
-          }
-
-          uint8_t picked_features = 0;
           count_t first_contact_index = world->contacts.count - new_contacts;
 
           // All new contacts are from the same body pair, so they will share the same cache entry
-          const cache_entry *cache_entry = contacts_cache_query_and_update(world, first_contact_index, is_dynamic);
-          if (cache_entry == NULL) {
+          cache_entry *cached_entry = contacts_cache_query(world, first_contact_index, is_dynamic);
+          if (cached_entry == NULL) {
             continue;
           }
 
-          for (count_t k = 0; k < new_contacts; ++k) {
-            count_t contact_index = first_contact_index + k;
-            for (count_t h = 0; h < cache_entry->feature_count; ++h) {
-              const contact_features *cached_features = &cache_entry->features[h];
+          for (count_t k = world->contacts.count - new_contacts; k < world->contacts.count; ++k) {
+            contact_features *features = &world->contacts.values[k].features;
+            features->witness_a = bnd_v3_rotate(bnd_v3_sub(features->witness_a, body_a_center(&ctx)), bnd_quat_invert(body_a_rotation(&ctx)));
+            features->witness_a = bnd_v3_rotate(bnd_v3_sub(features->witness_b, body_b_center(&ctx)), bnd_quat_invert(body_b_rotation(&ctx)));
+          }
+
+          uint8_t picked_features = 0;
+          for (count_t h = 0; h < cached_entry->feature_count; ++h) {
+            const contact_features *cached_features = &cached_entry->features[h];
+
+            for (count_t k = 0; k < new_contacts; ++k) {
+              count_t contact_index = first_contact_index + k;
               if ((picked_features & (1 << h)) || contacts_cache_features_equal(cached_features, &world->contacts.values[contact_index].features)) {
                 continue;
               }
+            }
 
-              if (check_cached_features(world, &ctx, cached_features)) {
-                count += 1;
-                picked_features |= 1 << h;
-              }
+            if (check_cached_features(world, &ctx, cached_features)) {
+              count += 1;
+              picked_features |= 1 << h;
             }
           }
 
@@ -929,8 +848,8 @@ void collision_detection_init(bnd_world *world) {
 
   collision_detection_table[BND_BOX][BND_SPHERE] = (collision_detection_entry) { box_sphere_collision, true, false };
   collision_detection_table[BND_SPHERE][BND_BOX] = (collision_detection_entry) { box_sphere_collision, false, false };
-  collision_detection_table[BND_BOX][BND_CAPSULE] = (collision_detection_entry) { box_capsule_collision, true, false };
-  collision_detection_table[BND_CAPSULE][BND_BOX] = (collision_detection_entry) { box_capsule_collision, false, false };
+  collision_detection_table[BND_BOX][BND_CAPSULE] = (collision_detection_entry) { polytope_polytope_collision, true, true };
+  collision_detection_table[BND_CAPSULE][BND_BOX] = (collision_detection_entry) { polytope_polytope_collision, false, true };
   collision_detection_table[BND_CAPSULE][BND_SPHERE] = (collision_detection_entry) { capsule_sphere_collision, true, false };
   collision_detection_table[BND_SPHERE][BND_CAPSULE] = (collision_detection_entry) { capsule_sphere_collision, false, false };
 

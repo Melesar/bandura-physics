@@ -1,5 +1,6 @@
 #include "bandura.h"
 #include "bnd-core.h"
+#include "bnd-math.h"
 #include "profiler.h"
 
 #include <string.h>
@@ -89,6 +90,7 @@ static bnd_error cache_table_realloc_if_needed(bnd_world *world) {
     count_t new_capacity = cache->buffer_capacity * 2;
 
     REALLOC_BUFFER8(cache->entries, world->allocator, sizeof(cache_entry), cache->buffer_capacity, new_capacity);
+    memset(cache->entries + cache->buffer_capacity, 0, cache->buffer_capacity * sizeof(cache_entry));
 
     cache->buffer_capacity = new_capacity;
   }
@@ -114,16 +116,11 @@ static bnd_result_u32 cache_table_insert(bnd_world *world, uint64_t key, const c
     entry = &cache->entries[entry_index];
     entry->key = key;
     entry->access_time = world->age;
-    entry->feature_count = 1;
-    entry->features[0] = c->features;
 
     cache->hash_table[hash_table_slot.value] = entry_index;
   } else if (cache->entries[entry_index].key == key) {
     entry = &cache->entries[entry_index];
     entry->access_time = world->age;
-    if (entry->feature_count < MAX_CACHE_ENTRIES_PER_PAIR) {
-      entry->features[entry->feature_count++] = c->features;
-    }
   }
 
   return BND_RESULT_OK(u32, entry_index);
@@ -230,11 +227,12 @@ bnd_error contacts_cache_init(bnd_world *world) {
   ALLOC_BUFFER8(cache->entries, cache->buffer_capacity * sizeof(cache_entry));
 
   memset(cache->hash_table, 0, cache->hash_table_capacity * sizeof(uint32_t));
+  memset(cache->entries, 0, cache->buffer_capacity * sizeof(cache_entry));
 
   return OK;
 }
 
-const cache_entry *contacts_cache_query_and_update(bnd_world *world, count_t contact_index, bool is_dynamic) {
+cache_entry *contacts_cache_query(bnd_world *world, count_t contact_index, bool is_dynamic) {
   contact *c = &world->contacts.values[contact_index];
 
   const common_data *data_a = as_common_const(world, BND_BODY_DYNAMIC);
@@ -253,11 +251,6 @@ const cache_entry *contacts_cache_query_and_update(bnd_world *world, count_t con
     tmp = gen_a;
     gen_a = gen_b;
     gen_b = tmp;
-
-    uint16_t tmp_f[3];
-    memcpy(tmp_f, c->features.body_a, sizeof(tmp_f));
-    memcpy(c->features.body_a, c->features.body_b, sizeof(tmp_f));
-    memcpy(c->features.body_b, tmp_f, sizeof(tmp_f));
   }
 
   const uint64_t mask_23bit = 0x7FFFFF;
@@ -274,31 +267,6 @@ const cache_entry *contacts_cache_query_and_update(bnd_world *world, count_t con
   }
 
   return &world->contacts_cache.entries[index.value];
-}
-
-bool contacts_cache_features_equal(const contact_features *a, const contact_features *b) {
-  return a->body_a[0] == b->body_a[0] && a->body_a[1] == b->body_a[1] && a->body_a[2] == b->body_a[2] &&
-         a->body_b[0] == b->body_b[0] && a->body_b[1] == b->body_b[1] && a->body_b[2] == b->body_b[2];
-}
-
-void contacts_cache_features_sort(contact_features *features) {
-  count_t lookup[] = { 0, 1, 0 };
-  count_t tmp;
-
-  for (count_t i = 0; i < 3; ++i) {
-    count_t index = lookup[i];
-    if (features->body_a[index] > features->body_a[index + 1]) {
-      tmp = features->body_a[index];
-      features->body_a[index] = features->body_a[index + 1];
-      features->body_a[index + 1] = tmp;
-    }
-
-    if (features->body_b[index] > features->body_b[index + 1]) {
-      tmp = features->body_b[index];
-      features->body_b[index] = features->body_b[index + 1];
-      features->body_b[index + 1] = tmp;
-    }
-  }
 }
 
 void contacts_cache_prune(bnd_world *world) {

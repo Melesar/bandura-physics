@@ -446,13 +446,9 @@ static void epa_calculate_contact(const polytope *polytope, contact *contact) {
     contact->normal = bnd_v3_up();
   }
 
-  contact->features.body_a[0] = v0.p1.id;
-  contact->features.body_a[1] = v1.p1.id;
-  contact->features.body_a[2] = v2.p1.id;
-
-  contact->features.body_b[0] = v0.p2.id;
-  contact->features.body_b[1] = v1.p2.id;
-  contact->features.body_b[2] = v2.p2.id;
+  contact->features.witness_a = p1;
+  contact->features.witness_b = p2;
+  contact->features.normal = contact->normal;
 }
 
 void epa_get_final_points(bnd_v3 *points) {
