@@ -88,6 +88,14 @@ count_t bnd_required_memory(const bnd_config *config) {
 
   count_t polytope_size = polytope_memory_size(config->advanced.epa_max_nodes);
 
+  count_t cache_hash_table_capacity = 1;
+  while (cache_hash_table_capacity < config->advanced.contacts_cache.hash_table_capacity) {
+    cache_hash_table_capacity *= 2;
+  }
+
+  count_t contacts_cache_size = cache_hash_table_capacity * sizeof(uint32_t)
+    + config->advanced.contacts_cache.buffer_capacity * sizeof(cache_entry);
+
   size += (config->memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT) * dynamic_size
     + (config->memory.statics_capacity + EPHEMERAL_BODIES_COUNT) * common_size
     + config->memory.contacts_capacity * contact_size
@@ -95,11 +103,12 @@ count_t bnd_required_memory(const bnd_config *config) {
     + config->memory.meshes_capacity * mesh_size
     + config->memory.events_capacity * event_size
     + shapes_size
-    + polytope_size;
+    + polytope_size
+    + contacts_cache_size;
 
   // Alignment
-  size += 7 * 7; // 8-bytes for world, shapes slots and EPA polytope
-  size += 44 * 3; // 4-bytes for the rest of the buffers
+  size += 8 * 7; // 8-bytes for world, shapes slots, EPA polytope and the cache entries buffer
+  size += 45 * 3; // 4-bytes for the rest of the buffers
 
   return size;
 }
@@ -169,6 +178,7 @@ bnd_config bnd_default_config() {
       .contacts_cache = {
         .hash_table_capacity = 256,
         .buffer_capacity = 64,
+        .feature_distance_threshold = 0.02f,
       }
     },
   };

@@ -196,6 +196,7 @@ typedef struct {
 typedef struct {
   uint32_t hash_table_capacity;
   uint32_t buffer_capacity;
+  float feature_distance_threshold;
 } bnd_config_contacts_cache;
 
 typedef struct {

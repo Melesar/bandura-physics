@@ -5,7 +5,6 @@
 
 #include <string.h>
 
-#define MAX_CACHE_ENTRIES_PER_PAIR 4
 #define HASH_TABLE_TOMBSTONE UINT32_MAX
 #define HASH_TABLE_EMPTY 0
 
@@ -73,6 +72,8 @@ static bnd_error cache_table_realloc_if_needed(bnd_world *world) {
     REALLOC_BUFFER4(cache->hash_table, world->allocator, sizeof(count_t), cache->hash_table_capacity, new_capacity)
     memset(cache->hash_table, 0, new_capacity * sizeof(count_t));
 
+    cache->hash_table_capacity = new_capacity;
+
     for (count_t i = 1; i <= cache->entry_count; ++i) {
       uint64_t key = cache->entries[i].key;
       bnd_result_u32 index = cache_table_free_slot(world, key);
@@ -82,11 +83,9 @@ static bnd_error cache_table_realloc_if_needed(bnd_world *world) {
 
       cache->hash_table[index.value] = i;
     }
-
-    cache->hash_table_capacity = new_capacity;
   }
 
-  if (cache->entry_count >= cache->buffer_capacity) {
+  if (cache->entry_count + 1 >= cache->buffer_capacity) {
     count_t new_capacity = cache->buffer_capacity * 2;
 
     REALLOC_BUFFER8(cache->entries, world->allocator, sizeof(cache_entry), cache->buffer_capacity, new_capacity);
@@ -104,7 +103,7 @@ static bnd_result_u32 cache_table_insert(bnd_world *world, uint64_t key, const c
   PROPAGATE_RESULT(u32, cache_table_realloc_if_needed(world));
 
   bnd_result_u32 hash_table_slot = cache_table_free_slot(world, key);
-  if (hash_table_slot.error.message != BND_OK) {
+  if (hash_table_slot.error.type != BND_OK) {
     return hash_table_slot;
   }
 
@@ -168,6 +167,10 @@ bnd_error contacts_init(bnd_world *world) {
 
 void contacts_teardown(bnd_world *world) {
   world->allocator.free(world->contacts.values, world->contacts.capacity * sizeof(contact));
+
+  contacts_cache *cache = &world->contacts_cache;
+  world->allocator.free(cache->hash_table, cache->hash_table_capacity * sizeof(count_t));
+  world->allocator.free(cache->entries, cache->buffer_capacity * sizeof(cache_entry));
 }
 
 bnd_error contacts_ensure_capacity(bnd_world *world, count_t additional_count) {
@@ -267,8 +270,4 @@ cache_entry *contacts_cache_query(bnd_world *world, count_t contact_index, bool 
   }
 
   return &world->contacts_cache.entries[index.value];
-}
-
-void contacts_cache_prune(bnd_world *world) {
-
 }

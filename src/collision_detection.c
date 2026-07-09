@@ -731,10 +731,6 @@ static count_t polytope_polytope_collision(bnd_world *world, const collision_det
   return 1;
 }
 
-static bool check_cached_features(bnd_world *world, const collision_detection_context *ctx, const contact_features *cached_features) {
-  return false;
-}
-
 static count_t collisions_detect(bnd_world *world, const common_data *data_b, bool is_dynamic) {
   const common_data *dynamics = (common_data *)&world->dynamics;
 
@@ -781,10 +777,21 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
               c->index_a = ctx.body_a;
               c->index_b = ctx.body_b;
               c->normal = bnd_v3_negate(c->normal);
+
+              if (entry.use_cache) {
+                bnd_v3 tmp_witness = c->features.witness_a;
+                c->features.witness_a = c->features.witness_b;
+                c->features.witness_b = tmp_witness;
+                c->features.normal = bnd_v3_negate(c->features.normal);
+              }
             }
           }
 
           if (!entry.use_cache) {
+            continue;
+          }
+
+          if (new_contacts == 0) {
             continue;
           }
 
@@ -796,27 +803,63 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
             continue;
           }
 
-          for (count_t k = world->contacts.count - new_contacts; k < world->contacts.count; ++k) {
-            contact_features *features = &world->contacts.values[k].features;
-            features->witness_a = bnd_v3_rotate(bnd_v3_sub(features->witness_a, body_a_center(&ctx)), bnd_quat_invert(body_a_rotation(&ctx)));
-            features->witness_a = bnd_v3_rotate(bnd_v3_sub(features->witness_b, body_b_center(&ctx)), bnd_quat_invert(body_b_rotation(&ctx)));
-          }
+          float distance_threshold = world->config.advanced.contacts_cache.feature_distance_threshold;
+          float distance_threshold_sqr = distance_threshold * distance_threshold;
 
           uint8_t picked_features = 0;
-          for (count_t h = 0; h < cached_entry->feature_count; ++h) {
-            const contact_features *cached_features = &cached_entry->features[h];
+          for (count_t k = world->contacts.count - new_contacts; k < world->contacts.count; ++k) {
+            contact_features *features = &world->contacts.values[k].features;
+            bnd_quat inv_rotation_a = bnd_quat_invert(body_a_rotation(&ctx));
+            features->witness_a = bnd_v3_rotate(bnd_v3_sub(features->witness_a, body_a_center(&ctx)), inv_rotation_a);
+            features->witness_b = bnd_v3_rotate(bnd_v3_sub(features->witness_b, body_b_center(&ctx)), bnd_quat_invert(body_b_rotation(&ctx)));
+            features->normal = bnd_v3_rotate(features->normal, inv_rotation_a);
 
-            for (count_t k = 0; k < new_contacts; ++k) {
-              count_t contact_index = first_contact_index + k;
-              if ((picked_features & (1 << h)) || contacts_cache_features_equal(cached_features, &world->contacts.values[contact_index].features)) {
-                continue;
+            count_t matched_slot = cached_entry->feature_count;
+            for (count_t h = 0; h < cached_entry->feature_count; ++h) {
+              const contact_features *cached_features = &cached_entry->features[h];
+
+              float distance_a_sqr = bnd_v3_distancesqr(cached_features->witness_a, features->witness_a);
+              float distance_b_sqr = bnd_v3_distancesqr(cached_features->witness_b, features->witness_b);
+
+              if (distance_a_sqr <= distance_threshold_sqr && distance_b_sqr <= distance_threshold_sqr) {
+                matched_slot = h;
+                break;
               }
             }
 
-            if (check_cached_features(world, &ctx, cached_features)) {
-              count += 1;
-              picked_features |= 1 << h;
+            if (matched_slot < cached_entry->feature_count) {
+              cached_entry->features[matched_slot] = *features;
+              picked_features |= 1 << matched_slot;
+            } else if (cached_entry->feature_count < MAX_CACHE_ENTRIES_PER_PAIR) {
+              cached_entry->features[cached_entry->feature_count] = *features;
+              picked_features |= 1 << cached_entry->feature_count;
+              cached_entry->feature_count += 1;
             }
+          }
+
+          for (count_t h = 0; h < cached_entry->feature_count; ++h) {
+            if (picked_features & (1 << h)) {
+              continue;
+            }
+
+            const contact_features *cached_features = &cached_entry->features[h];
+
+            bnd_quat rotation_a = body_a_rotation(&ctx);
+            bnd_v3 witness_a_world = bnd_v3_add(bnd_v3_rotate(cached_features->witness_a, rotation_a), body_a_center(&ctx));
+            bnd_v3 witness_b_world = bnd_v3_add(bnd_v3_rotate(cached_features->witness_b, body_b_rotation(&ctx)), body_b_center(&ctx));
+            bnd_v3 normal_world = bnd_v3_rotate(cached_features->normal, rotation_a);
+
+            contact *c = new_contact(world, &ctx);
+            if (c == NULL) {
+              continue;
+            }
+
+            c->point = bnd_v3_scale(bnd_v3_add(witness_a_world, witness_b_world), 0.5f);
+            c->normal = normal_world;
+            c->depth = bnd_v3_dot(bnd_v3_sub(witness_a_world, witness_b_world), normal_world);
+            c->features = (contact_features){ 0 };
+
+            count += 1;
           }
 
           count += new_contacts;
