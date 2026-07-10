@@ -624,17 +624,20 @@ void epa_get_contact(const collision_detection_context *ctx, const simplex *simp
   while (attempts++ < EPA_MAX_ATTEMPTS) {
     polytope_node closest_face = pt->nodes[pt->nearest];
     bnd_v3 direction = closest_face.value.face.normal;
+    bnd_v3 normal_direction = bnd_v3_normalize(direction);
 
-    support_point = support(ctx, bnd_v3_normalize(direction));
-    float distance = bnd_v3_dot(direction, support_point.p);
-    if (distance - closest_face.value.face.distance < tolerance) {
+    support_point = support(ctx, normal_direction);
+
+    float support_distance = bnd_v3_dot(normal_direction, support_point.p);
+    float face_distance = sqrtf(closest_face.value.face.distance);
+    if (support_distance - face_distance < tolerance) {
       epa_calculate_contact(pt, contact);
       return;
     }
 
     bnd_v3 a, b, c, closest;
     polytope_get_face_verticies(pt, pt->nearest, &a, &b, &c);
-    distance = sqr_distance_to_triangle(support_point.p, a, b, c, &closest);
+    float distance = sqr_distance_to_triangle(support_point.p, a, b, c, &closest);
 
     if (distance < tolerance) {
       epa_calculate_contact(pt, contact);
