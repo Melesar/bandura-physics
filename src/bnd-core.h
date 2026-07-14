@@ -7,7 +7,7 @@
 #define EPHEMERAL_BODIES_COUNT 4
 #define DEFAULT_VERTEX_PER_MESH 512
 #define DEFAULT_FACE_PER_MESH 256
-#define MAX_CACHE_ENTRIES_PER_PAIR 4
+#define MAX_CONTACTS_PER_PAIR 4
 
 #define OK (bnd_error){BND_OK, NULL}
 #define OOM_ERROR (bnd_error){BND_ERROR_OUT_OF_MEMORY, "Allocator.malloc failed to allocate memory"}
@@ -92,7 +92,7 @@ struct cache_entry {
   uint64_t key;
   count_t feature_count;
   count_t access_time;
-  contact_features features[MAX_CACHE_ENTRIES_PER_PAIR];
+  contact_features features[MAX_CONTACTS_PER_PAIR];
 };
 
 typedef struct {

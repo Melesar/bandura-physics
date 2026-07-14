@@ -2,6 +2,7 @@
 #include "bnd-core.h"
 #include "profiler.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #define HASH_TABLE_TOMBSTONE UINT32_MAX
@@ -153,6 +154,7 @@ static bnd_result_u32 cache_table_insert(bnd_world *world, uint64_t key, const c
     entry = &cache->entries[entry_index];
     entry->key = key;
     entry->access_time = world->age;
+    entry->feature_count = 0;
 
     cache->hash_table[hash_table_slot.value] = entry_index;
   } else if (cache->entries[entry_index].key == key) {
@@ -335,6 +337,10 @@ void contacts_cache_prune(bnd_world *world) {
     }
 
     entries[i] = entries[entry_count--];
+  }
+
+  if (entry_count < world->contacts_cache.entry_count) {
+    printf("Pruned %d contacts\n", world->contacts_cache.entry_count - entry_count);
   }
 
   world->contacts_cache.entry_count = entry_count;

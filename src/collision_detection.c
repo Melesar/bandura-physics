@@ -837,13 +837,15 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
               }
             }
 
-            if (matched_slot < cached_entry->feature_count) {
+            count_t feature_count = cached_entry->feature_count;
+            if (matched_slot < feature_count) {
               cached_entry->features[matched_slot] = *features;
               picked_features |= 1 << matched_slot;
-            } else if (cached_entry->feature_count < MAX_CACHE_ENTRIES_PER_PAIR) {
-              cached_entry->features[cached_entry->feature_count] = *features;
-              picked_features |= 1 << cached_entry->feature_count;
+            } else if (cached_entry->feature_count < MAX_CONTACTS_PER_PAIR) {
+              cached_entry->features[feature_count] = *features;
               cached_entry->feature_count += 1;
+
+              picked_features |= 1 << feature_count;
             }
           }
 
