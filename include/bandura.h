@@ -52,6 +52,7 @@ typedef enum {
 
   // Debug mode errors
   BND_ERROR_INVALID_POLYTOPE,
+  BND_ERROR_NOT_FOUND,
 } bnd_error_type;
 
 typedef void* (*bnd_malloc_fn)(uint64_t alignment, uint64_t size);
@@ -194,6 +195,7 @@ typedef struct {
 } bnd_config_simulation;
 
 typedef struct {
+  uint32_t max_age;
   uint32_t hash_table_capacity;
   uint32_t buffer_capacity;
   float feature_distance_threshold;

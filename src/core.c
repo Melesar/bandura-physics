@@ -176,6 +176,7 @@ bnd_config bnd_default_config() {
       .velocity_epsilon = 0.01,
       .shapes_brackets_capacity = {64, 1, 1, 1, 1},
       .contacts_cache = {
+        .max_age = 3,
         .hash_table_capacity = 256,
         .buffer_capacity = 64,
         .feature_distance_threshold = 0.02f,

@@ -332,6 +332,7 @@ void                  contacts_resolve(bnd_world *world, float dt);
 
 bnd_error             contacts_cache_init(bnd_world *world);
 cache_entry          *contacts_cache_query(bnd_world *world, count_t contact_index, bool is_dynamic);
+void                  contacts_cache_prune(bnd_world *world);
 
 void                  collision_detection_init(bnd_world *world);
 count_t               collisions_detect_dynamic(bnd_world *world);

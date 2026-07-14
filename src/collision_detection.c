@@ -795,6 +795,8 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
             continue;
           }
 
+          PROFILE_BLOCK("Contacts cache")
+
           count_t first_contact_index = world->contacts.count - new_contacts;
 
           // All new contacts are from the same body pair, so they will share the same cache entry
