@@ -179,6 +179,7 @@ bnd_config bnd_default_config() {
         .hash_table_capacity = 256,
         .buffer_capacity = 64,
         .feature_distance_threshold = 0.02f,
+        .separation_threshold = 0.05f,
       }
     },
   };

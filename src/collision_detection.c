@@ -805,13 +805,21 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
 
           float distance_threshold = world->config.advanced.contacts_cache.feature_distance_threshold;
           float distance_threshold_sqr = distance_threshold * distance_threshold;
+          float separation_threshold = world->config.advanced.contacts_cache.separation_threshold;
+
+          bnd_v3 position_a = ctx.data_a->positions[ctx.body_a];
+          bnd_v3 position_b = ctx.data_b->positions[ctx.body_b];
+          bnd_quat rotation_a = ctx.data_a->rotations[ctx.body_a];
+          bnd_quat rotation_b = ctx.data_b->rotations[ctx.body_b];
 
           uint8_t picked_features = 0;
           for (count_t k = world->contacts.count - new_contacts; k < world->contacts.count; ++k) {
             contact_features *features = &world->contacts.values[k].features;
-            bnd_quat inv_rotation_a = bnd_quat_invert(body_a_rotation(&ctx));
-            features->witness_a = bnd_v3_rotate(bnd_v3_sub(features->witness_a, body_a_center(&ctx)), inv_rotation_a);
-            features->witness_b = bnd_v3_rotate(bnd_v3_sub(features->witness_b, body_b_center(&ctx)), bnd_quat_invert(body_b_rotation(&ctx)));
+
+            bnd_quat inv_rotation_a = bnd_quat_invert(rotation_a);
+            bnd_quat inv_rotation_b = bnd_quat_invert(rotation_b);
+            features->witness_a = bnd_v3_rotate(bnd_v3_sub(features->witness_a, position_a), inv_rotation_a);
+            features->witness_b = bnd_v3_rotate(bnd_v3_sub(features->witness_b, position_b), inv_rotation_b);
             features->normal = bnd_v3_rotate(features->normal, inv_rotation_a);
 
             count_t matched_slot = cached_entry->feature_count;
@@ -844,10 +852,13 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
 
             const contact_features *cached_features = &cached_entry->features[h];
 
-            bnd_quat rotation_a = body_a_rotation(&ctx);
-            bnd_v3 witness_a_world = bnd_v3_add(bnd_v3_rotate(cached_features->witness_a, rotation_a), body_a_center(&ctx));
-            bnd_v3 witness_b_world = bnd_v3_add(bnd_v3_rotate(cached_features->witness_b, body_b_rotation(&ctx)), body_b_center(&ctx));
+            bnd_v3 witness_a_world = bnd_v3_add(bnd_v3_rotate(cached_features->witness_a, rotation_a), position_a);
+            bnd_v3 witness_b_world = bnd_v3_add(bnd_v3_rotate(cached_features->witness_b, rotation_b), position_b);
             bnd_v3 normal_world = bnd_v3_rotate(cached_features->normal, rotation_a);
+
+            float separation = bnd_v3_dot(bnd_v3_sub(witness_a_world, witness_b_world), normal_world);
+            if (separation > separation_threshold)
+              continue;
 
             contact *c = new_contact(world, &ctx);
             if (c == NULL) {
@@ -856,7 +867,7 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
 
             c->point = bnd_v3_scale(bnd_v3_add(witness_a_world, witness_b_world), 0.5f);
             c->normal = normal_world;
-            c->depth = bnd_v3_dot(bnd_v3_sub(witness_a_world, witness_b_world), normal_world);
+            c->depth = -separation;
             c->features = (contact_features){ 0 };
 
             count += 1;
