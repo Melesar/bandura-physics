@@ -244,33 +244,29 @@ void draw_shape(bnd_v3 position, bnd_quat rotation, bnd_body_handle body_handle,
       MatrixMultiply(QuaternionToMatrix(rotation), MatrixTranslate(position.x, position.y, position.z));
   Material material = materials[body_handle.index % 20];
 
-  Matrix shape_transform = MatrixMultiply(QuaternionToMatrix(shape.rotation),
-      MatrixTranslate(shape.offset.x, shape.offset.y, shape.offset.z));
-  Matrix full_transform = MatrixMultiply(shape_transform, transform);
-
   if (widget_state->bodies_as_wireframe) {
     rlEnableWireMode();
   }
   switch (shape.type) {
     case BND_BOX:
       scale = MatrixScale(shape.value.box.size.x, shape.value.box.size.y, shape.value.box.size.z);
-      DrawMesh(meshes[BND_BOX], material, MatrixMultiply(scale, full_transform));
+      DrawMesh(meshes[BND_BOX], material, MatrixMultiply(scale, transform));
       break;
 
     case BND_SPHERE:
       scale = MatrixScale(shape.value.sphere.radius, shape.value.sphere.radius, shape.value.sphere.radius);
-      DrawMesh(meshes[BND_SPHERE], material, MatrixMultiply(scale, full_transform));
+      DrawMesh(meshes[BND_SPHERE], material, MatrixMultiply(scale, transform));
       break;
 
     case BND_CAPSULE:
       scale = MatrixScale(shape.value.capsule.radius, shape.value.capsule.height, shape.value.capsule.radius);
-      DrawMesh(meshes[BND_CAPSULE], material, MatrixMultiply(scale, full_transform));
+      DrawMesh(meshes[BND_CAPSULE], material, MatrixMultiply(scale, transform));
 
-      Vector3 p = Vector3Transform((Vector3) { 0, shape.value.capsule.height * 0.5, 0 }, full_transform);
+      Vector3 p = Vector3Transform((Vector3) { 0, shape.value.capsule.height * 0.5, 0 }, transform);
       Matrix m = MatrixMultiply(MatrixScale(shape.value.capsule.radius, shape.value.capsule.radius, shape.value.capsule.radius), MatrixTranslate(p.x, p.y, p.z));
       DrawMesh(meshes[BND_SPHERE], material, m);
 
-      p = Vector3Transform((Vector3) { 0, -shape.value.capsule.height * 0.5, 0 }, full_transform);
+      p = Vector3Transform((Vector3) { 0, -shape.value.capsule.height * 0.5, 0 }, transform);
       m = MatrixMultiply(MatrixScale(shape.value.capsule.radius, shape.value.capsule.radius, shape.value.capsule.radius), MatrixTranslate(p.x, p.y, p.z));
       DrawMesh(meshes[BND_SPHERE], material, m);
       break;
@@ -279,7 +275,7 @@ void draw_shape(bnd_v3 position, bnd_quat rotation, bnd_body_handle body_handle,
       for (uint32_t i = 0; i < render_mesh_index; ++i) {
         render_mesh rm = render_meshes[i];
         if (rm.handle == shape.value.mesh) {
-          DrawMesh(rm.mesh, material, full_transform);
+          DrawMesh(rm.mesh, material, transform);
           break;
         }
       }
