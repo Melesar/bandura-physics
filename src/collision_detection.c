@@ -337,10 +337,10 @@ static count_t capsule_sphere_collision(bnd_world *world, const collision_detect
 static count_t box_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
   bnd_v3 half_extents = bnd_v3_scale(ctx->shape_a.value.box.size, 0.5);
   bnd_v3 box_center = body_a_center(ctx);
-  bnd_quat box_rotation = bnd_quat_mul(ctx->data_a->rotations[ctx->body_a], ctx->shape_a.rotation);
+  bnd_quat box_rotation = body_a_rotation(ctx);
   bnd_quat inv_box_rotation = bnd_quat_invert(box_rotation);
 
-  bnd_v3 sphere_center = bnd_v3_add(ctx->data_b->positions[ctx->body_b], ctx->shape_b.offset);
+  bnd_v3 sphere_center = body_b_center(ctx);
   bnd_v3 local_sphere_center = bnd_v3_rotate(bnd_v3_sub(sphere_center, box_center), inv_box_rotation);
   float r = ctx->shape_b.value.sphere.radius;
 
