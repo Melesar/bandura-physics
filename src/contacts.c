@@ -2,7 +2,6 @@
 #include "bnd-core.h"
 #include "profiler.h"
 
-#include <stdio.h>
 #include <string.h>
 
 #define HASH_TABLE_TOMBSTONE UINT32_MAX
@@ -25,10 +24,10 @@ static bnd_event make_collision_event(const bnd_world *world, bnd_body_type type
   }};
 }
 
-static void emit_collision_events(bnd_world *world, bnd_body_type type, count_t start, count_t end) {
-  for (count_t i = start; i < end; ++i) {
-    const contact *c = &world->contacts.values[i];
-    common_data *data_a = (common_data *)&world->dynamics;
+static void emit_collision_events(bnd_world *world, const contact *contacts, count_t count, bnd_body_type type) {
+  for (count_t i = 0; i < count; ++i) {
+    const contact *c = &contacts[i];
+    common_data *data_a = as_common(world, BND_BODY_DYNAMIC);
     common_data *data_b = as_common(world, type);
 
     if (events_subscribed(data_a, c->index_a, BND_EVENT_COLLISION)) {
@@ -165,22 +164,31 @@ static bnd_result_u32 cache_table_insert(bnd_world *world, uint64_t key, const c
   return BND_RESULT_OK(u32, entry_index);
 }
 
+void contacts_cache_reset(bnd_world *world) {
+  contacts_cache *cache = &world->contacts_cache;
+  cache->entry_count = 0;
+  memset(cache->hash_table, 0, cache->hash_table_capacity * sizeof(uint32_t));
+}
+
 void contacts_generate(bnd_world *world) {
   PROFILE_FUNCTION
 
-  count_t dynamic_count = 0;
-  dynamic_count += collisions_detect_dynamic(world);
-  emit_collision_events(world, BND_BODY_DYNAMIC, 0, dynamic_count);
+  contact *contacts = world->contacts.values;
 
-  dynamic_count += joints_generate_dynamic(world);
+  count_t dynamic_count = collisions_detect(world, contacts, BND_BODY_DYNAMIC);
+  emit_collision_events(world, contacts, dynamic_count, BND_BODY_DYNAMIC);
 
+  dynamic_count += joints_generate_contacts(world, contacts + dynamic_count, BND_BODY_DYNAMIC);
+
+  contacts += dynamic_count;
+
+  count_t static_count = collisions_detect(world, contacts, BND_BODY_STATIC);
+  emit_collision_events(world, contacts, static_count, BND_BODY_STATIC);
+
+  static_count += joints_generate_contacts(world, contacts + static_count, BND_BODY_STATIC);
+
+  world->contacts.count = dynamic_count + static_count;
   world->contacts.dynamic_count = dynamic_count;
-
-  collisions_detect_static(world);
-  emit_collision_events(world, BND_BODY_STATIC, world->contacts.dynamic_count, world->contacts.count);
-
-  joints_generate_static(world);
-
   world->stats.contacts_count = world->contacts.count;
 }
 
@@ -213,11 +221,11 @@ void contacts_teardown(bnd_world *world) {
   world->allocator.free(cache->entries, cache->buffer_capacity * sizeof(cache_entry));
 }
 
-bnd_error contacts_ensure_capacity(bnd_world *world, count_t additional_count) {
-  contacts *contacts = &world->contacts;
+bnd_error contacts_ensure_capacity(bnd_world *world, contact *contacts, count_t additional_count) {
+  contact *end = world->contacts.values + world->contacts.capacity;
+  contact *desired = contacts + additional_count;
 
-  count_t count_needed = contacts->count + additional_count;
-  if (count_needed < contacts->capacity) {
+  if (desired <= end) {
     return OK;
   }
 
@@ -225,32 +233,18 @@ bnd_error contacts_ensure_capacity(bnd_world *world, count_t additional_count) {
     return (bnd_error) { BND_ERROR_NO_SPACE_AVAILABLE, "Contacts buffer is full and Allocator.realloc is NULL" };
   }
 
-  count_t old_capacity = contacts->capacity;
-  while (count_needed >= contacts->capacity) {
-    contacts->capacity <<= 1;
+  count_t old_capacity = world->contacts.capacity;
+  while (desired >= end) {
+    world->contacts.capacity <<= 1;
+    end = world->contacts.values + world->contacts.capacity;
 
-    if (contacts->capacity >= count_needed) {
-      REALLOC_BUFFER4(contacts->values, world->allocator, sizeof(contact), old_capacity, contacts->capacity);
+    if (end >= desired) {
+      REALLOC_BUFFER4(world->contacts.values, world->allocator, sizeof(contact), old_capacity, world->contacts.capacity);
       break;
     }
   }
 
   return OK;
-}
-
-contact *contacts_new_default(bnd_world *world, count_t body_a, count_t body_b) {
-  bnd_error e = contacts_ensure_capacity(world, 1);
-  if (e.type != BND_OK) {
-    return NULL;
-  }
-
-  contact *c = &world->contacts.values[world->contacts.count++];
-  c->index_a = body_a;
-  c->index_b = body_b;
-  c->friction = world->config.simulation.friction;
-  c->restitution = world->config.simulation.bounciness;
-
-  return c;
 }
 
 bnd_error contacts_cache_init(bnd_world *world) {
@@ -275,14 +269,12 @@ bnd_error contacts_cache_init(bnd_world *world) {
   return OK;
 }
 
-cache_entry *contacts_cache_query(bnd_world *world, count_t contact_index, bool is_dynamic) {
-  contact *c = &world->contacts.values[contact_index];
-
+cache_entry *contacts_cache_query(bnd_world *world, contact *contact, bnd_body_type type) {
   const common_data *data_a = as_common_const(world, BND_BODY_DYNAMIC);
-  const common_data *data_b = as_common_const(world, is_dynamic ? BND_BODY_DYNAMIC : BND_BODY_STATIC);
+  const common_data *data_b = as_common_const(world, type);
 
-  uint64_t index_a = data_a->inner_lookup[c->index_a];
-  uint64_t index_b = data_b->inner_lookup[c->index_b];
+  uint64_t index_a = data_a->inner_lookup[contact->index_a];
+  uint64_t index_b = data_b->inner_lookup[contact->index_b];
   uint64_t gen_a = data_a->generations[index_a];
   uint64_t gen_b = data_b->generations[index_b];
 
@@ -298,13 +290,13 @@ cache_entry *contacts_cache_query(bnd_world *world, count_t contact_index, bool 
 
   const uint64_t mask_23bit = 0x7FFFFF;
 
-  uint64_t key = (uint64_t)is_dynamic << 62;
+  uint64_t key = (uint64_t)type << 62;
   key |= gen_a << 53;
   key |= (index_a & mask_23bit) << 31;
   key |= gen_b << 23;
   key |= index_b & mask_23bit;
 
-  bnd_result_u32 index = cache_table_insert(world, key, c);
+  bnd_result_u32 index = cache_table_insert(world, key, contact);
   if (index.error.type != BND_OK) {
     return NULL;
   }
@@ -337,10 +329,6 @@ void contacts_cache_prune(bnd_world *world) {
     }
 
     entries[i] = entries[entry_count--];
-  }
-
-  if (entry_count < world->contacts_cache.entry_count) {
-    printf("Pruned %d contacts\n", world->contacts_cache.entry_count - entry_count);
   }
 
   world->contacts_cache.entry_count = entry_count;

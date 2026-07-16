@@ -1,5 +1,6 @@
 #include "bnd-core.h"
 #include "bnd-math.h"
+
 #include <string.h>
 
 static bnd_error resize_if_needed(bnd_allocator allocator, joints *joints) {
@@ -84,18 +85,19 @@ void bnd_remove_joint(bnd_world *world, count_t id) {
   }
 }
 
-static count_t generate_contacts(bnd_world *world, count_t start, count_t end, bool is_dynamic) {
+count_t joints_generate_contacts(bnd_world *world, contact *contacts, bnd_body_type type) {
   const joints *joints = &world->joints;
-  const dynamic_bodies *dynamics = &world->dynamics;
-  const static_bodies *statics = &world->statics;
 
   count_t count = 0;
+  count_t start = type == BND_BODY_DYNAMIC ? 0 : joints->dynamic_count;
+  count_t end = type == BND_BODY_DYNAMIC ? joints->dynamic_count : joints->count;
+
   for (count_t i = start; i < end; ++i) {
     bnd_joint j = joints->values[i];
 
     const common_data *data[2];
-    data[0] = (common_data *)dynamics;
-    data[1] = is_dynamic ? (common_data *)dynamics : (common_data *)statics;
+    data[0] = as_common(world, BND_BODY_DYNAMIC);
+    data[1] = as_common(world, type);
 
     bnd_v3 world_points[2];
     count_t indices[2];
@@ -112,11 +114,13 @@ static count_t generate_contacts(bnd_world *world, count_t start, count_t end, b
       continue;
     }
 
-    contact *contact = contacts_new_default(world, indices[0], indices[1]);
+    contact *contact = contacts + count;
     if (contact == NULL) {
       continue;
     }
 
+    contact->index_a = indices[0];
+    contact->index_b = indices[1];
     contact->point = bnd_v3_scale(bnd_v3_add(world_points[0], world_points[1]), 0.5);
     contact->normal = bnd_v3_scale(offset, 1.0 / distance);
     contact->depth = distance - j.max_error;
@@ -127,14 +131,6 @@ static count_t generate_contacts(bnd_world *world, count_t start, count_t end, b
   }
 
   return count;
-}
-
-count_t joints_generate_dynamic(bnd_world *world) {
-  return generate_contacts(world, 0, world->joints.dynamic_count, true);
-}
-
-void joints_generate_static(bnd_world *world) {
-  generate_contacts(world, world->joints.dynamic_count, world->joints.count, false);
 }
 
 bnd_error joints_init(bnd_world *world) {

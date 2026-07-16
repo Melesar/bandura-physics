@@ -12,6 +12,9 @@
 #define OK (bnd_error){BND_OK, NULL}
 #define OOM_ERROR (bnd_error){BND_ERROR_OUT_OF_MEMORY, "Allocator.malloc failed to allocate memory"}
 
+#define IS_ERROR(e) ((e).type != BND_OK)
+#define IS_OK(e) ((e).type == BND_OK)
+
 #define PROPAGATE_ERROR3(error, suffix) \
   bnd_error e_##suffix = error; \
   if (e_##suffix.type != BND_OK) { \
@@ -212,6 +215,9 @@ typedef struct {
   const bnd_world *world;
   const common_data *data_a;
   const common_data *data_b;
+
+  contact *contacts;
+
   count_t body_a, body_b;
   bnd_body_shape shape_a, shape_b;
 } collision_detection_context;
@@ -325,24 +331,23 @@ const common_data    *as_common_const(const bnd_world *world, bnd_body_type type
 bnd_error             contacts_init(bnd_world *world);
 void                  contacts_teardown(bnd_world *world);
 void                  contacts_reset(bnd_world *world);
-bnd_error             contacts_ensure_capacity(bnd_world *world, count_t additional_count);
-contact              *contacts_new_default(bnd_world *world, count_t body_a, count_t body_b);
+bnd_error             contacts_ensure_capacity(bnd_world *world, contact *contacts, count_t count);
+void                  contacts_filter_largest_surface_area(contact *contacts, count_t contact_count, count_t *selected_indices);
 void                  contacts_generate(bnd_world *world);
 void                  contacts_resolve(bnd_world *world, float dt);
 
 bnd_error             contacts_cache_init(bnd_world *world);
-cache_entry          *contacts_cache_query(bnd_world *world, count_t contact_index, bool is_dynamic);
+cache_entry          *contacts_cache_query(bnd_world *world, contact *contact, bnd_body_type type);
 void                  contacts_cache_prune(bnd_world *world);
+void                  contacts_cache_reset(bnd_world *world);
 
 void                  collision_detection_init(bnd_world *world);
-count_t               collisions_detect_dynamic(bnd_world *world);
-void                  collisions_detect_static(bnd_world *world);
+count_t               collisions_detect(bnd_world *world, contact *contacts, bnd_body_type type);
 
 bnd_error             joints_init(bnd_world *world);
 void                  joints_teardown(bnd_world *world);
 void                  joints_reset(bnd_world *world);
-count_t               joints_generate_dynamic(bnd_world *world);
-void                  joints_generate_static(bnd_world *world);
+count_t               joints_generate_contacts(bnd_world *world, contact *contacts, bnd_body_type type);
 
 bnd_error             meshes_init(bnd_world *world);
 void                  meshes_teardown(bnd_world *world);

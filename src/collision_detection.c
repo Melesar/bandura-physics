@@ -11,19 +11,6 @@
 
 typedef count_t (*collision_detection_func)(bnd_world *world, const collision_detection_context *ctx);
 
-typedef enum {
-  QUAD_LEFT = 1,
-  QUAD_RIGHT = 2,
-  QUAD_BOTTOM = 4,
-  QUAD_TOP = 8,
-} outcode;
-
-typedef struct {
-  bnd_v3 p0;
-  bnd_v3 p1;
-  bnd_v3 p2;
-} triangle_t;
-
 typedef struct {
   collision_detection_func func;
   bool primary;
@@ -48,11 +35,22 @@ static collision_detection_context ctx_inverse(collision_detection_context ctx) 
     .world = ctx.world,
     .data_a = ctx.data_b,
     .data_b = ctx.data_a,
+    .contacts = ctx.contacts,
     .body_a = ctx.body_b,
     .body_b = ctx.body_a,
     .shape_a = ctx.shape_b,
     .shape_b = ctx.shape_a,
   };
+}
+
+static contact *new_contact(const collision_detection_context *ctx, count_t offset) {
+  contact *c = ctx->contacts + offset;
+  c->index_a = ctx->body_a;
+  c->index_b = ctx->body_b;
+  c->friction = ctx->world->config.simulation.friction;
+  c->restitution = ctx->world->config.simulation.bounciness;
+
+  return c;
 }
 
 static bnd_v3 body_center_ex(bnd_v3 shape_offset, bnd_quat global_rotation, bnd_v3 body_position) {
@@ -213,10 +211,6 @@ body_support support(const collision_detection_context *ctx, bnd_v3 direction) {
   return result;
 }
 
-static contact *new_contact(bnd_world *world, const collision_detection_context *ctx) {
-  return contacts_new_default(world, ctx->body_a, ctx->body_b);
-}
-
 static count_t sphere_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
   bnd_v3 center_a = ctx->data_a->positions[ctx->body_a];
   bnd_v3 center_b = ctx->data_b->positions[ctx->body_b];
@@ -233,11 +227,11 @@ static count_t sphere_sphere_collision(bnd_world *world, const collision_detecti
 
   bnd_v3 normal = distance > EPSILON ? bnd_v3_scale(offset, 1 / distance) : bnd_v3_up();
 
-  contact *c = new_contact(world, ctx);
-  if (c == NULL) {
+  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts, 1))) {
     return 0;
   }
 
+  contact *c = new_contact(ctx, 0);
   c->point = bnd_v3_add(center_b, bnd_v3_scale(normal, radius_b + penetration));
   c->normal = normal;
   c->depth = -penetration;
@@ -246,6 +240,10 @@ static count_t sphere_sphere_collision(bnd_world *world, const collision_detecti
 }
 
 static count_t capsule_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
+  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts, 1))) {
+    return 0;
+  }
+
   bnd_v3 capsule_center = body_a_center(ctx);
   bnd_quat capsule_rotation = body_a_rotation(ctx);
   bnd_quat capsule_inv_rotation = bnd_quat_invert(capsule_rotation);
@@ -261,11 +259,7 @@ static count_t capsule_sphere_collision(bnd_world *world, const collision_detect
     float horizontal_distance = bnd_v3_len(horizontal_offset);
 
     if (horizontal_distance < capsule_radius) {
-      contact *c = new_contact(world, ctx);
-      if (c == NULL) {
-        return 0;
-      }
-
+      contact *c = new_contact(ctx, 0);
       c->point = bnd_v3_add(capsule_center, bnd_v3_rotate(local_sphere_center, capsule_rotation));
       c->normal = horizontal_distance > EPSILON
         ? bnd_v3_normalize(bnd_v3_rotate(bnd_v3_negate(horizontal_offset), capsule_rotation))
@@ -274,15 +268,11 @@ static count_t capsule_sphere_collision(bnd_world *world, const collision_detect
 
       return 1;
     } else if (horizontal_distance < capsule_radius + sphere_radius) {
-      contact *c = new_contact(world, ctx);
-      if (c == NULL) {
-        return 0;
-      }
-
       bnd_v3 closest = bnd_v3_scale(horizontal_offset, capsule_radius / horizontal_distance);
       closest.y = local_sphere_center.y;
       closest = bnd_v3_rotate(closest, capsule_rotation);
 
+      contact *c = new_contact(ctx, 0);
       c->point = bnd_v3_add(capsule_center, closest);
       c->normal = bnd_v3_normalize(bnd_v3_negate(closest));
       c->depth = sphere_radius - horizontal_distance + capsule_radius;
@@ -302,11 +292,7 @@ static count_t capsule_sphere_collision(bnd_world *world, const collision_detect
 
     float cap_distance = bnd_v3_len(cap_offset);
     if (cap_distance < capsule_radius) {
-      contact *c = new_contact(world, ctx);
-      if (c == NULL) {
-        return 0;
-      }
-
+      contact *c = new_contact(ctx, 0);
       c->point = bnd_v3_add(capsule_center, bnd_v3_rotate(local_sphere_center, capsule_rotation));
       c->normal = cap_distance > EPSILON
         ? bnd_v3_normalize(bnd_v3_rotate(bnd_v3_negate(cap_offset), capsule_rotation))
@@ -318,11 +304,7 @@ static count_t capsule_sphere_collision(bnd_world *world, const collision_detect
       bnd_v3 closest = bnd_v3_scale(cap_offset, capsule_radius / cap_distance);
       closest = bnd_v3_add(cap, closest);
 
-      contact *c = new_contact(world, ctx);
-      if (c == NULL) {
-        return 0;
-      }
-
+      contact *c = new_contact(ctx, 0);
       c->point = bnd_v3_add(capsule_center, bnd_v3_rotate(closest, capsule_rotation));
       c->normal = bnd_v3_normalize(bnd_v3_rotate(bnd_v3_negate(cap_offset), capsule_rotation));
       c->depth = sphere_radius - cap_distance + capsule_radius;
@@ -384,11 +366,11 @@ static count_t box_sphere_collision(bnd_world *world, const collision_detection_
     memcpy(&local_normal, &diff, sizeof(bnd_v3));
   }
 
-  contact *contact = new_contact(world, ctx);
-  if (contact == NULL) {
+  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts, 1))) {
     return 0;
   }
 
+  contact *contact = new_contact(ctx, 0);
   memcpy(&contact->normal, local_normal, sizeof(bnd_v3));
 
   contact->point = bnd_v3_add(box_center, bnd_v3_rotate(closest, box_rotation));
@@ -396,162 +378,6 @@ static count_t box_sphere_collision(bnd_world *world, const collision_detection_
   contact->depth = depth;
 
   return 1;
-}
-
-static count_t box_capsule_collision(bnd_world *world, const collision_detection_context *ctx) {
-  bnd_v3 box_center = body_a_center(ctx);
-  bnd_v3 box_half_size = bnd_v3_scale(ctx->shape_a.value.box.size, 0.5);
-  bnd_quat box_rotation = body_a_rotation(ctx);
-  bnd_quat inv_box_rotation = bnd_quat_invert(box_rotation);
-
-  bnd_v3 capsule_center = body_b_center(ctx);
-  float capsule_height = ctx->shape_b.value.capsule.height;
-  float capsule_radius = ctx->shape_b.value.capsule.radius;
-  bnd_quat capsule_rotation = body_b_rotation(ctx);
-
-  bnd_v3 local_caps[] = {
-    // Cap bases
-    { 0, 0.5 * capsule_height, 0},
-    { 0, -0.5 * capsule_height, 0},
-
-    // Cap ends
-    { 0, 0.5 * capsule_height + capsule_radius, 0},
-    { 0, -0.5 * capsule_height - capsule_radius, 0},
-  };
-  for (count_t i = 0; i < 4; ++i) {
-    bnd_v3 cap = local_caps[i];
-    cap = bnd_v3_rotate(cap, capsule_rotation);
-    cap = bnd_v3_add(cap, capsule_center);
-    cap = bnd_v3_sub(cap, box_center);
-    cap = bnd_v3_rotate(cap, inv_box_rotation);
-
-    local_caps[i] = cap;
-  }
-
-  float *half_sizes = (float *)&box_half_size;
-  for (count_t axis_normal = 0; axis_normal < 3; ++axis_normal) {
-    count_t axis_a = (axis_normal + 1) % 3;
-    count_t axis_b = (axis_normal + 2) % 3;
-    int sign = 1;
-
-    bnd_v3 p;
-    float *pp = (float *)&p;
-    pp[axis_a] = -half_sizes[axis_a];
-    pp[axis_b] = -half_sizes[axis_b];
-
-    for (count_t i = 0; i < 2; ++i) {
-      pp[axis_normal] = sign * half_sizes[axis_normal];
-
-      bnd_v3 offsets[4];
-      float *po[4];
-      float *pcaps[4];
-      float signed_distances[4];
-      for (count_t k = 0; k < 4; ++k) {
-        offsets[k] = bnd_v3_sub(local_caps[k], p);
-        po[k] = (float*)&offsets[k];
-        pcaps[k] = (float*)&local_caps[k];
-        signed_distances[k] = sign * po[k][axis_normal];
-      }
-
-      if (signed_distances[0] > capsule_radius && signed_distances[1] > capsule_radius) {
-        // Both cylinder caps are above the face and further than the radius. Two shapes do not intersect.
-        return 0;
-      }
-
-      if (signed_distances[0] < -half_sizes[axis_normal] || signed_distances[1] < -half_sizes[axis_normal]) {
-        // A cap is on the other side of the box
-        sign = -1;
-        continue;
-      }
-
-      float a_max = 2.0 * half_sizes[axis_a];
-      float b_max = 2.0 * half_sizes[axis_b];
-
-      // Cohen–Sutherland algorithm to determine if a line intersects a rectangle.
-      // Here it's used to detect if the capsule's axis passes through the face when projected on its plane.
-      //
-      // https://en.wikipedia.org/wiki/Cohen%E2%80%93Sutherland_algorithm
-      uint8_t outcodes[4] = { 0 };
-      for (count_t k = 0; k < 4; ++k) {
-        if (po[k][axis_a] < 0) outcodes[k] |= QUAD_LEFT;
-        else if (po[k][axis_a] > a_max) outcodes[k] |= QUAD_RIGHT;
-        if (po[k][axis_b] < 0) outcodes[k] |= QUAD_BOTTOM;
-        else if (po[k][axis_b] > b_max) outcodes[k] |= QUAD_TOP;
-      }
-
-      if (outcodes[2] & outcodes[3]) {
-        // The capsule misses the box's face.
-        sign = -1;
-        continue;
-      }
-
-      count_t contacts_count = 0;
-      for (count_t k = 0; k < 2; ++k) {
-        if (signed_distances[k] > capsule_radius) {
-          continue;
-        }
-
-        contact *c = new_contact(world, ctx);
-        if (c == NULL) {
-          return contacts_count;
-        }
-
-        bnd_v3 point = { 0 };
-        pp = (float*)&point;
-        pp[axis_normal] = sign * half_sizes[axis_normal];
-
-        if (outcodes[0] & outcodes[1]) {
-          pp[axis_a] = fminf(fmaxf(pcaps[k + 2][axis_a], -half_sizes[axis_a]), half_sizes[axis_a]);
-          pp[axis_b] = fminf(fmaxf(pcaps[k + 2][axis_b], -half_sizes[axis_b]), half_sizes[axis_b]);
-        } else if (outcodes[k] == 0) {
-          // Capsule's cap projection is inside the face.
-          pp[axis_a] = pcaps[k][axis_a];
-          pp[axis_b] = pcaps[k][axis_b];
-        } else {
-          // Clip the projection to the face's boundary.
-          float x0 = pcaps[0][axis_a];
-          float x1 = pcaps[1][axis_a];
-          float y0 = pcaps[0][axis_b];
-          float y1 = pcaps[1][axis_b];
-          float xmin = -half_sizes[axis_a];
-          float xmax = half_sizes[axis_a];
-          float ymin = -half_sizes[axis_b];
-          float ymax = half_sizes[axis_b];
-          if (outcodes[k] & QUAD_TOP) {
-            pp[axis_a] = x0 + (x1 - x0) * (ymax - y0) / (y1 - y0);
-            pp[axis_b] = ymax;
-          } else if (outcodes[k] & QUAD_BOTTOM) {
-            pp[axis_a] = x0 + (x1 - x0) * (ymin - y0) / (y1 - y0);
-            pp[axis_b] = ymin;
-          } else if (outcodes[k] & QUAD_RIGHT) {
-            pp[axis_b] = y0 + (y1 - y0) * (xmax - x0) / (x1 - x0);
-            pp[axis_a] = xmax;
-          } else if (outcodes[k] & QUAD_LEFT) {
-            pp[axis_b] = y0 + (y1 - y0) * (xmin - x0) / (x1 - x0);
-            pp[axis_a] = xmin;
-          }
-        }
-
-        point = bnd_v3_rotate(point, box_rotation);
-        point = bnd_v3_add(point, box_center);
-
-        bnd_v3 normal = { 0 };
-        ((float*)&normal)[axis_normal] = sign;
-        normal = bnd_v3_rotate(normal, box_rotation);
-        normal = bnd_v3_negate(normal);
-
-        c->point = point;
-        c->normal = normal;
-        c->depth = capsule_radius - signed_distances[k];
-
-        contacts_count += 1;
-      }
-
-      return contacts_count;
-    }
-  }
-
-  return 0;
 }
 
 static count_t box_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
@@ -569,8 +395,8 @@ static count_t box_plane_collision(bnd_world *world, const collision_detection_c
 
   const count_t max_contacts = 4;
 
-  bnd_error e = contacts_ensure_capacity(world, max_contacts);
-  if (e.type != BND_OK) {
+  bnd_error e = contacts_ensure_capacity(world, ctx->contacts, max_contacts);
+  if (IS_ERROR(e)) {
     return 0;
   }
 
@@ -582,10 +408,7 @@ static count_t box_plane_collision(bnd_world *world, const collision_detection_c
       continue;
     }
 
-    contact *c = new_contact(world, ctx);
-    if (c == NULL) {
-      return 0;
-    }
+    contact *c = new_contact(ctx, contact_count);
     c->normal = plane_normal;
     c->point = bnd_v3_add(corner, bnd_v3_scale(plane_normal, -0.5 * distance));
     c->depth = -distance;
@@ -608,11 +431,11 @@ static count_t sphere_plane_collision(bnd_world *world, const collision_detectio
     return 0;
   }
 
-  contact *contact = new_contact(world, ctx);
-  if (contact == NULL) {
+  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts, 1))) {
     return 0;
   }
 
+  contact *contact = new_contact(ctx, 0);
   contact->normal = plane_normal;
   contact->point = bnd_v3_add(sphere_center, bnd_v3_scale(plane_normal, -plane_sphere_distance));
   contact->depth = sphere_radius - plane_sphere_distance;
@@ -643,11 +466,11 @@ static count_t capsule_plane_collision(bnd_world *world, const collision_detecti
       continue;
     }
 
-    contact *c = new_contact(world, ctx);
-    if (c == NULL) {
+    if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts, 1))) {
       return contact_count;
     }
 
+    contact *c = new_contact(ctx, contact_count);
     c->point = bnd_v3_add(points[i], bnd_v3_scale(plane_normal, -d));
     c->normal = plane_normal;
     c->depth = capsule_radius - d;
@@ -703,11 +526,11 @@ static count_t mesh_plane_collision(bnd_world *world, const collision_detection_
   point = bnd_v3_add(point, mesh_center);
   point = bnd_v3_add(point, bnd_v3_scale(plane_normal, -min_dot)); // Project the deepest vertex back on the plane.
 
-  contact *c = new_contact(world, ctx);
-  if (c == NULL) {
+  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts, 1))) {
     return 0;
   }
 
+  contact *c = new_contact(ctx, 0);
   c->point = point;
   c->normal = plane_normal;
   c->depth = -min_dot;
@@ -721,18 +544,19 @@ static count_t polytope_polytope_collision(bnd_world *world, const collision_det
     return 0;
   }
 
-  contact *c = new_contact(world, ctx);
-  if (c == NULL) {
+  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts, 1))) {
     return 0;
   }
 
+  contact *c = new_contact(ctx, 0);
   epa_get_contact(ctx, &s, world->config.advanced.epa_tolerance, c);
 
   return 1;
 }
 
-static count_t collisions_detect(bnd_world *world, const common_data *data_b, bool is_dynamic) {
-  const common_data *dynamics = (common_data *)&world->dynamics;
+count_t collisions_detect(bnd_world *world, contact *contacts, bnd_body_type type) {
+  const common_data *dynamics = as_common_const(world, BND_BODY_DYNAMIC);
+  const common_data *data_b = as_common_const(world, type);
 
   collision_detection_context ctx = {
     .world = world,
@@ -743,7 +567,7 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
   count_t count = 0;
 
   for (count_t i = 0; i < dynamics->count; ++i) {
-    count_t until = is_dynamic ? i : data_b->count;
+    count_t until = type == BND_BODY_DYNAMIC ? i : data_b->count;
     for (count_t j = 0; j < until; ++j) {
       if (!aabb_intersect(dynamics, data_b, i, j)) {
         continue;
@@ -756,14 +580,19 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
       body_shapes shapes_b = data_b->shapes[j];
 
       uint64_t cached_contacts_mask = 0;
-      count_t new_contacts = 0;
+      count_t pair_contacts_count = 0;
+      contact *pair_contacts = contacts + count;
+
       for (count_t sa = 0; sa < shapes_a.count; ++sa) {
         bnd_body_shape shape_a = shapes_get(world, shapes_a)[sa];
         ctx.shape_a = shape_a;
 
         for (count_t sb = 0; sb < shapes_b.count; ++sb) {
           bnd_body_shape shape_b = shapes_get(world, shapes_b)[sb];
+          contact *shape_contacts = pair_contacts + pair_contacts_count;
+
           ctx.shape_b = shape_b;
+          ctx.contacts = shape_contacts;
 
           collision_detection_entry entry = collision_detection_table[shape_a.type][shape_b.type];
           if (entry.func == NULL) {
@@ -771,11 +600,11 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
           }
 
           collision_detection_context context = entry.primary ? ctx : ctx_inverse(ctx);
-          count_t shape_contacts = entry.func(world, &context);
+          count_t shape_contacts_count = entry.func(world, &context);
 
           if (!entry.primary) {
-            for (count_t k = world->contacts.count - shape_contacts; k < world->contacts.count; ++k) {
-              contact *c = &world->contacts.values[k];
+            for (count_t k = 0; k < shape_contacts_count; ++k) {
+              contact *c = &shape_contacts[k];
               c->index_a = ctx.body_a;
               c->index_b = ctx.body_b;
               c->normal = bnd_v3_negate(c->normal);
@@ -790,25 +619,28 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
           }
 
           if (entry.use_cache) {
-            uint64_t mask = (1 << shape_contacts) - 1;
-            cached_contacts_mask |= mask << new_contacts;
+            uint64_t mask = (1 << shape_contacts_count) - 1;
+            cached_contacts_mask |= mask << pair_contacts_count;
           }
 
-          new_contacts += shape_contacts;
+          pair_contacts_count += shape_contacts_count;
         }
       }
 
+      count_t filtered_contact_indices[MAX_CONTACTS_PER_PAIR] = {0};
       if (cached_contacts_mask == 0) {
-        count += new_contacts;
+        if (pair_contacts_count > MAX_CONTACTS_PER_PAIR) {
+          contacts_filter_largest_surface_area(pair_contacts, pair_contacts_count, filtered_contact_indices);
+          pair_contacts_count = MAX_CONTACTS_PER_PAIR;
+        }
+
+        count += pair_contacts_count;
         continue;
       }
 
       PROFILE_BLOCK("Contacts cache")
 
-      count_t first_contact_index = world->contacts.count - new_contacts;
-
-      // All new contacts are from the same body pair, so they will share the same cache entry
-      cache_entry *cached_entry = contacts_cache_query(world, first_contact_index, is_dynamic);
+      cache_entry *cached_entry = contacts_cache_query(world, pair_contacts, type);
       if (cached_entry == NULL) {
         continue;
       }
@@ -823,12 +655,12 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
       bnd_quat rotation_b = ctx.data_b->rotations[ctx.body_b];
 
       uint8_t picked_features = 0;
-      for (count_t k = 0; k < new_contacts; ++k) {
+      for (count_t k = 0; k < pair_contacts_count; ++k) {
         if ((cached_contacts_mask & (1 << k)) == 0) {
           continue;
         }
 
-        contact_features *features = &world->contacts.values[first_contact_index + k].features;
+        contact_features *features = &pair_contacts[k].features;
 
         bnd_quat inv_rotation_a = bnd_quat_invert(rotation_a);
         bnd_quat inv_rotation_b = bnd_quat_invert(rotation_b);
@@ -861,6 +693,7 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
         }
       }
 
+      count_t fresh_contacts_count = pair_contacts_count;
       count_t contacts_from_cache = 0;
       for (count_t h = 0; h < cached_entry->feature_count; ++h) {
         if (picked_features & (1 << h)) {
@@ -874,37 +707,51 @@ static count_t collisions_detect(bnd_world *world, const common_data *data_b, bo
         bnd_v3 normal_world = bnd_v3_rotate(cached_features->normal, rotation_a);
 
         float separation = bnd_v3_dot(bnd_v3_sub(witness_a_world, witness_b_world), normal_world);
-        if (separation > separation_threshold)
-          continue;
-
-        contact *c = new_contact(world, &ctx);
-        if (c == NULL) {
+        if (separation > separation_threshold) {
           continue;
         }
 
+        if (IS_ERROR(contacts_ensure_capacity(world, pair_contacts, 1))) {
+          break;
+        }
+
+        contact *c = pair_contacts + fresh_contacts_count + contacts_from_cache;
+        c->index_a = ctx.body_a;
+        c->index_b = ctx.body_b;
         c->point = bnd_v3_scale(bnd_v3_add(witness_a_world, witness_b_world), 0.5f);
         c->normal = normal_world;
         c->depth = -separation;
-        c->features = (contact_features){ 0 };
+        c->features = *cached_features;
 
         contacts_from_cache += 1;
       }
 
-      count += new_contacts + contacts_from_cache;
+      pair_contacts_count += contacts_from_cache;
+
+      if (pair_contacts_count > MAX_CONTACTS_PER_PAIR) {
+        contacts_filter_largest_surface_area(pair_contacts, pair_contacts_count, filtered_contact_indices);
+
+        count_t feature_count = 0;
+        for (count_t k = 0; k < MAX_CONTACTS_PER_PAIR; ++k) {
+          contact *c = &pair_contacts[k];
+          count_t original_contact_index = filtered_contact_indices[k];
+
+          bool fresh_cashable = original_contact_index < fresh_contacts_count && cached_contacts_mask & ((uint64_t)1 << original_contact_index);
+          bool from_cache = original_contact_index >= fresh_contacts_count;
+          if (fresh_cashable || from_cache) {
+            cached_entry->features[feature_count++] = c->features;
+          }
+        }
+
+        cached_entry->feature_count = feature_count;
+        pair_contacts_count = MAX_CONTACTS_PER_PAIR;
+      }
+
+      count += pair_contacts_count;
     }
   }
 
   return count;
-}
-
-count_t collisions_detect_dynamic(bnd_world *world) {
-  const common_data *dynamics = (common_data *)&world->dynamics;
-  return collisions_detect(world, dynamics, true);
-}
-
-void collisions_detect_static(bnd_world *world) {
-  const common_data *statics = (common_data *)&world->statics;
-  collisions_detect(world, statics, false);
 }
 
 void collision_detection_init(bnd_world *world) {
