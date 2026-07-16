@@ -361,7 +361,7 @@ static void polytope_remove_vertex(polytope *polytope, uint16_t vertex) {
 }
 
 static void polytope_clear_flags(polytope *polytope) {
-  memset(polytope->flags, 0, polytope->node_count);
+  memset(polytope->flags, 0, polytope->node_count + 1);
 }
 
 static void polytope_update_nearest(polytope *polytope) {
