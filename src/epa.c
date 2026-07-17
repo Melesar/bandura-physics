@@ -416,6 +416,10 @@ static void epa_invalid_contact(body_support p, contact *contact) {
   contact->point = bnd_v3_scale(bnd_v3_add(p.p1.point, p.p2.point), 0.5);
   contact->normal = bnd_v3_up();
   contact->depth = 0.1;
+
+  contact->features.witness_a = p.p1.point;
+  contact->features.witness_b = p.p2.point;
+  contact->features.normal = contact->normal;
 }
 
 static void epa_calculate_contact(const polytope *polytope, contact *contact) {
