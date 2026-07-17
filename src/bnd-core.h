@@ -216,7 +216,7 @@ typedef struct {
   const common_data *data_a;
   const common_data *data_b;
 
-  contact *contacts;
+  count_t contacts_offset;
 
   count_t body_a, body_b;
   bnd_body_shape shape_a, shape_b;
@@ -331,7 +331,7 @@ const common_data    *as_common_const(const bnd_world *world, bnd_body_type type
 bnd_error             contacts_init(bnd_world *world);
 void                  contacts_teardown(bnd_world *world);
 void                  contacts_reset(bnd_world *world);
-bnd_error             contacts_ensure_capacity(bnd_world *world, contact *contacts, count_t count);
+bnd_error             contacts_ensure_capacity(bnd_world *world, count_t contacts_offset, count_t count);
 void                  contacts_filter_largest_surface_area(contact *contacts, count_t contact_count, count_t *selected_indices);
 void                  contacts_generate(bnd_world *world);
 void                  contacts_resolve(bnd_world *world, float dt);
@@ -342,12 +342,12 @@ void                  contacts_cache_prune(bnd_world *world);
 void                  contacts_cache_reset(bnd_world *world);
 
 void                  collision_detection_init(bnd_world *world);
-count_t               collisions_detect(bnd_world *world, contact *contacts, bnd_body_type type);
+count_t               collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_type type);
 
 bnd_error             joints_init(bnd_world *world);
 void                  joints_teardown(bnd_world *world);
 void                  joints_reset(bnd_world *world);
-count_t               joints_generate_contacts(bnd_world *world, contact *contacts, bnd_body_type type);
+count_t               joints_generate_contacts(bnd_world *world, count_t contacts_offset, bnd_body_type type);
 
 bnd_error             meshes_init(bnd_world *world);
 void                  meshes_teardown(bnd_world *world);

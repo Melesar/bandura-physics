@@ -173,19 +173,16 @@ void contacts_cache_reset(bnd_world *world) {
 void contacts_generate(bnd_world *world) {
   PROFILE_FUNCTION
 
-  contact *contacts = world->contacts.values;
+  count_t dynamic_count = collisions_detect(world, 0, BND_BODY_DYNAMIC);
+  emit_collision_events(world, world->contacts.values, dynamic_count, BND_BODY_DYNAMIC);
 
-  count_t dynamic_count = collisions_detect(world, contacts, BND_BODY_DYNAMIC);
-  emit_collision_events(world, contacts, dynamic_count, BND_BODY_DYNAMIC);
+  dynamic_count += joints_generate_contacts(world, dynamic_count, BND_BODY_DYNAMIC);
 
-  dynamic_count += joints_generate_contacts(world, contacts + dynamic_count, BND_BODY_DYNAMIC);
+  const count_t static_offset = dynamic_count;
+  count_t static_count = collisions_detect(world, static_offset, BND_BODY_STATIC);
+  emit_collision_events(world, world->contacts.values + static_offset, static_count, BND_BODY_STATIC);
 
-  contacts += dynamic_count;
-
-  count_t static_count = collisions_detect(world, contacts, BND_BODY_STATIC);
-  emit_collision_events(world, contacts, static_count, BND_BODY_STATIC);
-
-  static_count += joints_generate_contacts(world, contacts + static_count, BND_BODY_STATIC);
+  static_count += joints_generate_contacts(world, static_offset + static_count, BND_BODY_STATIC);
 
   world->contacts.count = dynamic_count + static_count;
   world->contacts.dynamic_count = dynamic_count;
@@ -221,11 +218,9 @@ void contacts_teardown(bnd_world *world) {
   world->allocator.free(cache->entries, cache->buffer_capacity * sizeof(cache_entry));
 }
 
-bnd_error contacts_ensure_capacity(bnd_world *world, contact *contacts, count_t additional_count) {
-  contact *end = world->contacts.values + world->contacts.capacity;
-  contact *desired = contacts + additional_count;
-
-  if (desired <= end) {
+bnd_error contacts_ensure_capacity(bnd_world *world, count_t contacts_offset, count_t additional_count) {
+  count_t desired_count = contacts_offset + additional_count;
+  if (desired_count <= world->contacts.capacity) {
     return OK;
   }
 
@@ -234,11 +229,10 @@ bnd_error contacts_ensure_capacity(bnd_world *world, contact *contacts, count_t 
   }
 
   count_t old_capacity = world->contacts.capacity;
-  while (desired >= end) {
+  while (desired_count > world->contacts.capacity) {
     world->contacts.capacity <<= 1;
-    end = world->contacts.values + world->contacts.capacity;
 
-    if (end >= desired) {
+    if (world->contacts.capacity >= desired_count) {
       REALLOC_BUFFER4(world->contacts.values, world->allocator, sizeof(contact), old_capacity, world->contacts.capacity);
       break;
     }

@@ -35,7 +35,7 @@ static collision_detection_context ctx_inverse(collision_detection_context ctx) 
     .world = ctx.world,
     .data_a = ctx.data_b,
     .data_b = ctx.data_a,
-    .contacts = ctx.contacts,
+    .contacts_offset = ctx.contacts_offset,
     .body_a = ctx.body_b,
     .body_b = ctx.body_a,
     .shape_a = ctx.shape_b,
@@ -44,7 +44,7 @@ static collision_detection_context ctx_inverse(collision_detection_context ctx) 
 }
 
 static contact *new_contact(const collision_detection_context *ctx, count_t offset) {
-  contact *c = ctx->contacts + offset;
+  contact *c = &ctx->world->contacts.values[ctx->contacts_offset + offset];
   c->index_a = ctx->body_a;
   c->index_b = ctx->body_b;
   c->friction = ctx->world->config.simulation.friction;
@@ -227,7 +227,7 @@ static count_t sphere_sphere_collision(bnd_world *world, const collision_detecti
 
   bnd_v3 normal = distance > EPSILON ? bnd_v3_scale(offset, 1 / distance) : bnd_v3_up();
 
-  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts, 1))) {
+  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts_offset, 1))) {
     return 0;
   }
 
@@ -240,7 +240,7 @@ static count_t sphere_sphere_collision(bnd_world *world, const collision_detecti
 }
 
 static count_t capsule_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
-  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts, 1))) {
+  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts_offset, 1))) {
     return 0;
   }
 
@@ -366,7 +366,7 @@ static count_t box_sphere_collision(bnd_world *world, const collision_detection_
     memcpy(&local_normal, &diff, sizeof(bnd_v3));
   }
 
-  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts, 1))) {
+  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts_offset, 1))) {
     return 0;
   }
 
@@ -395,7 +395,7 @@ static count_t box_plane_collision(bnd_world *world, const collision_detection_c
 
   const count_t max_contacts = 4;
 
-  bnd_error e = contacts_ensure_capacity(world, ctx->contacts, max_contacts);
+  bnd_error e = contacts_ensure_capacity(world, ctx->contacts_offset, max_contacts);
   if (IS_ERROR(e)) {
     return 0;
   }
@@ -431,7 +431,7 @@ static count_t sphere_plane_collision(bnd_world *world, const collision_detectio
     return 0;
   }
 
-  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts, 1))) {
+  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts_offset, 1))) {
     return 0;
   }
 
@@ -466,7 +466,7 @@ static count_t capsule_plane_collision(bnd_world *world, const collision_detecti
       continue;
     }
 
-    if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts, 1))) {
+    if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts_offset + contact_count, 1))) {
       return contact_count;
     }
 
@@ -526,7 +526,7 @@ static count_t mesh_plane_collision(bnd_world *world, const collision_detection_
   point = bnd_v3_add(point, mesh_center);
   point = bnd_v3_add(point, bnd_v3_scale(plane_normal, -min_dot)); // Project the deepest vertex back on the plane.
 
-  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts, 1))) {
+  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts_offset, 1))) {
     return 0;
   }
 
@@ -544,7 +544,7 @@ static count_t polytope_polytope_collision(bnd_world *world, const collision_det
     return 0;
   }
 
-  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts, 1))) {
+  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts_offset, 1))) {
     return 0;
   }
 
@@ -554,7 +554,7 @@ static count_t polytope_polytope_collision(bnd_world *world, const collision_det
   return 1;
 }
 
-count_t collisions_detect(bnd_world *world, contact *contacts, bnd_body_type type) {
+count_t collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_type type) {
   const common_data *dynamics = as_common_const(world, BND_BODY_DYNAMIC);
   const common_data *data_b = as_common_const(world, type);
 
@@ -581,7 +581,7 @@ count_t collisions_detect(bnd_world *world, contact *contacts, bnd_body_type typ
 
       uint64_t cached_contacts_mask = 0;
       count_t pair_contacts_count = 0;
-      contact *pair_contacts = contacts + count;
+      count_t pair_offset = contacts_offset + count;
 
       for (count_t sa = 0; sa < shapes_a.count; ++sa) {
         bnd_body_shape shape_a = shapes_get(world, shapes_a)[sa];
@@ -589,10 +589,10 @@ count_t collisions_detect(bnd_world *world, contact *contacts, bnd_body_type typ
 
         for (count_t sb = 0; sb < shapes_b.count; ++sb) {
           bnd_body_shape shape_b = shapes_get(world, shapes_b)[sb];
-          contact *shape_contacts = pair_contacts + pair_contacts_count;
+          count_t shape_offset = pair_offset + pair_contacts_count;
 
           ctx.shape_b = shape_b;
-          ctx.contacts = shape_contacts;
+          ctx.contacts_offset = shape_offset;
 
           collision_detection_entry entry = collision_detection_table[shape_a.type][shape_b.type];
           if (entry.func == NULL) {
@@ -604,7 +604,7 @@ count_t collisions_detect(bnd_world *world, contact *contacts, bnd_body_type typ
 
           if (!entry.primary) {
             for (count_t k = 0; k < shape_contacts_count; ++k) {
-              contact *c = &shape_contacts[k];
+              contact *c = &world->contacts.values[shape_offset + k];
               c->index_a = ctx.body_a;
               c->index_b = ctx.body_b;
               c->normal = bnd_v3_negate(c->normal);
@@ -630,7 +630,7 @@ count_t collisions_detect(bnd_world *world, contact *contacts, bnd_body_type typ
       count_t filtered_contact_indices[MAX_CONTACTS_PER_PAIR] = {0};
       if (cached_contacts_mask == 0) {
         if (pair_contacts_count > MAX_CONTACTS_PER_PAIR) {
-          contacts_filter_largest_surface_area(pair_contacts, pair_contacts_count, filtered_contact_indices);
+          contacts_filter_largest_surface_area(world->contacts.values + pair_offset, pair_contacts_count, filtered_contact_indices);
           pair_contacts_count = MAX_CONTACTS_PER_PAIR;
         }
 
@@ -640,7 +640,7 @@ count_t collisions_detect(bnd_world *world, contact *contacts, bnd_body_type typ
 
       PROFILE_BLOCK("Contacts cache")
 
-      cache_entry *cached_entry = contacts_cache_query(world, pair_contacts, type);
+      cache_entry *cached_entry = contacts_cache_query(world, world->contacts.values + pair_offset, type);
       if (cached_entry == NULL) {
         continue;
       }
@@ -660,7 +660,7 @@ count_t collisions_detect(bnd_world *world, contact *contacts, bnd_body_type typ
           continue;
         }
 
-        contact_features *features = &pair_contacts[k].features;
+        contact_features *features = &world->contacts.values[pair_offset + k].features;
 
         bnd_quat inv_rotation_a = bnd_quat_invert(rotation_a);
         bnd_quat inv_rotation_b = bnd_quat_invert(rotation_b);
@@ -711,11 +711,12 @@ count_t collisions_detect(bnd_world *world, contact *contacts, bnd_body_type typ
           continue;
         }
 
-        if (IS_ERROR(contacts_ensure_capacity(world, pair_contacts, 1))) {
+        count_t contact_offset = pair_offset + fresh_contacts_count + contacts_from_cache;
+        if (IS_ERROR(contacts_ensure_capacity(world, contact_offset, 1))) {
           break;
         }
 
-        contact *c = pair_contacts + fresh_contacts_count + contacts_from_cache;
+        contact *c = &world->contacts.values[contact_offset];
         c->index_a = ctx.body_a;
         c->index_b = ctx.body_b;
         c->point = bnd_v3_scale(bnd_v3_add(witness_a_world, witness_b_world), 0.5f);
@@ -729,11 +730,11 @@ count_t collisions_detect(bnd_world *world, contact *contacts, bnd_body_type typ
       pair_contacts_count += contacts_from_cache;
 
       if (pair_contacts_count > MAX_CONTACTS_PER_PAIR) {
-        contacts_filter_largest_surface_area(pair_contacts, pair_contacts_count, filtered_contact_indices);
+        contacts_filter_largest_surface_area(world->contacts.values + pair_offset, pair_contacts_count, filtered_contact_indices);
 
         count_t feature_count = 0;
         for (count_t k = 0; k < MAX_CONTACTS_PER_PAIR; ++k) {
-          contact *c = &pair_contacts[k];
+          contact *c = &world->contacts.values[pair_offset + k];
           count_t original_contact_index = filtered_contact_indices[k];
 
           bool fresh_cashable = original_contact_index < fresh_contacts_count && cached_contacts_mask & ((uint64_t)1 << original_contact_index);

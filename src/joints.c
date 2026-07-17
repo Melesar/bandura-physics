@@ -85,13 +85,20 @@ void bnd_remove_joint(bnd_world *world, count_t id) {
   }
 }
 
-count_t joints_generate_contacts(bnd_world *world, contact *contacts, bnd_body_type type) {
+count_t joints_generate_contacts(bnd_world *world, count_t contacts_offset, bnd_body_type type) {
   const joints *joints = &world->joints;
 
-  count_t count = 0;
-  count_t start = type == BND_BODY_DYNAMIC ? 0 : joints->dynamic_count;
-  count_t end = type == BND_BODY_DYNAMIC ? joints->dynamic_count : joints->count;
+  const count_t start = type == BND_BODY_DYNAMIC ? 0 : joints->dynamic_count;
+  const count_t end = type == BND_BODY_DYNAMIC ? joints->dynamic_count : joints->count;
+  const count_t max_count = end - start;
 
+  if (IS_ERROR(contacts_ensure_capacity(world, contacts_offset, max_count))) {
+    return 0;
+  }
+
+  contact *contacts = world->contacts.values;
+
+  count_t spawned_count = 0;
   for (count_t i = start; i < end; ++i) {
     bnd_joint j = joints->values[i];
 
@@ -114,11 +121,7 @@ count_t joints_generate_contacts(bnd_world *world, contact *contacts, bnd_body_t
       continue;
     }
 
-    contact *contact = contacts + count;
-    if (contact == NULL) {
-      continue;
-    }
-
+    contact *contact = contacts + spawned_count;
     contact->index_a = indices[0];
     contact->index_b = indices[1];
     contact->point = bnd_v3_scale(bnd_v3_add(world_points[0], world_points[1]), 0.5);
@@ -127,10 +130,10 @@ count_t joints_generate_contacts(bnd_world *world, contact *contacts, bnd_body_t
     contact->friction = 1.0;
     contact->restitution = 0;
 
-    count += 1;
+    spawned_count += 1;
   }
 
-  return count;
+  return spawned_count;
 }
 
 bnd_error joints_init(bnd_world *world) {
