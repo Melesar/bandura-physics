@@ -382,6 +382,16 @@ static bool polytope_is_face_visible(const polytope_node *face, bnd_v3 support_p
   return bnd_v3_dot(bnd_v3_normalize(face->value.face.normal), bnd_v3_normalize(support_point)) > visibility_epsilon;
 }
 
+static bool polytope_contains_vertex(const polytope *polytope, bnd_v3 point) {
+  polytope_for_each_node(polytope, index, NODE_VERTEX) {
+    if (bnd_v3_distancesqr(polytope->nodes[index].value.vertex.v.p, point) < EPSILON) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 static bool polytope_from_simplex(polytope *polytope, const simplex *s) {
   polytope_clear(polytope);
 
@@ -644,6 +654,12 @@ void epa_get_contact(const collision_detection_context *ctx, const simplex *simp
     float distance = sqr_distance_to_triangle(support_point.p, a, b, c, &closest);
 
     if (distance < tolerance) {
+      epa_calculate_contact(pt, contact);
+      return;
+    }
+
+    // TODO don't check this every time, just when producing a zero-length edge.
+    if (polytope_contains_vertex(pt, support_point.p)) {
       epa_calculate_contact(pt, contact);
       return;
     }
