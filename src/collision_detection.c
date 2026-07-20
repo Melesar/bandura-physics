@@ -4,6 +4,7 @@
 
 #include "profiler.h"
 
+#include <stdio.h>
 #include <float.h>
 #include <math.h>
 #include <stdbool.h>
@@ -49,6 +50,7 @@ static contact *new_contact(const collision_detection_context *ctx, count_t offs
   c->index_b = ctx->body_b;
   c->friction = ctx->world->config.simulation.friction;
   c->restitution = ctx->world->config.simulation.bounciness;
+  c->from_cache = false;
 
   return c;
 }
@@ -552,6 +554,75 @@ static count_t polytope_polytope_collision(bnd_world *world, const collision_det
   epa_get_contact(ctx, &s, world->config.advanced.epa_tolerance, c);
 
   return 1;
+}
+
+bnd_error collision_detection_epa_context(const bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b,
+                                          collision_detection_context *ctx) {
+  char *message = "EPA debugging requires two distinct single-shape bodies that use EPA collision detection";
+  if (body_a.type > BND_BODY_STATIC || body_b.type > BND_BODY_STATIC) {
+    return (bnd_error) { BND_ERROR_BODY_HANDLE_INVALID, "Handle has an invalid body type" };
+  }
+
+  PROPAGATE_ERROR(bnd_handle_valid(world, body_a))
+  PROPAGATE_ERROR(bnd_handle_valid(world, body_b))
+
+  if (body_a.type == body_b.type && body_a.index == body_b.index) {
+    return (bnd_error) { BND_ERROR_EPA_NOT_APPLICABLE, message };
+  }
+
+  const common_data *data_a = as_common_const(world, body_a.type);
+  const common_data *data_b = as_common_const(world, body_b.type);
+  count_t index_a = handle_to_inner_index(world, body_a);
+  count_t index_b = handle_to_inner_index(world, body_b);
+
+  if (body_a.type == BND_BODY_STATIC && body_b.type == BND_BODY_DYNAMIC) {
+    const common_data *tmp_data = data_a;
+    data_a = data_b;
+    data_b = tmp_data;
+
+    count_t tmp_index = index_a;
+    index_a = index_b;
+    index_b = tmp_index;
+  } else if (body_a.type == BND_BODY_DYNAMIC && body_b.type == BND_BODY_DYNAMIC && index_a < index_b) {
+    const common_data *tmp_data = data_a;
+    data_a = data_b;
+    data_b = tmp_data;
+
+    count_t tmp_index = index_a;
+    index_a = index_b;
+    index_b = tmp_index;
+  }
+
+  if (data_a == data_b && index_a == index_b) {
+    return (bnd_error) { BND_ERROR_EPA_NOT_APPLICABLE, message };
+  }
+
+  body_shapes shapes_a = data_a->shapes[index_a];
+  body_shapes shapes_b = data_b->shapes[index_b];
+  if (shapes_a.count != 1 || shapes_b.count != 1) {
+    return (bnd_error) { BND_ERROR_EPA_NOT_APPLICABLE, message };
+  }
+
+  *ctx = (collision_detection_context) {
+    .world = world,
+    .data_a = data_a,
+    .data_b = data_b,
+    .body_a = index_a,
+    .body_b = index_b,
+    .shape_a = shapes_get(world, shapes_a)[0],
+    .shape_b = shapes_get(world, shapes_b)[0],
+  };
+
+  collision_detection_entry entry = collision_detection_table[ctx->shape_a.type][ctx->shape_b.type];
+  if (entry.func != polytope_polytope_collision) {
+    return (bnd_error) { BND_ERROR_EPA_NOT_APPLICABLE, message };
+  }
+
+  if (!entry.primary) {
+    *ctx = ctx_inverse(*ctx);
+  }
+
+  return OK;
 }
 
 count_t collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_type type) {

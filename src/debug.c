@@ -61,6 +61,39 @@ void bnd_debug_draw(const bnd_world *world, bnd_debug_draw_flags flags, bnd_debu
   }
 }
 
+bnd_result_u32 bnd_debug_epa_begin(const bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b) {
+  collision_detection_context ctx;
+  bnd_error error = collision_detection_epa_context(world, body_a, body_b, &ctx);
+  if (IS_ERROR(error)) {
+    return BND_RESULT_ERR2(u32, error);
+  }
+
+  simplex simplex;
+  if (!gjk_check_intersection(world, &ctx, &simplex)) {
+    return BND_RESULT_OK(u32, 0);
+  }
+
+  contact c;
+  count_t iterations_count = epa_get_contact(&ctx, &simplex, world->config.advanced.epa_tolerance, &c);
+
+  return BND_RESULT_OK(u32, iterations_count);
+}
+
+bool bnd_debug_epa_iteration(const bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, uint32_t iteration, bnd_debug_draw_epa_callbacks callbacks, void *user_data) {
+  collision_detection_context ctx;
+  bnd_error error = collision_detection_epa_context(world, body_a, body_b, &ctx);
+  if (IS_ERROR(error)) {
+    return false;
+  }
+
+  simplex simplex;
+  if (!gjk_check_intersection(world, &ctx, &simplex)) {
+    return false;
+  }
+
+  return epa_debug_draw(&ctx, &simplex, world->config.advanced.epa_tolerance, iteration, callbacks, user_data);
+}
+
 collision_test_suite *collision_tests_load() {
 #ifdef COLLISION_TEST_SUITE_PATH
   char *path = COLLISION_TEST_SUITE_PATH;

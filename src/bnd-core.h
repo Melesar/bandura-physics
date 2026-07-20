@@ -2,6 +2,7 @@
 #define BND_CORE_H
 
 #include "bandura.h"
+#include <stdbool.h>
 
 #define EPSILON 0.000001f
 #define EPHEMERAL_BODIES_COUNT 4
@@ -76,6 +77,8 @@ typedef struct {
   bnd_v3 relative_position[2];
   bnd_v3 local_velocity;
   float desired_delta_velocity;
+
+  bool from_cache;
 } contact;
 
 typedef struct {
@@ -343,6 +346,7 @@ void                  contacts_cache_reset(bnd_world *world);
 
 void                  collision_detection_init(bnd_world *world);
 count_t               collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_type type);
+bnd_error             collision_detection_epa_context(const bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, collision_detection_context *ctx);
 
 bnd_error             joints_init(bnd_world *world);
 void                  joints_teardown(bnd_world *world);
@@ -377,8 +381,8 @@ bool                  gjk_check_intersection(const bnd_world *world, const colli
 
 uint32_t              polytope_memory_size(uint16_t max_nodes);
 bnd_error             epa_init(bnd_world *world);
-void                  epa_get_contact(const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact);
-void                  epa_get_final_points(bnd_v3 *points);
+count_t               epa_get_contact(const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact);
+bool                  epa_debug_draw(const collision_detection_context *ctx, const simplex *simplex, float tolerance, uint32_t iteration, bnd_debug_draw_epa_callbacks callbacks, void *user_data);
 body_support          support(const collision_detection_context *ctx, bnd_v3 direction);
 
 float                 sqr_distance_to_triangle(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_v3 *closest);

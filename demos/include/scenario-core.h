@@ -80,6 +80,8 @@ typedef struct {
 
 typedef bnd_body_handle *ragdoll;
 
+extern bool simulation_running;
+
 void setup_scene(Shader shader);
 int register_gizmo(bnd_world *world, bnd_body_handle handle);
 void unregister_gizmo(int id);
