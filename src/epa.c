@@ -3,7 +3,6 @@
 #include "bnd-math.h"
 #include "profiler.h"
 
-#include <stdio.h>
 #include <string.h>
 #include <float.h>
 

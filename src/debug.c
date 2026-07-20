@@ -61,7 +61,7 @@ void bnd_debug_draw(const bnd_world *world, bnd_debug_draw_flags flags, bnd_debu
   }
 }
 
-bnd_result_u32 bnd_debug_epa_begin(const bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b) {
+bnd_result_u32 debug_epa_begin(const bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b) {
   collision_detection_context ctx;
   bnd_error error = collision_detection_epa_context(world, body_a, body_b, &ctx);
   if (IS_ERROR(error)) {
@@ -79,7 +79,7 @@ bnd_result_u32 bnd_debug_epa_begin(const bnd_world *world, bnd_body_handle body_
   return BND_RESULT_OK(u32, iterations_count);
 }
 
-bool bnd_debug_epa_iteration(const bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, uint32_t iteration, bnd_debug_draw_epa_callbacks callbacks, void *user_data) {
+bool debug_epa_iteration(const bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, uint32_t iteration, bnd_debug_draw_epa_callbacks callbacks, void *user_data) {
   collision_detection_context ctx;
   bnd_error error = collision_detection_epa_context(world, body_a, body_b, &ctx);
   if (IS_ERROR(error)) {

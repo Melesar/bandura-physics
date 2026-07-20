@@ -321,6 +321,22 @@ typedef struct {
   count_t cases_per_pair;
 } collision_test_suite;
 
+typedef enum {
+  BND_DEBUG_EPA_FACE_NONE = 0,
+  BND_DEBUG_EPA_FACE_NEAREST = 1,
+  BND_DEBUG_EPA_FACE_REMOVED = 2,
+} bnd_debug_epa_face_flags;
+
+typedef void (*bnd_debug_draw_epa_face_fn)(bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_debug_epa_face_flags flags, void *user_data);
+typedef void (*bnd_debug_draw_epa_normal_fn)(bnd_v3 origin, bnd_v3 unit_normal, void *user_data);
+typedef void (*bnd_debug_draw_epa_support_fn)(bnd_v3 point, void *user_data);
+
+typedef struct {
+  bnd_debug_draw_epa_face_fn draw_face;
+  bnd_debug_draw_epa_normal_fn draw_normal;
+  bnd_debug_draw_epa_support_fn draw_support;
+} bnd_debug_draw_epa_callbacks;
+
 typedef support_point (*support_func)(const shape_context *, bnd_v3);
 
 bnd_allocator         bnd_default_allocator();
@@ -384,6 +400,8 @@ bnd_error             epa_init(bnd_world *world);
 count_t               epa_get_contact(const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact);
 bool                  epa_debug_draw(const collision_detection_context *ctx, const simplex *simplex, float tolerance, uint32_t iteration, bnd_debug_draw_epa_callbacks callbacks, void *user_data);
 body_support          support(const collision_detection_context *ctx, bnd_v3 direction);
+BNDAPI bnd_result_u32 debug_epa_begin(const bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b);
+BNDAPI bool           debug_epa_iteration(const bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, uint32_t iteration, bnd_debug_draw_epa_callbacks callbacks, void *user_data);
 
 float                 sqr_distance_to_triangle(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_v3 *closest);
 float                 sqr_distance_to_line_segment(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 *closest);

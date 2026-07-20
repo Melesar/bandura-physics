@@ -1,4 +1,3 @@
-#include "raylib.h"
 #include "scenario-core.h"
 #include "raymath.h"
 #include "bnd-core.h"
@@ -66,7 +65,7 @@ void scenario_simulate(bnd_world *world, float dt) {
 
   if (world->age == 258) {
     simulation_running = false;
-    bnd_result_u32 iterations_count = bnd_debug_epa_begin(world, cone_body, floor_body);
+    bnd_result_u32 iterations_count = debug_epa_begin(world, cone_body, floor_body);
     if (iterations_count.error.type == BND_OK) {
       epa_iterations_count = iterations_count.value;
       epa_intersection = true;
@@ -86,7 +85,7 @@ void scenario_draw_scene(bnd_world *world) {
   };
 
   BeginBlendMode(BLEND_ALPHA);
-  bool result = bnd_debug_epa_iteration(world, cone_body, floor_body, epa_iteration, callbacks, NULL);
+  bool result = debug_epa_iteration(world, cone_body, floor_body, epa_iteration, callbacks, NULL);
   EndBlendMode();
 
   if (!result) {

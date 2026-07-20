@@ -250,22 +250,6 @@ typedef struct {
   bnd_debug_draw_aabb_fn draw_aabb;
 } bnd_debug_draw_callbacks;
 
-typedef enum {
-  BND_DEBUG_EPA_FACE_NONE = 0,
-  BND_DEBUG_EPA_FACE_NEAREST = 1,
-  BND_DEBUG_EPA_FACE_REMOVED = 2,
-} bnd_debug_epa_face_flags;
-
-typedef void (*bnd_debug_draw_epa_face_fn)(bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_debug_epa_face_flags flags, void *user_data);
-typedef void (*bnd_debug_draw_epa_normal_fn)(bnd_v3 origin, bnd_v3 unit_normal, void *user_data);
-typedef void (*bnd_debug_draw_epa_support_fn)(bnd_v3 point, void *user_data);
-
-typedef struct {
-  bnd_debug_draw_epa_face_fn draw_face;
-  bnd_debug_draw_epa_normal_fn draw_normal;
-  bnd_debug_draw_epa_support_fn draw_support;
-} bnd_debug_draw_epa_callbacks;
-
 typedef struct bnd_world_t bnd_world;
 
 #define BND_RESULT_TYPE(suffix, type) \
@@ -378,8 +362,6 @@ BNDAPI uint32_t             bnd_raycast_multiple(const bnd_world *world, bnd_ray
 BNDAPI uint32_t             bnd_overlap(const bnd_world *world, bnd_v3 origin, float radius, bnd_body_handle *overlaps, uint32_t max_overlaps);
 
 BNDAPI void                 bnd_debug_draw(const bnd_world *world, bnd_debug_draw_flags flags, bnd_debug_draw_callbacks callbacks, void *user_data);
-BNDAPI bnd_result_u32       bnd_debug_epa_begin(const bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b);
-BNDAPI bool                 bnd_debug_epa_iteration(const bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, uint32_t iteration, bnd_debug_draw_epa_callbacks callbacks, void *user_data);
 
 BNDAPI void                 bnd_teardown(bnd_world *world);
 

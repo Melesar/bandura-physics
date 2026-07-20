@@ -556,9 +556,9 @@ static count_t polytope_polytope_collision(bnd_world *world, const collision_det
   return 1;
 }
 
-bnd_error collision_detection_epa_context(const bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b,
-                                          collision_detection_context *ctx) {
+bnd_error collision_detection_epa_context(const bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, collision_detection_context *ctx) {
   char *message = "EPA debugging requires two distinct single-shape bodies that use EPA collision detection";
+
   if (body_a.type > BND_BODY_STATIC || body_b.type > BND_BODY_STATIC) {
     return (bnd_error) { BND_ERROR_BODY_HANDLE_INVALID, "Handle has an invalid body type" };
   }
