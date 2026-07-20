@@ -660,7 +660,8 @@ count_t collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_ty
           continue;
         }
 
-        contact_features *features = &world->contacts.values[pair_offset + k].features;
+        contact *c = &world->contacts.values[pair_offset + k];
+        contact_features *features = &c->features;
 
         bnd_quat inv_rotation_a = bnd_quat_invert(rotation_a);
         bnd_quat inv_rotation_b = bnd_quat_invert(rotation_b);
@@ -723,6 +724,8 @@ count_t collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_ty
         c->normal = normal_world;
         c->depth = -separation;
         c->features = *cached_features;
+        c->restitution = world->config.simulation.bounciness;
+        c->friction = world->config.simulation.friction;
 
         contacts_from_cache += 1;
       }
