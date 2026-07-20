@@ -696,7 +696,10 @@ bool epa_debug_draw(const collision_detection_context *ctx, const simplex *simpl
     }
 
     if (iteration == target_iteration) {
-      epa_debug_render_iteration(pt, support_point, callbacks, user_data);
+      bnd_v3 direction = bnd_v3_normalize(pt->nodes[pt->nearest].value.face.normal);
+      body_support next_support = support(ctx, direction);
+
+      epa_debug_render_iteration(pt, next_support, callbacks, user_data);
       return true;
     }
 
