@@ -11,13 +11,13 @@ bool epa_intersection;
 uint32_t epa_iteration;
 uint32_t epa_iterations_count;
 
-static void draw_epa_face(bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_debug_epa_face_flags flags, void *user_data) {
+static void draw_epa_face(bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_debug_epa_flags flags, void *user_data) {
   Color color = PINK;
-  if (flags & (BND_DEBUG_EPA_FACE_REMOVED | BND_DEBUG_EPA_FACE_NEAREST)) {
+  if (flags & (DEBUG_EPA_FACE_REMOVED | DEBUG_EPA_FACE_NEAREST)) {
     color = ORANGE;
-  } else if (flags & BND_DEBUG_EPA_FACE_REMOVED) {
+  } else if (flags & DEBUG_EPA_FACE_REMOVED) {
     color = RED;
-  } else if (flags & BND_DEBUG_EPA_FACE_NEAREST) {
+  } else if (flags & DEBUG_EPA_FACE_NEAREST) {
     color = GREEN;
   }
   color.a = 100;
@@ -28,9 +28,11 @@ static void draw_epa_face(bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_debug_epa_face_flags
   DrawLine3D(c, a, BLACK);
 }
 
-static void draw_epa_normal(bnd_v3 origin, bnd_v3 normal, void *user_data) {
+static void draw_epa_normal(bnd_v3 origin, bnd_v3 normal, bnd_debug_epa_flags flags, void *user_data) {
   DrawSphere(origin, 0.05f, GREEN);
-  draw_arrow(origin, Vector3Scale(normal, 0.75f), GREEN);
+
+  Color color = flags & DEBUG_EPA_NORMAL_NEAREST ? GREEN : BLUE;
+  draw_arrow(origin, Vector3Scale(normal, 0.75f), color);
 }
 
 static void draw_epa_support(bnd_v3 point, void *user_data) {

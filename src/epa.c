@@ -660,23 +660,24 @@ static void epa_debug_render_iteration(const polytope *polytope, body_support su
       c = tmp;
     }
 
-    bnd_debug_epa_face_flags flags = BND_DEBUG_EPA_FACE_NONE;
+    bnd_debug_epa_flags flags = DEBUG_EPA_NONE;
     if (index == polytope->nearest) {
-      flags = (bnd_debug_epa_face_flags)(flags | BND_DEBUG_EPA_FACE_NEAREST);
+      flags = (bnd_debug_epa_flags)(flags | DEBUG_EPA_FACE_NEAREST);
     }
     if (polytope->flags[index] & FLAG_FOR_REMOVAL) {
-      flags = (bnd_debug_epa_face_flags)(flags | BND_DEBUG_EPA_FACE_REMOVED);
+      flags = (bnd_debug_epa_flags)(flags | DEBUG_EPA_FACE_REMOVED);
     }
 
     if (callbacks.draw_face != NULL) {
       callbacks.draw_face(a, b, c, flags, user_data);
     }
+
+    if (callbacks.draw_normal != NULL) {
+      flags = index == polytope->nearest ? DEBUG_EPA_NORMAL_NEAREST : DEBUG_EPA_NONE;
+      callbacks.draw_normal(face->value.face.normal, bnd_v3_normalize(face->value.face.normal), flags, user_data);
+    }
   }
 
-  const face *nearest = &polytope->nodes[polytope->nearest].value.face;
-  if (callbacks.draw_normal != NULL) {
-    callbacks.draw_normal(nearest->normal, bnd_v3_normalize(nearest->normal), user_data);
-  }
   if (callbacks.draw_support != NULL) {
     callbacks.draw_support(support_point.p, user_data);
   }

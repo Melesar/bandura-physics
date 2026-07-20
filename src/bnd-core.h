@@ -322,13 +322,15 @@ typedef struct {
 } collision_test_suite;
 
 typedef enum {
-  BND_DEBUG_EPA_FACE_NONE = 0,
-  BND_DEBUG_EPA_FACE_NEAREST = 1,
-  BND_DEBUG_EPA_FACE_REMOVED = 2,
-} bnd_debug_epa_face_flags;
+  DEBUG_EPA_NONE = 0,
+  DEBUG_EPA_FACE_NEAREST = 1,
+  DEBUG_EPA_FACE_REMOVED = 2,
 
-typedef void (*bnd_debug_draw_epa_face_fn)(bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_debug_epa_face_flags flags, void *user_data);
-typedef void (*bnd_debug_draw_epa_normal_fn)(bnd_v3 origin, bnd_v3 unit_normal, void *user_data);
+  DEBUG_EPA_NORMAL_NEAREST = 4,
+} bnd_debug_epa_flags;
+
+typedef void (*bnd_debug_draw_epa_face_fn)(bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_debug_epa_flags flags, void *user_data);
+typedef void (*bnd_debug_draw_epa_normal_fn)(bnd_v3 origin, bnd_v3 unit_normal, bnd_debug_epa_flags flags, void *user_data);
 typedef void (*bnd_debug_draw_epa_support_fn)(bnd_v3 point, void *user_data);
 
 typedef struct {
