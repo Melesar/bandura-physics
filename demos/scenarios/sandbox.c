@@ -1,3 +1,4 @@
+#include "raylib.h"
 #include "scenario-core.h"
 #include "bnd-math.h"
 
@@ -141,8 +142,9 @@ void scenario_simulate(bnd_world *world, float dt) {
     bnd_event_enumerator enumerator;
     bnd_v3 pos = bnd_get_position(world, projectiles[i]).value;
 
-    bool any_collisions = bnd_event_enumerate(world, projectiles[i], &enumerator).value;
+    bnd_event_enumerate(world, projectiles[i], &enumerator);
     bool fallen = pos.y < -2;
+    bool any_collisions = bnd_event_next(world, &enumerator);
     if (any_collisions || fallen) {
       bnd_remove_body(world, projectiles[i]);
 
