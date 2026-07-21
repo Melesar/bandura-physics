@@ -1,9 +1,8 @@
 #include "scenario-core.h"
-#include "bandura.h"
 #include "bnd-math.h"
-#include "raylib.h"
 #include "raymath.h"
 #include "rlgl.h"
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -236,7 +235,7 @@ void draw_contact(bnd_v3 point, bnd_v3 normal, float depth, void *user_data) {
   draw_arrow(point, bnd_v3_scale(normal, 0.4), RED);
 }
 
-void draw_shape(bnd_v3 position, bnd_quat rotation, bnd_body_handle body_handle, bnd_body_shape shape, void *user_data) {
+void draw_shape(bnd_v3 position, bnd_quat rotation, bnd_body_handle body_handle, bnd_shape_type shape_type, bnd_shape shape, void *user_data) {
   master_widget_state *widget_state = (master_widget_state *)user_data;
 
   Matrix scale;
@@ -247,34 +246,34 @@ void draw_shape(bnd_v3 position, bnd_quat rotation, bnd_body_handle body_handle,
   if (widget_state->bodies_as_wireframe) {
     rlEnableWireMode();
   }
-  switch (shape.type) {
+  switch (shape_type) {
     case BND_BOX:
-      scale = MatrixScale(shape.value.box.size.x, shape.value.box.size.y, shape.value.box.size.z);
+      scale = MatrixScale(shape.box.size.x, shape.box.size.y, shape.box.size.z);
       DrawMesh(meshes[BND_BOX], material, MatrixMultiply(scale, transform));
       break;
 
     case BND_SPHERE:
-      scale = MatrixScale(shape.value.sphere.radius, shape.value.sphere.radius, shape.value.sphere.radius);
+      scale = MatrixScale(shape.sphere.radius, shape.sphere.radius, shape.sphere.radius);
       DrawMesh(meshes[BND_SPHERE], material, MatrixMultiply(scale, transform));
       break;
 
     case BND_CAPSULE:
-      scale = MatrixScale(shape.value.capsule.radius, shape.value.capsule.height, shape.value.capsule.radius);
+      scale = MatrixScale(shape.capsule.radius, shape.capsule.height, shape.capsule.radius);
       DrawMesh(meshes[BND_CAPSULE], material, MatrixMultiply(scale, transform));
 
-      Vector3 p = Vector3Transform((Vector3) { 0, shape.value.capsule.height * 0.5, 0 }, transform);
-      Matrix m = MatrixMultiply(MatrixScale(shape.value.capsule.radius, shape.value.capsule.radius, shape.value.capsule.radius), MatrixTranslate(p.x, p.y, p.z));
+      Vector3 p = Vector3Transform((Vector3) { 0, shape.capsule.height * 0.5, 0 }, transform);
+      Matrix m = MatrixMultiply(MatrixScale(shape.capsule.radius, shape.capsule.radius, shape.capsule.radius), MatrixTranslate(p.x, p.y, p.z));
       DrawMesh(meshes[BND_SPHERE], material, m);
 
-      p = Vector3Transform((Vector3) { 0, -shape.value.capsule.height * 0.5, 0 }, transform);
-      m = MatrixMultiply(MatrixScale(shape.value.capsule.radius, shape.value.capsule.radius, shape.value.capsule.radius), MatrixTranslate(p.x, p.y, p.z));
+      p = Vector3Transform((Vector3) { 0, -shape.capsule.height * 0.5, 0 }, transform);
+      m = MatrixMultiply(MatrixScale(shape.capsule.radius, shape.capsule.radius, shape.capsule.radius), MatrixTranslate(p.x, p.y, p.z));
       DrawMesh(meshes[BND_SPHERE], material, m);
       break;
 
     case BND_MESH:
       for (uint32_t i = 0; i < render_mesh_index; ++i) {
         render_mesh rm = render_meshes[i];
-        if (rm.handle == shape.value.mesh) {
+        if (rm.handle == shape.mesh) {
           DrawMesh(rm.mesh, material, transform);
           break;
         }

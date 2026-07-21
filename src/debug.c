@@ -31,7 +31,7 @@ static void draw_shapes(const bnd_world *world, bnd_body_type type, bnd_debug_dr
 
       bnd_v3 center = body_center(&ctx);
       bnd_quat rotation = body_rotation(&ctx);
-      callbacks.draw_shape(center, rotation, make_body_handle(world, type, i), shape, user_data);
+      callbacks.draw_shape(center, rotation, make_body_handle(world, type, i), shape.type, shape.value, user_data);
     }
   }
 }
