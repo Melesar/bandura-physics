@@ -12,6 +12,8 @@
 #define INVALID_INDEX ((count_t)~0)
 #define INVALID_HANDLE (bnd_body_handle) { 0, 0, INVALID_INDEX }
 
+#define INVALID_BODY_TYPE ((bnd_result_handle) { .error = (bnd_error) { .type = BND_ERROR_INVALID_BODY_TYPE, .message = "Unknown body type" } })
+
 #define ASSERT_BODY_DYNAMIC(handle) \
   if (handle.type != BND_BODY_DYNAMIC) { \
     return (bnd_error) { BND_ERROR_BODY_HANDLE_INVALID , "Operation is not valid for static bodies" }; \
@@ -579,6 +581,26 @@ bnd_result_handle bnd_add_mesh_dynamic(bnd_world *world, float mass, bnd_mesh_ha
 
 bnd_result_handle bnd_add_mesh_static(bnd_world *world, bnd_mesh_handle mesh) {
   return add_primitive_body_static(world, (bnd_body_shape){ .type = BND_MESH, .value = {.mesh = mesh }, .offset = bnd_v3_zero(), .rotation = bnd_quat_identity() });
+}
+
+bnd_result_handle bnd_add_primitive_body(bnd_world *world, bnd_body_type type, bnd_body_shape shape, float mass) {
+  if (type == BND_BODY_DYNAMIC) {
+    return add_primitive_body_dynamic(world, shape, mass);
+  } else if (type == BND_BODY_STATIC) {
+    return add_primitive_body_static(world, shape);
+  }
+
+  return INVALID_BODY_TYPE;
+}
+
+bnd_result_handle bnd_add_compound_body(bnd_world *world, bnd_body_type type, bnd_body_shape *shapes, float *masses, uint32_t shapes_count) {
+  if (type == BND_BODY_DYNAMIC) {
+    return bnd_add_compound_body_dynamic(world, shapes, masses, shapes_count);
+  } else if (type == BND_BODY_STATIC) {
+    return bnd_add_compound_body_static(world, shapes, shapes_count);
+  }
+
+  return INVALID_BODY_TYPE;
 }
 
 bnd_error bnd_remove_body(bnd_world *world, bnd_body_handle handle) {

@@ -49,6 +49,7 @@ typedef enum {
   BND_ERROR_INVALID_MESH,
   BND_ERROR_MESH_IS_CONCAVE,
   BND_ERROR_BODY_HANDLE_INVALID,
+  BND_ERROR_INVALID_BODY_TYPE,
 
   // Debug mode errors
   BND_ERROR_INVALID_POLYTOPE,
@@ -302,10 +303,13 @@ BNDAPI bnd_result_handle    bnd_add_sphere_dynamic(bnd_world *world, float mass,
 BNDAPI bnd_result_handle    bnd_add_sphere_static(bnd_world *world, float radius);
 BNDAPI bnd_result_handle    bnd_add_capsule_static(bnd_world *world, float radius, float height);
 BNDAPI bnd_result_handle    bnd_add_capsule_dynamic(bnd_world *world, float mass, float radius, float height);
-BNDAPI bnd_result_handle    bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, uint32_t shapes_count);
-BNDAPI bnd_result_handle    bnd_add_compound_body_dynamic(bnd_world *world, bnd_body_shape *shapes, float *masses, uint32_t shapes_count);
 BNDAPI bnd_result_handle    bnd_add_mesh_dynamic(bnd_world *world, float mass, bnd_mesh_handle mesh);
 BNDAPI bnd_result_handle    bnd_add_mesh_static(bnd_world *world, bnd_mesh_handle mesh);
+BNDAPI bnd_result_handle    bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, uint32_t shapes_count);
+BNDAPI bnd_result_handle    bnd_add_compound_body_dynamic(bnd_world *world, bnd_body_shape *shapes, float *masses, uint32_t shapes_count);
+
+BNDAPI bnd_result_handle    bnd_add_primitive_body(bnd_world *world, bnd_body_type type, bnd_body_shape shape, float mass);
+BNDAPI bnd_result_handle    bnd_add_compound_body(bnd_world *world, bnd_body_type type, bnd_body_shape *shapes, float *masses, uint32_t shapes_count);
 
 BNDAPI bnd_error            bnd_remove_body(bnd_world *world, bnd_body_handle handle);
 
