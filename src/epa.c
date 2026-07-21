@@ -314,7 +314,7 @@ static uint16_t polytope_add_face(polytope *polytope, uint16_t e1, uint16_t e2, 
   node->value.face.edges[1] = e2;
   node->value.face.edges[2] = e3;
 
-  bnd_v3 v1, v2, v3;
+  bnd_v3 v1, v2, v3, p;
   polytope_get_face_verticies(polytope, index, &v1, &v2, &v3);
 
   if (bnd_v3_distancesqr(v1, v2) < EPSILON || bnd_v3_distancesqr(v2, v3) < EPSILON || bnd_v3_distancesqr(v3, v1) < EPSILON) {
@@ -322,7 +322,13 @@ static uint16_t polytope_add_face(polytope *polytope, uint16_t e1, uint16_t e2, 
     return NIL;
   }
 
-  node->value.face.distance = sqr_distance_to_triangle(bnd_v3_zero(), v1, v2, v3, &node->value.face.normal);
+  bnd_v3 normal = bnd_v3_cross(bnd_v3_sub(v3, v1), bnd_v3_sub(v2, v1));
+  if (bnd_v3_dot(normal, v1) < 0) {
+    normal = bnd_v3_negate(normal);
+  }
+
+  node->value.face.distance = sqr_distance_to_triangle(bnd_v3_zero(), v1, v2, v3, &p);
+  node->value.face.normal = normal;
 
   polytope_attach_face(polytope, index, e1);
   polytope_attach_face(polytope, index, e2);
@@ -650,11 +656,13 @@ static epa_status epa_run(const collision_detection_context *ctx, body_support *
 static void epa_debug_render_iteration(const polytope *polytope, body_support support_point, bnd_debug_draw_epa_callbacks callbacks, void *user_data) {
   polytope_for_each_node(polytope, index, NODE_FACE) {
     const polytope_node *face = &polytope->nodes[index];
+    const bnd_v3 normal = face->value.face.normal;
+
     bnd_v3 a, b, c;
     polytope_get_face_verticies(polytope, index, &a, &b, &c);
 
     bnd_v3 winding = bnd_v3_cross(bnd_v3_sub(b, a), bnd_v3_sub(c, a));
-    if (bnd_v3_dot(winding, face->value.face.normal) < 0) {
+    if (bnd_v3_dot(winding, normal) < 0) {
       bnd_v3 tmp = b;
       b = c;
       c = tmp;
@@ -674,7 +682,8 @@ static void epa_debug_render_iteration(const polytope *polytope, body_support su
 
     if (callbacks.draw_normal != NULL) {
       flags = index == polytope->nearest ? DEBUG_EPA_NORMAL_NEAREST : DEBUG_EPA_NONE;
-      callbacks.draw_normal(face->value.face.normal, bnd_v3_normalize(face->value.face.normal), flags, user_data);
+      bnd_v3 center = bnd_v3_scale(bnd_v3_add(bnd_v3_add(a, b), c), 0.333);
+      callbacks.draw_normal(center, bnd_v3_normalize(normal), flags, user_data);
     }
   }
 

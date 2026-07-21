@@ -66,7 +66,7 @@ void scenario_simulate(bnd_world *world, float dt) {
   bnd_simulate(world, dt);
 
   if (world->age == 258) {
-    simulation_running = false;
+    // simulation_running = false;
     bnd_result_u32 iterations_count = debug_epa_begin(world, cone_body, floor_body);
     if (iterations_count.error.type == BND_OK) {
       epa_iterations_count = iterations_count.value;

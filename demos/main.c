@@ -112,16 +112,15 @@ int main(int argc, char **argv) {
       accum += deltaTime;
       sim_count = (int)(fminf(accum / simulation_step, 10));
 
-      // for (int i = 0; i < sim_count; i++) {
-      //   if (!simulation_running && !step_forward)
-      //     break;
+      for (int i = 0; i < sim_count; i++) {
+        if (!simulation_running && !step_forward) {
+          break;
+        }
 
-      if (simulation_running || step_forward) {
         scenario_simulate(world, simulation_step);
 
         step_forward = false;
       }
-      // }
     } else {
       manipulate_gizmos(&camera);
     }
