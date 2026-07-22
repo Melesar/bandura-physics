@@ -62,12 +62,14 @@ fn defaultStep(b: *std.Build, options: Options) !void {
 fn testsStep(b: *std.Build, options: Options) !void {
   const banduraOpts = options.forBandura();
   const banduraModule = try bandura.createBaseModule(b, banduraOpts);
-  banduraModule.addCMacro("BND_TESTS", "");
-  banduraModule.addCMacro("BND_PROFILING", "");
+
+  common.enableProfiling(banduraModule);
+  common.enableTests(banduraModule);
+
   banduraModule.addIncludePath(b.path("tests"));
 
   const profilerModule = try profiler.createModule(b, options.forProfiler());
-  profilerModule.addCMacro("BND_TESTS", "");
+  common.enableTests(profilerModule);
   profilerModule.addIncludePath(b.path("tests"));
 
   const banduraLib = bandura.addLibrary(b, banduraModule, banduraOpts);

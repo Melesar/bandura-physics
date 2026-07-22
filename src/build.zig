@@ -19,6 +19,7 @@ pub fn createBaseModule(b: *std.Build, options: Options) !*std.Build.Module {
     module.addIncludePath(b.path("src"));
 
     var flags = try common.CompileFlags.default(b.allocator);
+    try flags.addOptimizations(options.optimize);
 
     if (options.linkage == .dynamic) {
         module.addCMacro("BND_BUILD_DLL", "");
@@ -28,22 +29,8 @@ pub fn createBaseModule(b: *std.Build, options: Options) !*std.Build.Module {
         module.addCMacro("BND_BUILD_STATIC", "");
     }
 
-    switch (options.optimize) {
-        .Debug => {
-            try flags.addSlice(&.{ "-g", "-O0", "-DBND_DEBUG" });
-        },
-
-        .ReleaseSafe => {
-            try flags.add("-O2");
-        },
-
-        .ReleaseFast => {
-            try flags.add("-O3");
-        },
-
-        .ReleaseSmall => {
-            try flags.add("-Os");
-        },
+    if (options.optimize == .Debug) {
+      module.addCMacro("BND_DEBUG", "");
     }
 
     module.addCMacro("COLLISION_TEST_SUITE_PATH", "\"tests/collision_test_cases.yaml\"");

@@ -15,10 +15,7 @@ pub fn createModule(b: *std.Build, options: Options) !*std.Build.Module {
   });
 
   var flags = try common.CompileFlags.default(b.allocator);
-  switch (options.optimize) {
-    .Debug => try flags.addSlice(&.{"-O0", "-g"}),
-    else => try flags.add("O2"),
-  }
+  try flags.addOptimizations(options.optimize);
 
   module.addCSourceFiles(.{
     .files = try common.collectSources(b, "profiler"),
@@ -26,7 +23,7 @@ pub fn createModule(b: *std.Build, options: Options) !*std.Build.Module {
     .language = .c
   });
 
-  module.addCMacro("BND_PROFILING", "");
+  common.enableProfiling(module);
   module.addIncludePath(b.path("include"));
 
   return module;

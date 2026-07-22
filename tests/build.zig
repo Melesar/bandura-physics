@@ -17,6 +17,8 @@ pub fn createModule(b: *std.Build, options: Options) !*std.Build.Module {
     module.addIncludePath(b.path("include"));
 
     var flags = try common.CompileFlags.default(b.allocator);
+    try flags.addOptimizations(options.optimize);
+
     module.addCSourceFiles(.{
       .files = try common.collectSources(b, "tests"),
       .flags = try flags.collect(),

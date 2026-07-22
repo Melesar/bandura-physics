@@ -1,7 +1,20 @@
 const std = @import("std");
 
 pub const ResolvedTarget = std.Build.ResolvedTarget;
+
 const FlagsArray = std.ArrayList([]const u8);
+
+const FLAGS = &.{
+  "-std=c99",
+  "-Wall",
+  "-Wextra",
+  "-Werror=format",
+  "-Werror=shadow",
+  "-Werror=incompatible-pointer-types",
+  "-Werror=pointer-type-mismatch",
+  "-Werror=return-type",
+  "-Wno-unused-parameter",
+  "-Wno-braced-scalar-init"};
 
 pub const CompileFlags = struct {
   flags: FlagsArray,
@@ -26,22 +39,38 @@ pub const CompileFlags = struct {
     try self.flags.appendSlice(self.allocator, flags);
   }
 
+  pub fn addOptimizations(self: *CompileFlags, optimize: std.builtin.OptimizeMode) !void {
+    switch (optimize) {
+        .Debug => {
+            try self.flags.appendSlice(self.allocator, &.{ "-g", "-O0" });
+        },
+
+        .ReleaseSafe => {
+            try self.flags.append(self.allocator, "-O2");
+        },
+
+        .ReleaseFast => {
+            try self.flags.append(self.allocator, "-O3");
+        },
+
+        .ReleaseSmall => {
+            try self.flags.append(self.allocator, "-Os");
+        },
+    }
+  }
+
   pub fn collect(self: *CompileFlags) ![]const []const u8 {
     return self.flags.toOwnedSlice(self.allocator);
   }
 };
 
-pub const FLAGS = &.{
-  "-std=c99",
-  "-Wall",
-  "-Wextra",
-  "-Werror=format",
-  "-Werror=shadow",
-  "-Werror=incompatible-pointer-types",
-  "-Werror=pointer-type-mismatch",
-  "-Werror=return-type",
-  "-Wno-unused-parameter",
-  "-Wno-braced-scalar-init"};
+pub fn enableProfiling(module: *std.Build.Module) void {
+  module.addCMacro("BND_PROFILING", "");
+}
+
+pub fn enableTests(module: *std.Build.Module) void {
+  module.addCMacro("BND_TESTS", "");
+}
 
 pub fn collectSources(b: *std.Build, directory: []const u8) ![]const []const u8 {
     var sources = try std.ArrayList([]const u8).initCapacity(b.allocator, 16);
