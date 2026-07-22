@@ -4,6 +4,7 @@ const common = @import("scripts/common.zig");
 const bandura = @import("src/build.zig");
 const tests = @import("tests/build.zig");
 const profiler = @import("profiler/build.zig");
+const scenarios = @import("demos/build.zig");
 
 const cc = @import("compile_commands");
 
@@ -11,18 +12,14 @@ const Options = struct {
     target: common.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     linkage: std.builtin.LinkMode,
-    profiling: bool,
     installTests: bool,
-    includeDemos: bool,
 
     fn getOptions(b: *std.Build) Options {
         return .{
             .target = b.standardTargetOptions(.{}),
             .optimize = b.standardOptimizeOption(.{}),
             .linkage = b.option(std.builtin.LinkMode, "linkage", "Linkage mode") orelse std.builtin.LinkMode.static,
-            .profiling = b.option(bool, "profiling", "Enable profiling") orelse false,
             .installTests = b.option(bool, "install-tests", "Install tests binary") orelse false,
-            .includeDemos = b.option(bool, "include-demos", "Build demo projects") orelse true,
         };
     }
 
@@ -49,17 +46,36 @@ const Options = struct {
       };
     }
 
+    fn forScenarios(opts: Options) scenarios.Options {
+      return .{
+        .target = opts.target,
+        .optimize = opts.optimize,
+      };
+    }
+
 };
 
 pub fn build(b: *std.Build) !void {
     const options = Options.getOptions(b);
 
-    var targets = try b.allocator.alloc(*std.Build.Step.Compile, 2);
+    var targets = try std.ArrayList(*std.Build.Step.Compile).initCapacity(b.allocator, 16);
 
-    targets[0] = try defaultStep(b, options);
-    targets[1] = try testsStep(b, options);
+    try targets.append(b.allocator, try defaultStep(b, options));
+    try targets.append(b.allocator, try testsStep(b, options));
 
-    _ = cc.createStep(b, "cdb", targets[0..]);
+    const scenarioOptions = options.forScenarios();
+    for(try scenarios.enumerate(b, scenarioOptions)) |s| {
+      s.default.linkLibrary(try bandura.buildLibrary(b, options.forBandura()));
+      s.profiling.linkLibrary(try bandura.buildLibrary(b, options.forBandura().forProfiling()));
+
+      const target = s.compile(b);
+      try targets.append(b.allocator, target.default);
+      try targets.append(b.allocator, target.profiling);
+
+      target.createSteps(b);
+    }
+
+    _ = cc.createStep(b, "cdb", try targets.toOwnedSlice(b.allocator));
 }
 
 fn defaultStep(b: *std.Build, options: Options) !*std.Build.Step.Compile {
@@ -71,7 +87,7 @@ fn defaultStep(b: *std.Build, options: Options) !*std.Build.Step.Compile {
 
 fn testsStep(b: *std.Build, options: Options) !*std.Build.Step.Compile {
   const banduraOpts = options.forBandura();
-  const banduraModule = try bandura.createBaseModule(b, banduraOpts);
+  const banduraModule = try bandura.createBaseModule(b, banduraOpts, .off);
 
   common.enableProfiling(banduraModule);
   common.enableTests(banduraModule);

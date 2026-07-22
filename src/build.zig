@@ -5,14 +5,20 @@ pub const Options = struct {
     target: common.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     linkage: std.builtin.LinkMode,
+
+    pub fn forProfiling(self: Options) Options {
+      var opts = self;
+      opts.optimize = .ReleaseFast;
+      return opts;
+    }
 };
 
-pub fn createBaseModule(b: *std.Build, options: Options) !*std.Build.Module {
+pub fn createBaseModule(b: *std.Build, options: Options, sanitize: std.zig.SanitizeC) !*std.Build.Module {
     const module = b.createModule(.{
       .target = options.target,
       .optimize = options.optimize,
       .link_libc = true,
-      .sanitize_c = .full,
+      .sanitize_c = sanitize,
     });
 
     module.addIncludePath(b.path("include"));
@@ -57,9 +63,12 @@ pub fn addLibrary(b: *std.Build, module: *std.Build.Module, options: Options) *s
 
     return lib;
 }
-
 pub fn buildLibrary(b: *std.Build, options: Options) !*std.Build.Step.Compile {
-  const module = try createBaseModule(b, options);
+  const sanitize : std.zig.SanitizeC = switch (options.optimize) {
+    .Debug, .ReleaseSafe => .full,
+    else => .off,
+  };
+  const module = try createBaseModule(b, options, sanitize);
 
   return addLibrary(b, module, options);
 }
