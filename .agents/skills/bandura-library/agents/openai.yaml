@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bandura Library"
+  short_description: "Understand and review Bandura library internals"
+  default_prompt: "Use $bandura-library to review this Bandura library change against its architectural invariants."
