@@ -28,16 +28,18 @@ pub fn createModule(b: *std.Build, options: Options) !*std.Build.Module {
     return module;
 }
 
-pub fn createArtifact(b: *std.Build, options: Options, module: *std.Build.Module) *std.Build.Step.Run {
-    const exeTests = b.addExecutable(.{
+pub fn createExe(b: *std.Build, module: *std.Build.Module) *std.Build.Step.Compile {
+    return b.addExecutable(.{
       .name = "tests",
       .root_module = module,
     });
+}
 
-    var artifact = b.addRunArtifact(exeTests);
+pub fn createArtifact(b: *std.Build, options: Options, exe: *std.Build.Step.Compile) *std.Build.Step.Run {
+    var artifact = b.addRunArtifact(exe);
 
     if (options.installBinaries) {
-        b.installArtifact(exeTests);
+        b.installArtifact(exe);
         artifact.step.dependOn(b.getInstallStep());
     }
 

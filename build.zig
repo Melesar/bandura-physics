@@ -1,8 +1,11 @@
 const std = @import("std");
+
 const common = @import("scripts/common.zig");
 const bandura = @import("src/build.zig");
 const tests = @import("tests/build.zig");
 const profiler = @import("profiler/build.zig");
+
+const cc = @import("compile_commands");
 
 const Options = struct {
     target: common.ResolvedTarget,
@@ -49,17 +52,24 @@ const Options = struct {
 };
 
 pub fn build(b: *std.Build) !void {
-  const options = Options.getOptions(b);
+    const options = Options.getOptions(b);
 
-  try defaultStep(b, options);
-  try testsStep(b, options);
+    var targets = try b.allocator.alloc(*std.Build.Step.Compile, 2);
+
+    targets[0] = try defaultStep(b, options);
+    targets[1] = try testsStep(b, options);
+
+    _ = cc.createStep(b, "cdb", targets[0..]);
 }
 
-fn defaultStep(b: *std.Build, options: Options) !void {
-    b.installArtifact(try bandura.buildLibrary(b, options.forBandura()));
+fn defaultStep(b: *std.Build, options: Options) !*std.Build.Step.Compile {
+    const lib = try bandura.buildLibrary(b, options.forBandura());
+    b.installArtifact(lib);
+
+    return lib;
 }
 
-fn testsStep(b: *std.Build, options: Options) !void {
+fn testsStep(b: *std.Build, options: Options) !*std.Build.Step.Compile {
   const banduraOpts = options.forBandura();
   const banduraModule = try bandura.createBaseModule(b, banduraOpts);
 
@@ -82,6 +92,9 @@ fn testsStep(b: *std.Build, options: Options) !void {
 
   var step = b.step("test", "Run tests");
 
-  var artifact = tests.createArtifact(b, testsOpts, testsModule);
+  const exe = tests.createExe(b, testsModule);
+  var artifact = tests.createArtifact(b, testsOpts, exe);
   step.dependOn(&artifact.step);
+
+  return exe;
 }

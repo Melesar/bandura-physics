@@ -26,7 +26,7 @@ pub fn createBaseModule(b: *std.Build, options: Options) !*std.Build.Module {
 
         try flags.add("-fvisibility=hidden");
     } else {
-        module.addCMacro("BND_BUILD_STATIC", "");
+        module.addCMacro("BND_STATIC", "");
     }
 
     if (options.optimize == .Debug) {
