@@ -76,11 +76,11 @@ pub fn collectSources(b: *std.Build, directory: []const u8) ![]const []const u8 
     var sources = try std.ArrayList([]const u8).initCapacity(b.allocator, 16);
     errdefer sources.deinit(b.allocator);
 
-    var dir = try std.fs.cwd().openDir(directory, .{ .iterate = true });
-    defer dir.close();
+    var dir = try std.Io.Dir.cwd().openDir(b.graph.io, directory, .{ .iterate = true });
+    defer dir.close(b.graph.io);
 
     var iter = dir.iterate();
-    while (try iter.next()) |entry| {
+    while (try iter.next(b.graph.io)) |entry| {
         if (entry.kind != .file) continue;
         if (std.mem.lastIndexOf(u8, entry.name, ".c") == null) continue;
 
