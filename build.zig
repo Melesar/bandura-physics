@@ -1,6 +1,8 @@
 const std = @import("std");
 
-const common = @import("scripts/common.zig");
+const common = @import("scripts/build-common.zig");
+const amalgam = @import("scripts/amalgam.zig");
+
 const bandura = @import("src/build.zig");
 const tests = @import("tests/build.zig");
 const profiler = @import("profiler/build.zig");
@@ -76,6 +78,11 @@ pub fn build(b: *std.Build) !void {
     }
 
     _ = cc.createStep(b, "cdb", try targets.toOwnedSlice(b.allocator));
+
+    const amalgamate = try amalgam.createStep(b);
+
+    var amalgamStep = b.step("amalgam", "Merge all Bandura's source files into a single .c file for unity-build");
+    amalgamStep.dependOn(amalgamate);
 }
 
 fn defaultStep(b: *std.Build, options: Options) !*std.Build.Step.Compile {

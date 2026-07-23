@@ -1,5 +1,5 @@
 const std = @import("std");
-const common = @import("../scripts/common.zig");
+const common = @import("../scripts/build-common.zig");
 
 pub const Options = struct {
     target: common.ResolvedTarget,
