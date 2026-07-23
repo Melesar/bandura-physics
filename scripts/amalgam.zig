@@ -30,6 +30,14 @@ const Headers = enum(u32) {
   count,
 };
 
+const BanduraParsingState = enum {
+  none,
+  api_define,
+  math_types,
+  extern_c,
+  extern_c_end
+};
+
 pub fn createStep(b: *std.Build) !*std.Build.Step {
   const step = try b.allocator.create(std.Build.Step);
   step.* = std.Build.Step.init(.{
@@ -59,15 +67,15 @@ fn amalgamate(step: *std.Build.Step, make_options: std.Build.Step.MakeOptions) a
   const dstFile = try cwd.createFile(iop, "bandura.c", .{ .truncate = true });
   defer dstFile.close(iop);
 
-  try dstFile.setLength(iop, 0);
   var writer = dstFile.writerStreaming(iop, try arena.alloc(u8, 1024));
 
   try collectStdIncludes(sources, &writer.interface, b.allocator);
+  try writeBanduraHeader(sources[@intFromEnum(Headers.bandura)], &writer.interface);
+
+  try writer.flush();
 }
 
 fn collectStdIncludes(sources: []SourceFile, writer: *Writer, allocator: Allocator) !void {
-  defer writer.flush();
-
   var set = std.BufSet.init(allocator);
   defer set.deinit();
 
@@ -75,44 +83,116 @@ fn collectStdIncludes(sources: []SourceFile, writer: *Writer, allocator: Allocat
     const fileContents = srcFile.contents;
 
     var lineStartPos : u64 = 0;
-    var lineEndPos = lineStartPos + 1;
-    while (lineStartPos < fileContents.len) {
-      lineEndPos = lineStartPos + 1;
-      while(lineEndPos < fileContents.len and fileContents[lineEndPos] != '\n') {
-        lineEndPos += 1;
-      }
-
-      if (fileContents[lineStartPos] != '#' or lineStartPos > fileContents.len - IncludeStatementLen) {
-        lineStartPos = lineEndPos + 1;
+    while (readLine(&lineStartPos, fileContents)) |line| {
+      if (line.len == 0) {
         continue;
       }
 
-      if (!std.mem.eql(u8, fileContents[lineStartPos..(lineStartPos + IncludeStatementLen)], IncludeStatement)) {
-        lineStartPos = lineEndPos + 1;
+      if (line[0] != '#' or line.len < IncludeStatementLen) {
+        continue;
+      }
+
+      if (!std.mem.eql(u8, line[0..IncludeStatementLen], IncludeStatement)) {
         continue;
       }
 
       var shouldIgnore = false;
 
-      const statement = fileContents[lineStartPos..lineEndPos];
       for(IgnoreIncludes) |ignore| {
-        if (std.mem.eql(u8, ignore, statement)) {
+        if (std.mem.eql(u8, ignore, line)) {
           shouldIgnore = true;
           break;
         }
       }
 
-      if (!shouldIgnore and !set.contains(statement)) {
-        try set.insert(statement);
+      if (!shouldIgnore and !set.contains(line)) {
+        try set.insert(line);
 
-        _ = try writer.write(statement);
+        _ = try writer.write(line);
         _ = try writer.writeByte('\n');
       }
-
-      lineStartPos = lineEndPos + 1;
     }
   }
+}
 
+fn writeBanduraHeader(source: SourceFile, writer: *Writer) !void {
+  var lineStartPos : u64 = 0;
+  var skipLine = false;
+  var parsingState = BanduraParsingState.none;
+  var externCCount : u32 = 0;
+
+  try fileHeaderStart(writer, "bandura.h");
+
+  while(readLine(&lineStartPos, source.contents)) |line| {
+    if (line.len == 0) {
+      _ = try writer.writeByte('\n');
+      continue;
+    }
+
+    switch (parsingState) {
+      .api_define => {
+        if (lineEq(line, "#endif")) {
+          parsingState = .none;
+        }
+        continue;
+      },
+      .math_types => {
+        skipLine = lineEq(line, "#endif");
+        if (skipLine) {
+          parsingState = .none;
+        }
+      },
+      .extern_c => {
+        if (lineEq(line, "#endif")) {
+          parsingState = .none;
+          if (externCCount == 0) {
+            _ = try writer.write("#define BNDAPI\n");
+          }
+          externCCount += 1;
+        }
+        continue;
+      },
+      else => skipLine = false,
+    }
+
+    if (skipLine) {
+      continue;
+    }
+
+    if (lineEq(line, "#ifndef BANDURA_H") or lineEq(line, "#define BANDURA_H")) {
+      continue;
+    }
+
+    if (line.len >= IncludeStatementLen and lineEq(line[0..IncludeStatementLen], IncludeStatement)) {
+      continue;
+    }
+
+    if (lineEq(line, "#if defined(_WIN32)")) {
+      parsingState = .api_define;
+      skipLine = true;
+      continue;
+    }
+
+    if (lineEq(line, "#if !defined(BND_CUSTOM_VEC3)") or lineEq(line, "#if !defined(BND_CUSTOM_QUAT)") or lineEq(line, "#if !defined(BND_CUSTOM_MAT3)")) {
+      parsingState = .math_types;
+      skipLine = true;
+      continue;
+    }
+
+    if (lineEq(line, "#if defined(__cplusplus)")) {
+      parsingState = .extern_c;
+      skipLine = true;
+      continue;
+    }
+
+    // endif closing the #ifndef BANDURA_H
+    if (externCCount > 1 and lineEq(line, "#endif"))  {
+      continue;
+    }
+
+    _ = try writer.write(line);
+    _ = try writer.writeByte('\n');
+  }
 }
 
 fn readSourceFiles(arena: Allocator, cwd: std.Io.Dir, io: std.Io) ![]SourceFile {
@@ -170,4 +250,41 @@ fn readFile(arena: Allocator, io: std.Io, dir: std.Io.Dir, name: []const u8) !So
     try reader.interface.fillMore();
 
     return .{ .name = name, .contents = fileContents };
+}
+
+fn readLine(lineStartPos: *u64, fileContents: []u8) ?[]u8 {
+    var lineEndPos : u64 = lineStartPos.* + 1;
+    if (lineStartPos.* < fileContents.len) {
+      lineEndPos = lineStartPos.*;
+      while(lineEndPos < fileContents.len and fileContents[lineEndPos] != '\n') {
+        lineEndPos += 1;
+      }
+
+      const line = fileContents[lineStartPos.*..lineEndPos];
+      lineStartPos.* = lineEndPos + 1;
+      return line;
+    }
+
+    return null;
+}
+
+fn lineEq(line: []const u8, str: []const u8) bool {
+  return std.mem.eql(u8, line, str);
+}
+
+fn fileHeaderStart(writer: *Writer, name: []const u8) !void {
+  _ = try writer.writeByte('\n');
+  try writeSeparator(writer);
+  _ = try writer.write("//   ");
+  _ = try writer.write(name);
+  _ = try writer.writeByte('\n');
+  try writeSeparator(writer);
+}
+
+fn fileHeaderEnd(writer: *Writer) !void {
+  try writeSeparator(writer);
+}
+
+fn writeSeparator(writer: *Writer) !void {
+  _ = try writer.write("// ================\n");
 }
