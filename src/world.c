@@ -31,7 +31,7 @@
     } \
   }
 
-extern count_t max_body_index;
+extern const count_t max_body_index;
 
 static void swap_bodies(bnd_world *world, bnd_body_type type, count_t index_a, count_t index_b);
 static void move_body(bnd_world *world, count_t src_index, count_t dst_index);

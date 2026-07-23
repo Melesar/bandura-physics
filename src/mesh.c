@@ -286,7 +286,7 @@ static void calculate_mass_properties(const bnd_mesh_data *data, bnd_m3 *inertia
   inertia->m1[2] = inertia->m2[1] = -iap;
 }
 
-static bnd_aabb calculate_aabb(const mesh_storage *meshes, submesh submesh) {
+static bnd_aabb mesh_calculate_aabb(const mesh_storage *meshes, submesh submesh) {
   count_t vertex_start = submesh.vertex_offset;
   count_t vertex_end = vertex_start + submesh.vertex_count;
 
@@ -398,7 +398,7 @@ bnd_error bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, bnd_mesh_
   meshes->meshes[*handle] = (bnd_mesh){ submesh_offset, 1 };
   meshes->inertias[*handle] = inertia;
   meshes->volumes[*handle] = volume;
-  meshes->aabbs[*handle] = calculate_aabb(meshes, sm);
+  meshes->aabbs[*handle] = mesh_calculate_aabb(meshes, sm);
 
   return OK;
 }

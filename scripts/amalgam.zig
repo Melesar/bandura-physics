@@ -70,7 +70,15 @@ fn amalgamate(step: *std.Build.Step, make_options: std.Build.Step.MakeOptions) a
   var writer = dstFile.writerStreaming(iop, try arena.alloc(u8, 1024));
 
   try collectStdIncludes(sources, &writer.interface, b.allocator);
+
   try writeBanduraHeader(sources[@intFromEnum(Headers.bandura)], &writer.interface);
+  try writeProfilerHeader(sources[@intFromEnum(Headers.profiler)], &writer.interface);
+  try writeHeaderFile(sources[@intFromEnum(Headers.bnd_core)], &writer.interface);
+  try writeHeaderFile(sources[@intFromEnum(Headers.bnd_math)], &writer.interface);
+
+  for(@intFromEnum(Headers.count)..sources.len) |i| {
+    try writeSourceFile(sources[i], &writer.interface);
+  }
 
   try writer.flush();
 }
@@ -163,7 +171,7 @@ fn writeBanduraHeader(source: SourceFile, writer: *Writer) !void {
       continue;
     }
 
-    if (line.len >= IncludeStatementLen and lineEq(line[0..IncludeStatementLen], IncludeStatement)) {
+    if (isIncludeStatement(line)) {
       continue;
     }
 
@@ -187,6 +195,79 @@ fn writeBanduraHeader(source: SourceFile, writer: *Writer) !void {
 
     // endif closing the #ifndef BANDURA_H
     if (externCCount > 1 and lineEq(line, "#endif"))  {
+      continue;
+    }
+
+    _ = try writer.write(line);
+    _ = try writer.writeByte('\n');
+  }
+}
+
+fn writeProfilerHeader(source: SourceFile, writer: *Writer) !void {
+  var lineStart : u64 = 0;
+
+  _ = readLine(&lineStart, source.contents);
+  _ = readLine(&lineStart, source.contents);
+
+  var insideDefine = false;
+
+  while(readLine(&lineStart, source.contents)) |line| {
+    if (isIncludeStatement(line)) {
+      continue;
+    }
+
+    if (insideDefine and lineEq(line, "#else")) {
+      break;
+    }
+
+    if (lineEq(line, "#ifndef BND_PROFILING")) {
+      insideDefine = true;
+      continue;
+    }
+
+    _ = try writer.write(line);
+    _ = try writer.writeByte('\n');
+  }
+}
+
+fn writeHeaderFile(source: SourceFile, writer: *Writer) !void {
+  try fileHeaderStart(writer, source.name);
+
+  var lineStart : u64 = 0;
+  _ = readLine(&lineStart, source.contents);
+  _ = readLine(&lineStart, source.contents);
+
+  // Find the trailing #endif and truncate the source before it
+  var end = lineStart;
+  var i = source.contents.len - 1;
+  while(i >= lineStart) : (i -= 1) {
+    if (source.contents[i] == '#' and lineEq(source.contents[i..(i+6)], "#endif")) {
+      end = i;
+      break;
+    }
+  }
+
+  var start : u64 = 0;
+  try writeFile(source.contents[lineStart..end], &start, null, writer);
+}
+
+fn writeSourceFile(source: SourceFile, writer: *Writer) !void {
+  var startPos : u64 = 0;
+  try writeFile(source.contents, &startPos, source.name, writer);
+}
+
+fn writeFile(contents: []u8, startPos: *u64, name: ?[]const u8, writer: *Writer) !void {
+  if (name) |n| {
+    try fileHeaderStart(writer, n);
+  }
+
+  while(readLine(startPos, contents)) |line| {
+    if (line.len == 0) {
+      _ = try writer.writeByte('\n');
+      continue;
+    }
+
+    if (isIncludeStatement(line)) {
       continue;
     }
 
@@ -270,6 +351,10 @@ fn readLine(lineStartPos: *u64, fileContents: []u8) ?[]u8 {
 
 fn lineEq(line: []const u8, str: []const u8) bool {
   return std.mem.eql(u8, line, str);
+}
+
+fn isIncludeStatement(line: []const u8) bool {
+  return line.len >= IncludeStatementLen and lineEq(line[0..IncludeStatementLen], IncludeStatement);
 }
 
 fn fileHeaderStart(writer: *Writer, name: []const u8) !void {
