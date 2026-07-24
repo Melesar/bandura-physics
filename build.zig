@@ -10,6 +10,8 @@ const scenarios = @import("demos/build.zig");
 
 const cc = @import("compile_commands");
 
+const AmalgamatedSourceName = "bandura.c";
+
 const Options = struct {
     target: common.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
@@ -62,7 +64,12 @@ pub fn build(b: *std.Build) !void {
 
     var targets = try std.ArrayList(*std.Build.Step.Compile).initCapacity(b.allocator, 16);
 
-    try targets.append(b.allocator, try defaultStep(b, options));
+    var temp = b.addTempFiles();
+
+    const amalgamatedSource = try amalgam.amalgamate(b);
+    const tmpPath = temp.add(AmalgamatedSourceName, amalgamatedSource);
+
+    try defaultStep(b, tmpPath);
     try targets.append(b.allocator, try testsStep(b, options));
 
     const scenarioOptions = options.forScenarios();
@@ -78,18 +85,12 @@ pub fn build(b: *std.Build) !void {
     }
 
     _ = cc.createStep(b, "cdb", try targets.toOwnedSlice(b.allocator));
-
-    const amalgamate = try amalgam.createStep(b);
-
-    var amalgamStep = b.step("amalgam", "Merge all Bandura's source files into a single .c file for unity-build");
-    amalgamStep.dependOn(amalgamate);
 }
 
-fn defaultStep(b: *std.Build, options: Options) !*std.Build.Step.Compile {
-    const lib = try bandura.buildLibrary(b, options.forBandura());
-    b.installArtifact(lib);
+fn defaultStep(b: *std.Build, tempPath: std.Build.LazyPath) !void {
+  const installAmalgam = b.addInstallFile(tempPath, AmalgamatedSourceName);
 
-    return lib;
+  b.getInstallStep().dependOn(&installAmalgam.step);
 }
 
 fn testsStep(b: *std.Build, options: Options) !*std.Build.Step.Compile {

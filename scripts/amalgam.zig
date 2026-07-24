@@ -2,6 +2,7 @@ const std = @import("std");
 
 const Allocator = std.mem.Allocator;
 const Writer = std.Io.Writer;
+const ArrayList = std.ArrayList(u8);
 
 const SourceFile = struct {
   name: []const u8,
@@ -43,24 +44,11 @@ const BanduraParsingState = enum {
   extern_c_end
 };
 
-pub fn createStep(b: *std.Build) !*std.Build.Step {
-  const step = try b.allocator.create(std.Build.Step);
-  step.* = std.Build.Step.init(.{
-    .id = .custom,
-    .name = "amalgam",
-    .makeFn = amalgamate,
-    .owner = b,
-  });
-
-  return step;
-}
-
-fn amalgamate(step: *std.Build.Step, make_options: std.Build.Step.MakeOptions) anyerror!void {
-  _ = make_options;
-
-  const b = step.owner;
+pub fn amalgamate(b: *std.Build) ![]u8 {
   var arenaAllocator = std.heap.ArenaAllocator.init(b.allocator);
   defer _ = arenaAllocator.reset(.free_all);
+
+  var output = try ArrayList.initCapacity(b.allocator, 1024 * 1024);
 
   var threaded = std.Io.Threaded.init_single_threaded;
   const iop = threaded.io();
@@ -97,52 +85,47 @@ fn amalgamate(step: *std.Build.Step, make_options: std.Build.Step.MakeOptions) a
     fileCount += try readSourceFiles(sources[fileCount..MaxFileCount], arena, profilerDir, iop);
   }
 
-  const dstFile = try cwd.createFile(iop, "src/bandura.c", .{ .truncate = true });
-  defer dstFile.close(iop);
-
-  var writer = dstFile.writerStreaming(iop, try arena.alloc(u8, 1024));
-
-  _ = try writer.interface.write(WindowsProfilingGuard);
+  try output.appendSlice(b.allocator, WindowsProfilingGuard);
 
   {
     var set = std.BufSet.init(b.allocator);
     defer set.deinit();
 
-    try collectStdIncludes(&set, sources[0..@intFromEnum(Headers.semaphores)], &writer.interface);
-    try collectStdIncludes(&set, sources[@intFromEnum(Headers.count)..profilerFilesOffset], &writer.interface);
+    try collectStdIncludes(&set, sources[0..@intFromEnum(Headers.semaphores)], &output, b.allocator);
+    try collectStdIncludes(&set, sources[@intFromEnum(Headers.count)..profilerFilesOffset], &output, b.allocator);
 
-    _ = try writer.interface.write("\n#if defined(BND_PROFILING)\n\n");
-    _ = try writer.interface.write(SemaphoreIncludes);
-    try collectStdIncludes(&set, sources[profilerFilesOffset..fileCount], &writer.interface);
-    _ = try writer.interface.write("#endif\n");
+    try output.appendSlice(b.allocator, "\n#if defined(BND_PROFILING)\n\n");
+    try output.appendSlice(b.allocator, SemaphoreIncludes);
+    try collectStdIncludes(&set, sources[profilerFilesOffset..fileCount], &output, b.allocator);
+    try output.appendSlice(b.allocator, "#endif\n");
   }
 
 
-  try writeBanduraHeader(sources[@intFromEnum(Headers.bandura)], &writer.interface);
-  try writeHeaderFile(sources[@intFromEnum(Headers.profiler)], &writer.interface);
-  try writeHeaderFile(sources[@intFromEnum(Headers.bnd_core)], &writer.interface);
-  try writeHeaderFile(sources[@intFromEnum(Headers.bnd_math)], &writer.interface);
+  try writeBanduraHeader(sources[@intFromEnum(Headers.bandura)], &output, b.allocator);
+  try writeHeaderFile(sources[@intFromEnum(Headers.profiler)], &output, b.allocator);
+  try writeHeaderFile(sources[@intFromEnum(Headers.bnd_core)], &output, b.allocator);
+  try writeHeaderFile(sources[@intFromEnum(Headers.bnd_math)], &output, b.allocator);
 
-  _ = try writer.interface.write("\n#if defined(BND_PROFILING)\n");
-  try writeHeaderFile(sources[@intFromEnum(Headers.semaphores)], &writer.interface);
-  _ = try writer.interface.write("#endif\n");
+  try output.appendSlice(b.allocator, "\n#if defined(BND_PROFILING)\n");
+  try writeHeaderFile(sources[@intFromEnum(Headers.semaphores)], &output, b.allocator);
+  try output.appendSlice(b.allocator, "#endif\n");
 
   for(@intFromEnum(Headers.count)..profilerFilesOffset) |i| {
-    try writeSourceFile(sources[i], &writer.interface);
+    try writeSourceFile(sources[i], &output, b.allocator);
   }
 
-  _ = try writer.interface.write("#ifdef BND_PROFILING\n\n");
+  _ = try output.appendSlice(b.allocator, "#ifdef BND_PROFILING\n\n");
 
   for(profilerFilesOffset..fileCount) |i| {
-    try writeSourceFile(sources[i], &writer.interface);
+    try writeSourceFile(sources[i], &output, b.allocator);
   }
 
-  _ = try writer.interface.write("#endif\n");
+  _ = try output.appendSlice(b.allocator, "#endif\n");
 
-  try writer.flush();
+  return try output.toOwnedSlice(b.allocator);
 }
 
-fn collectStdIncludes(set: *std.BufSet, sources: []SourceFile, writer: *Writer) !void {
+fn collectStdIncludes(set: *std.BufSet, sources: []SourceFile, output: *ArrayList, allocator: Allocator) !void {
   for(sources) |srcFile| {
     const fileContents = srcFile.contents;
 
@@ -172,24 +155,24 @@ fn collectStdIncludes(set: *std.BufSet, sources: []SourceFile, writer: *Writer) 
       if (!shouldIgnore and !set.contains(line)) {
         try set.insert(line);
 
-        _ = try writer.write(line);
-        _ = try writer.writeByte('\n');
+        try output.appendSlice(allocator, line);
+        try output.append(allocator, '\n');
       }
     }
   }
 }
 
-fn writeBanduraHeader(source: SourceFile, writer: *Writer) !void {
+fn writeBanduraHeader(source: SourceFile, output: *ArrayList, allocator: Allocator) !void {
   var lineStartPos : u64 = 0;
   var skipLine = false;
   var parsingState = BanduraParsingState.none;
   var externCCount : u32 = 0;
 
-  try fileHeaderStart(writer, "bandura.h");
+  try fileHeaderStart(output, allocator, "bandura.h");
 
   while(readLine(&lineStartPos, source.contents)) |line| {
     if (line.len == 0) {
-      _ = try writer.writeByte('\n');
+      try output.append(allocator, '\n');
       continue;
     }
 
@@ -210,7 +193,7 @@ fn writeBanduraHeader(source: SourceFile, writer: *Writer) !void {
         if (lineEq(line, "#endif")) {
           parsingState = .none;
           if (externCCount == 0) {
-            _ = try writer.write("#define BNDAPI\n");
+            try output.appendSlice(allocator, "#define BNDAPI\n");
           }
           externCCount += 1;
         }
@@ -254,8 +237,8 @@ fn writeBanduraHeader(source: SourceFile, writer: *Writer) !void {
       continue;
     }
 
-    _ = try writer.write(line);
-    _ = try writer.writeByte('\n');
+    try output.appendSlice(allocator, line);
+    try output.append(allocator, '\n');
   }
 }
 
@@ -286,8 +269,8 @@ fn writeProfilerHeader(source: SourceFile, writer: *Writer) !void {
   }
 }
 
-fn writeHeaderFile(source: SourceFile, writer: *Writer) !void {
-  try fileHeaderStart(writer, source.name);
+fn writeHeaderFile(source: SourceFile, output: *ArrayList, allocator: Allocator) !void {
+  try fileHeaderStart(output, allocator, source.name);
 
   var lineStart : u64 = 0;
   _ = readLine(&lineStart, source.contents);
@@ -304,22 +287,22 @@ fn writeHeaderFile(source: SourceFile, writer: *Writer) !void {
   }
 
   var start : u64 = 0;
-  try writeFile(source.contents[lineStart..end], &start, null, writer);
+  try writeFile(source.contents[lineStart..end], &start, null, output, allocator);
 }
 
-fn writeSourceFile(source: SourceFile, writer: *Writer) !void {
+fn writeSourceFile(source: SourceFile, output: *ArrayList, allocator: Allocator) !void {
   var startPos : u64 = 0;
-  try writeFile(source.contents, &startPos, source.name, writer);
+  try writeFile(source.contents, &startPos, source.name, output, allocator);
 }
 
-fn writeFile(contents: []u8, startPos: *u64, name: ?[]const u8, writer: *Writer) !void {
+fn writeFile(contents: []u8, startPos: *u64, name: ?[]const u8, output: *ArrayList, allocator: Allocator) !void {
   if (name) |n| {
-    try fileHeaderStart(writer, n);
+    try fileHeaderStart(output, allocator, n);
   }
 
   while(readLine(startPos, contents)) |line| {
     if (line.len == 0) {
-      _ = try writer.writeByte('\n');
+      _ = try output.append(allocator, '\n');
       continue;
     }
 
@@ -327,8 +310,8 @@ fn writeFile(contents: []u8, startPos: *u64, name: ?[]const u8, writer: *Writer)
       continue;
     }
 
-    _ = try writer.write(line);
-    _ = try writer.writeByte('\n');
+    _ = try output.appendSlice(allocator, line);
+    _ = try output.append(allocator, '\n');
   }
 }
 
@@ -394,19 +377,19 @@ fn isIncludeStatement(line: []const u8) bool {
   return line.len >= IncludeStatementLen and lineEq(line[0..IncludeStatementLen], IncludeStatement);
 }
 
-fn fileHeaderStart(writer: *Writer, name: []const u8) !void {
-  _ = try writer.writeByte('\n');
-  try writeSeparator(writer);
-  _ = try writer.write("//   ");
-  _ = try writer.write(name);
-  _ = try writer.writeByte('\n');
-  try writeSeparator(writer);
+fn fileHeaderStart(output: *ArrayList, allocator: Allocator, name: []const u8) !void {
+  try output.append(allocator, '\n');
+  try writeSeparator(output, allocator);
+  try output.appendSlice(allocator, "//   ");
+  try output.appendSlice(allocator, name);
+  try output.append(allocator, '\n');
+  try writeSeparator(output, allocator);
 }
 
-fn fileHeaderEnd(writer: *Writer) !void {
-  try writeSeparator(writer);
+fn fileHeaderEnd(output: *ArrayList, allocator: Allocator) !void {
+  try writeSeparator(output, allocator);
 }
 
-fn writeSeparator(writer: *Writer) !void {
-  _ = try writer.write("// ================\n");
+fn writeSeparator(output: *ArrayList, allocator: Allocator) !void {
+  try output.appendSlice(allocator, "// ================\n");
 }
