@@ -32,6 +32,7 @@ const Headers = enum(u32) {
   bnd_math,
   profiler,
   semaphores,
+  testing,
 
   count,
 };
@@ -85,6 +86,13 @@ pub fn amalgamate(b: *std.Build) ![]u8 {
     fileCount += try readSourceFiles(sources[fileCount..MaxFileCount], arena, profilerDir, iop);
   }
 
+  {
+    const testingDit = try cwd.openDir(iop, "tests", .{});
+    defer testingDit.close(iop);
+
+    sources[@intFromEnum(Headers.testing)] = try readFile(arena, iop, testingDit, "testing.h");
+  }
+
   try output.appendSlice(b.allocator, WindowsProfilingGuard);
 
   {
@@ -98,6 +106,10 @@ pub fn amalgamate(b: *std.Build) ![]u8 {
     try output.appendSlice(b.allocator, SemaphoreIncludes);
     try collectStdIncludes(&set, sources[profilerFilesOffset..fileCount], &output, b.allocator);
     try output.appendSlice(b.allocator, "#endif\n");
+
+    try output.appendSlice(b.allocator, "\n#if defined(BND_TESTS)\n\n");
+    try collectStdIncludes(&set, sources[@intFromEnum(Headers.testing)..@intFromEnum(Headers.testing) + 1], &output, b.allocator);
+    try output.appendSlice(b.allocator, "#endif\n");
   }
 
 
@@ -108,6 +120,10 @@ pub fn amalgamate(b: *std.Build) ![]u8 {
 
   try output.appendSlice(b.allocator, "\n#if defined(BND_PROFILING)\n");
   try writeHeaderFile(sources[@intFromEnum(Headers.semaphores)], &output, b.allocator);
+  try output.appendSlice(b.allocator, "#endif\n");
+
+  try output.appendSlice(b.allocator, "\n#if defined(BND_TESTS)\n");
+  try writeHeaderFile(sources[@intFromEnum(Headers.testing)], &output, b.allocator);
   try output.appendSlice(b.allocator, "#endif\n");
 
   for(@intFromEnum(Headers.count)..profilerFilesOffset) |i| {

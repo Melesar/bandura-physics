@@ -66,11 +66,22 @@ pub fn build(b: *std.Build) !void {
 
     var temp = b.addTempFiles();
 
+    try targets.append(b.allocator, try bandura.buildLibrary(b, options.forBandura()));
+
     const amalgamatedSource = try amalgam.amalgamate(b);
     const tmpPath = temp.add(AmalgamatedSourceName, amalgamatedSource);
 
+    var flags = try common.CompileFlags.default(b.allocator);
+    try flags.addOptimizations(options.optimize);
+
+    const banduraSource = std.Build.Module.CSourceFile {
+      .file = tmpPath,
+      .flags = try flags.collect(),
+      .language = .c
+    };
+
     try defaultStep(b, tmpPath);
-    try targets.append(b.allocator, try testsStep(b, options));
+    try targets.append(b.allocator, try testsStep(b, banduraSource, options));
 
     const scenarioOptions = options.forScenarios();
     for(try scenarios.enumerate(b, scenarioOptions)) |s| {
@@ -88,31 +99,22 @@ pub fn build(b: *std.Build) !void {
 }
 
 fn defaultStep(b: *std.Build, tempPath: std.Build.LazyPath) !void {
+  var installStep = b.getInstallStep();
+  const installHeader = b.addInstallHeaderFile(b.path("include/bandura.h"), "bandura.h");
   const installAmalgam = b.addInstallFile(tempPath, AmalgamatedSourceName);
 
-  b.getInstallStep().dependOn(&installAmalgam.step);
+  installStep.dependOn(&installAmalgam.step);
+  installStep.dependOn(&installHeader.step);
 }
 
-fn testsStep(b: *std.Build, options: Options) !*std.Build.Step.Compile {
-  const banduraOpts = options.forBandura();
-  const banduraModule = try bandura.createBaseModule(b, banduraOpts, .off);
-
-  common.enableProfiling(banduraModule);
-  common.enableTests(banduraModule);
-
-  banduraModule.addIncludePath(b.path("tests"));
-
-  const profilerModule = try profiler.createModule(b, options.forProfiler());
-  common.enableTests(profilerModule);
-  profilerModule.addIncludePath(b.path("tests"));
-
-  const banduraLib = bandura.addLibrary(b, banduraModule, banduraOpts);
-  const profilerLib = profiler.addLibrary(b, profilerModule);
-
+fn testsStep(b: *std.Build, banduraSource: std.Build.Module.CSourceFile, options: Options) !*std.Build.Step.Compile {
   const testsOpts = options.forTests();
   const testsModule = try tests.createModule(b, testsOpts);
-  testsModule.linkLibrary(banduraLib);
-  testsModule.linkLibrary(profilerLib);
+  testsModule.addCSourceFile(banduraSource);
+  testsModule.addIncludePath(b.path("src"));
+
+  common.enableProfiling(testsModule);
+  common.enableTests(testsModule);
 
   var step = b.step("test", "Run tests");
 
