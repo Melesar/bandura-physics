@@ -92,6 +92,7 @@ fn makeModule(b: *std.Build, options: Options, scenarioFile: []const u8, otherFi
       .target = options.target,
       .optimize = options.optimize,
       .config = "-DPLATFORM_DESKTOP -DSUPPORT_PRAND_GENERATOR",
+      .linkage = .dynamic,
     });
     const clay = b.dependency("clay", .{});
     const raygui = b.dependency("raygui", .{});
