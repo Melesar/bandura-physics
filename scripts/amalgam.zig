@@ -13,12 +13,16 @@ const MaxFileCount : u32 = 32;
 const IncludeStatement = "#include";
 const IncludeStatementLen : u32 = IncludeStatement.len;
 
-const IgnoreIncludes : [5][]const u8 = .{
+const WindowsProfilingGuard =  "#if defined(BND_PROFILING) && defined(_WIN32)\n#error Sorry, profiling doesn't work on Windows yet :(\n#endif\n\n";
+const SemaphoreIncludes = "#ifdef __APPLE__\n#include <dispatch/dispatch.h>\n#else\n#include <semaphore.h>\n#endif\n";
+
+const IgnoreIncludes : [6][]const u8 = .{
   "#include \"bandura.h\"",
   "#include \"bnd-core.h\"",
   "#include \"bnd-math.h\"",
   "#include \"profiler.h\"",
   "#include \"testing.h\"",
+  "#include \"semaphores.h\"",
 };
 
 const Headers = enum(u32) {
@@ -26,6 +30,7 @@ const Headers = enum(u32) {
   bnd_core,
   bnd_math,
   profiler,
+  semaphores,
 
   count,
 };
@@ -62,31 +67,82 @@ fn amalgamate(step: *std.Build.Step, make_options: std.Build.Step.MakeOptions) a
   const cwd = b.build_root.handle;
 
   const arena = arenaAllocator.allocator();
-  const sources = try readSourceFiles(arena, cwd, iop);
+  var sources = try arena.alloc(SourceFile, MaxFileCount);
 
-  const dstFile = try cwd.createFile(iop, "bandura.c", .{ .truncate = true });
+  var fileCount : u32 = @intFromEnum(Headers.count);
+  {
+    const includeDir = try cwd.openDir(iop, "include", .{});
+    defer includeDir.close(iop);
+
+    sources[@intFromEnum(Headers.bandura)] = try readFile(arena, iop, includeDir, "bandura.h");
+    sources[@intFromEnum(Headers.bnd_math)] = try readFile(arena, iop, includeDir, "bnd-math.h");
+    sources[@intFromEnum(Headers.profiler)] = try readFile(arena, iop, includeDir, "profiler.h");
+    sources[@intFromEnum(Headers.semaphores)] = try readFile(arena, iop, includeDir, "semaphores.h");
+  }
+
+  {
+    const srcDir = try cwd.openDir(iop, "src", .{ .iterate = true });
+    defer srcDir.close(iop);
+
+    sources[@intFromEnum(Headers.bnd_core)] = try readFile(arena, iop, srcDir, "bnd-core.h");
+
+    fileCount += try readSourceFiles(sources[fileCount..MaxFileCount], arena, srcDir, iop);
+  }
+
+  const profilerFilesOffset = fileCount;
+  {
+    const profilerDir = try cwd.openDir(iop, "profiler", .{ .iterate = true });
+    defer profilerDir.close(iop);
+
+    fileCount += try readSourceFiles(sources[fileCount..MaxFileCount], arena, profilerDir, iop);
+  }
+
+  const dstFile = try cwd.createFile(iop, "src/bandura.c", .{ .truncate = true });
   defer dstFile.close(iop);
 
   var writer = dstFile.writerStreaming(iop, try arena.alloc(u8, 1024));
 
-  try collectStdIncludes(sources, &writer.interface, b.allocator);
+  _ = try writer.interface.write(WindowsProfilingGuard);
+
+  {
+    var set = std.BufSet.init(b.allocator);
+    defer set.deinit();
+
+    try collectStdIncludes(&set, sources[0..@intFromEnum(Headers.semaphores)], &writer.interface);
+    try collectStdIncludes(&set, sources[@intFromEnum(Headers.count)..profilerFilesOffset], &writer.interface);
+
+    _ = try writer.interface.write("\n#if defined(BND_PROFILING)\n\n");
+    _ = try writer.interface.write(SemaphoreIncludes);
+    try collectStdIncludes(&set, sources[profilerFilesOffset..fileCount], &writer.interface);
+    _ = try writer.interface.write("#endif\n");
+  }
+
 
   try writeBanduraHeader(sources[@intFromEnum(Headers.bandura)], &writer.interface);
-  try writeProfilerHeader(sources[@intFromEnum(Headers.profiler)], &writer.interface);
+  try writeHeaderFile(sources[@intFromEnum(Headers.profiler)], &writer.interface);
   try writeHeaderFile(sources[@intFromEnum(Headers.bnd_core)], &writer.interface);
   try writeHeaderFile(sources[@intFromEnum(Headers.bnd_math)], &writer.interface);
 
-  for(@intFromEnum(Headers.count)..sources.len) |i| {
+  _ = try writer.interface.write("\n#if defined(BND_PROFILING)\n");
+  try writeHeaderFile(sources[@intFromEnum(Headers.semaphores)], &writer.interface);
+  _ = try writer.interface.write("#endif\n");
+
+  for(@intFromEnum(Headers.count)..profilerFilesOffset) |i| {
     try writeSourceFile(sources[i], &writer.interface);
   }
+
+  _ = try writer.interface.write("#ifdef BND_PROFILING\n\n");
+
+  for(profilerFilesOffset..fileCount) |i| {
+    try writeSourceFile(sources[i], &writer.interface);
+  }
+
+  _ = try writer.interface.write("#endif\n");
 
   try writer.flush();
 }
 
-fn collectStdIncludes(sources: []SourceFile, writer: *Writer, allocator: Allocator) !void {
-  var set = std.BufSet.init(allocator);
-  defer set.deinit();
-
+fn collectStdIncludes(set: *std.BufSet, sources: []SourceFile, writer: *Writer) !void {
   for(sources) |srcFile| {
     const fileContents = srcFile.contents;
 
@@ -276,47 +332,28 @@ fn writeFile(contents: []u8, startPos: *u64, name: ?[]const u8, writer: *Writer)
   }
 }
 
-fn readSourceFiles(arena: Allocator, cwd: std.Io.Dir, io: std.Io) ![]SourceFile {
-  var files = try arena.alloc(SourceFile, MaxFileCount);
-
-  var fileCount : u32 = @intFromEnum(Headers.count);
-
-  {
-    const includeDir = try cwd.openDir(io, "include", .{});
-    defer includeDir.close(io);
-
-    files[@intFromEnum(Headers.bandura)] = try readFile(arena, io, includeDir, "bandura.h");
-    files[@intFromEnum(Headers.bnd_math)] = try readFile(arena, io, includeDir, "bnd-math.h");
-    files[@intFromEnum(Headers.profiler)] = try readFile(arena, io, includeDir, "profiler.h");
-  }
-
-  {
-    const srcDir = try cwd.openDir(io, "src", .{ .iterate = true });
-    defer srcDir.close(io);
-
-    files[@intFromEnum(Headers.bnd_core)] = try readFile(arena, io, srcDir, "bnd-core.h");
-
-    var iterator = srcDir.iterate();
-    while (try iterator.next(io)) |entry| {
-      if (fileCount >= MaxFileCount) {
-        @panic("Source files limit exceeded");
-      }
-
-      if (entry.kind != .file) {
-        continue;
-      }
-
-      const ext = std.fs.path.extension(entry.name);
-      if (!std.mem.eql(u8, ".c", ext)) {
-        continue;
-      }
-
-      files[fileCount] = try readFile(arena, io, srcDir, try arena.dupe(u8, entry.name));
-      fileCount += 1;
+fn readSourceFiles(files: []SourceFile, arena: Allocator, dir: std.Io.Dir, io: std.Io) !u32 {
+  var fileCount : u32 = 0;
+  var iterator = dir.iterate();
+  while (try iterator.next(io)) |entry| {
+    if (fileCount >= files.len) {
+      @panic("Source files limit exceeded");
     }
+
+    if (entry.kind != .file) {
+      continue;
+    }
+
+    const ext = std.fs.path.extension(entry.name);
+    if (!std.mem.eql(u8, ".c", ext)) {
+      continue;
+    }
+
+    files[fileCount] = try readFile(arena, io, dir, try arena.dupe(u8, entry.name));
+    fileCount += 1;
   }
 
-  return files[0..fileCount];
+  return fileCount;
 }
 
 fn readFile(arena: Allocator, io: std.Io, dir: std.Io.Dir, name: []const u8) !SourceFile {

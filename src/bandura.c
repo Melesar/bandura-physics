@@ -1,3 +1,7 @@
+#if defined(BND_PROFILING) && defined(_WIN32)
+#error Sorry, profiling doesn't work on Windows yet :(
+#endif
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <math.h>
@@ -7,6 +11,18 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
+
+#if defined(BND_PROFILING)
+
+#ifdef __APPLE__
+#include <dispatch/dispatch.h>
+#else
+#include <semaphore.h>
+#endif
+#include <unistd.h>
+#include <pthread.h>
+#include <time.h>
+#endif
 
 // ================
 //   bandura.h
@@ -357,6 +373,10 @@ BNDAPI void                 bnd_teardown(bnd_world *world);
 
 
 
+// ================
+//   profiler.h
+// ================
+
 
 typedef struct {
   uint32_t labels_storage_capacity;
@@ -372,6 +392,7 @@ typedef struct {
   uint16_t contacts_count;
 } profiler_frame_metadata;
 
+#ifndef BND_PROFILING
 
 #define PROFILE_BLOCK(name)
 #define PROFILE_FUNCTION
@@ -380,6 +401,97 @@ typedef struct {
 #define PROFILER_END_FRAME(metadata)
 #define PROFILER_INIT
 #define PROFILER_TEARDOWN
+
+#else
+
+typedef struct {
+  char *label;
+  uint64_t start_time;
+  uint32_t sample_index;
+} profiler_marker;
+
+typedef struct {
+  uint32_t label_id;
+  uint32_t parent_index;
+  uint64_t time;
+} profiler_sample;
+
+typedef struct {
+  uint32_t offset;
+  uint16_t count;
+  uint8_t mask;
+} profiler_frame_header;
+
+typedef struct {
+  profiler_sample *framebuffer;
+  profiler_frame_metadata frame_metadata;
+  uint32_t framebuffer_capacity;
+  uint32_t frame_index;
+  uint32_t samples_available;
+  uint8_t id;
+} profiler_monitor;
+
+typedef struct {
+  char *s;
+  uint8_t len;
+} label;
+
+typedef struct {
+  uint64_t value;
+} labels_slot;
+
+typedef struct {
+  char *storage;
+  labels_slot *slots;
+  uint32_t capacity;
+  uint32_t mask;
+  uint32_t storage_ptr;
+} labels;
+
+#define LABELS_STORAGE_FULL 0xFFFFFFFF
+#define INVALID_LABEL (label){NULL, 0}
+
+#define CONCAT(a, b) a##b
+#define MARKER_NAME(a, b) CONCAT(a, b)
+
+#define PROFILE_BLOCK(name)                                                                                            \
+  profiler_marker MARKER_NAME(marker_, __LINE__) __attribute__((__cleanup__(profiler_end_block))) =                    \
+      profiler_start_block(name);
+
+#define PROFILE_FUNCTION PROFILE_BLOCK(__func__)
+
+#define PROFILER_START_FRAME profiler_start_frame()
+#define PROFILER_END_FRAME(metadata) profiler_end_frame(metadata)
+#define PROFILER_INIT profiler_init_default()
+#define PROFILER_TEARDOWN profiler_teardown()
+
+profiler_config profiler_default_config();
+void profiler_init_default();
+void profiler_init(profiler_config config);
+void profiler_teardown();
+
+void profiler_start_frame();
+void profiler_end_frame(profiler_frame_metadata meta);
+
+profiler_marker profiler_start_block(const char *name);
+void profiler_end_block(profiler_marker *marker);
+
+bool profiler_get_label(uint32_t label_id, label *label);
+
+bool profiler_monitor_start(profiler_monitor *monitor);
+bool profiler_monitor_should_run(profiler_monitor *monitor);
+bool profiler_monitor_read_next_frame(profiler_monitor *monitor);
+void profiler_monitor_wait_for_frame(const profiler_monitor *monitor);
+
+labels labels_init(uint32_t storage_capacity, uint32_t slots_capacity);
+void labels_teardown(labels self);
+
+bool label_is_valid(label l);
+bool label_is_equal(label l, const char *string);
+uint32_t labels_store(labels *self, label l);
+label labels_get(labels *self, uint32_t id);
+
+#endif
 
 
 // ================
@@ -998,6 +1110,55 @@ bnd_m3 bnd_m3_multiply(bnd_m3 a, bnd_m3 b);
 bnd_m3 bnd_m3_scale(bnd_m3 m, float s);
 bnd_m3 bnd_m3_negate(bnd_m3 m);
 bnd_v3 bnd_m3_rotate(bnd_v3 v, bnd_m3 m);
+
+#if defined(BND_PROFILING)
+
+// ================
+//   semaphores.h
+// ================
+
+#ifdef __APPLE__
+#else
+#endif
+
+#ifdef __APPLE__
+typedef dispatch_semaphore_t semaphore;
+#else
+typedef sem_t semaphore;
+#endif
+
+static inline void semaphore_init(semaphore *sem, unsigned int value) {
+  #ifdef __APPLE__
+  *sem = dispatch_semaphore_create(value);
+#else
+  sem_init(sem, 0, value);
+#endif
+}
+
+static inline void semaphore_post(semaphore *sem) {
+#ifdef __APPLE__
+  dispatch_semaphore_signal(*sem);
+#else
+  sem_post(sem);
+#endif
+}
+
+static inline void semaphore_wait(semaphore *sem) {
+#ifdef __APPLE__
+  dispatch_semaphore_wait(*sem, DISPATCH_TIME_FOREVER);
+#else
+  sem_wait(sem);
+#endif
+}
+
+static inline void semaphore_destroy(semaphore *sem) {
+#ifdef __APPLE__
+#else
+  sem_destroy(sem);
+#endif
+}
+
+#endif
 
 // ================
 //   contacts.c
@@ -7096,3 +7257,800 @@ bnd_error bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, bnd_mesh_
 
   return OK;
 }
+#ifdef BND_PROFILING
+
+
+// ================
+//   csv_file_monitor.c
+// ================
+#ifdef __linux__
+#define _POSIX_C_SOURCE 199309L // This is to have clock_gettime, which is otherwise not available under -std=c99
+#define _XOPEN_SOURCE 500
+#endif
+
+
+#define MAX_BUFFER_SIZE 100
+#define CALL_TREE_CAPACITY 1024
+
+typedef struct {
+  uint32_t label_id;
+  uint32_t parent_index;
+  uint64_t total_time;
+  uint32_t call_count;
+} final_sample;
+
+char buffer[MAX_BUFFER_SIZE + 1];
+
+final_sample *call_tree;
+
+static char *read_label(uint32_t label_id) {
+  label label;
+  if (profiler_get_label(label_id, &label)) {
+    uint32_t size = label.len < MAX_BUFFER_SIZE ? label.len : MAX_BUFFER_SIZE;
+    memcpy(buffer, label.s, size);
+    buffer[size] = 0;
+
+    return buffer;
+  }
+
+  return "unknown";
+}
+
+static int32_t find_direct_child(final_sample *samples, uint32_t samples_count, uint32_t parent_index,
+                                 uint32_t label_id) {
+  for (uint32_t i = parent_index + 1; i < samples_count; ++i) {
+    final_sample sample = samples[i];
+    if (sample.label_id != label_id) {
+      continue;
+    }
+
+    if (sample.parent_index == parent_index) {
+      return i;
+    }
+
+    if (sample.parent_index > parent_index) {
+      // Indirect child - search futher.
+      continue;
+    }
+
+    if (sample.parent_index < parent_index) {
+      // Parent's sibling or further up. There will be no direct children from this point on.
+      break;
+    }
+  }
+
+  return -1;
+}
+
+static uint32_t process_samples(profiler_sample *samples, uint32_t samples_count, final_sample *output, uint32_t available_capacity) {
+  if (samples_count == 0 || available_capacity == 0) {
+    return 0;
+  }
+
+  uint32_t final_count = 1;
+  profiler_sample root = samples[0];
+
+  output[0] = (final_sample){
+    .label_id = root.label_id,
+    .parent_index = root.parent_index,
+    .call_count = 1,
+    .total_time = root.time,
+  };
+
+  uint32_t src_index = 1;
+  uint32_t dst_current_index = 0;
+  uint32_t dst_free_slot = 1;
+  while (src_index < samples_count) {
+    if (dst_free_slot >= available_capacity) {
+      return final_count;
+    }
+
+    profiler_sample src_sample = samples[src_index];
+    uint32_t src_parent_label = samples[src_sample.parent_index].label_id;
+    uint32_t dst_current_label = output[dst_current_index].label_id;
+
+    if (dst_current_label == src_parent_label) {
+      // src_sample is the direct child of the current sample in the output.
+      int32_t child_index = find_direct_child(output, final_count, dst_current_index, src_sample.label_id);
+      if (child_index < 0) {
+        output[dst_free_slot] = (final_sample) {
+          .label_id = src_sample.label_id,
+          .parent_index = dst_current_index,
+          .total_time = src_sample.time,
+          .call_count = 1
+        };
+
+        dst_current_index = dst_free_slot;
+        dst_free_slot += 1;
+        final_count += 1;
+      } else {
+        output[child_index].total_time += src_sample.time;
+        output[child_index].call_count += 1;
+        dst_current_index = child_index;
+      }
+
+      src_index += 1;
+      continue;
+    }
+
+    /**
+     *  Now there are two options:
+     *    1) Src item can be a sibling of the dst item.
+     *    2) Src item can be a sibling of the dst item's parent.
+     *  Do figure this out we will walk them both to the root of the tree. If they reach it simultaneosly - they are
+     * siblings.
+     */
+    uint32_t src_parent_index = src_sample.parent_index;
+    uint32_t dst_parent_index = output[dst_current_index].parent_index;
+    while (src_parent_index != 0 && dst_parent_index != 0) {
+      src_parent_index = samples[src_parent_index].parent_index;
+      dst_parent_index = output[dst_parent_index].parent_index;
+    }
+
+    if (src_parent_index == 0 && dst_parent_index == 0) {
+      // Current items from src and dst are siblings
+      dst_current_index = output[dst_current_index].parent_index;
+      continue;
+    }
+
+    // Src item is a sibling of the dst item's parent
+    dst_current_index = output[output[dst_current_index].parent_index].parent_index;
+  }
+
+  return final_count;
+}
+
+void *csv_file_monitor_run(void *data) {
+  FILE *f = fopen("bandura.prof.csv", "w");
+  if (!f) {
+    return NULL;
+  }
+
+  call_tree = calloc(CALL_TREE_CAPACITY, sizeof(final_sample));
+
+  profiler_monitor monitor;
+  if (!profiler_monitor_start(&monitor)) {
+    fclose(f);
+    free(call_tree);
+    return NULL;
+  }
+
+  fprintf(f, "Frame index,Label,Call count,Total time,Body count,Contacts count\n");
+
+  uint32_t running_count = 0;
+  while (profiler_monitor_should_run(&monitor)) {
+    profiler_monitor_wait_for_frame(&monitor);
+
+    while (profiler_monitor_read_next_frame(&monitor)) {
+      uint32_t processed_count = process_samples(monitor.framebuffer, monitor.samples_available, call_tree, CALL_TREE_CAPACITY);
+
+      for (uint32_t sample_index = 0; sample_index < processed_count; ++sample_index) {
+        final_sample sample = call_tree[sample_index];
+        char *label = read_label(sample.label_id);
+
+        uint64_t time_ns = sample.total_time;
+        double time_ms = time_ns / 1000000.0;
+
+        fprintf(f, "%d,%s,%d,%.5f,%d,%d\n", running_count, label, sample.call_count, time_ms, monitor.frame_metadata.body_count, monitor.frame_metadata.contacts_count);
+      }
+
+      running_count += 1;
+    }
+  }
+
+  fclose(f);
+  free(call_tree);
+  return NULL;
+}
+
+// ========== TESTS =================
+
+#ifdef BND_TESTS
+
+
+static void print_call_tree(final_sample *samples, uint32_t count) {
+  printf("\n");
+
+  for (uint32_t i = 0; i < count; ++i) {
+    final_sample sample = samples[i];
+    uint32_t parent = sample.parent_index;
+    while (parent != (uint32_t)~0) {
+      printf(" ");
+      parent = samples[parent].parent_index;
+    }
+
+    double time = sample.total_time / 1000000.0;
+    printf("%d x %s: %.5f ms\n", sample.call_count, read_label(sample.label_id), time);
+  }
+}
+
+static bool label_equals(final_sample sample, const char *title) {
+  label l;
+  if (!profiler_get_label(sample.label_id, &l)) {
+    return false;
+  }
+
+  return label_is_equal(l, title);
+}
+
+static void work() { usleep(1000); }
+
+static void simulate_frame() {
+  PROFILE_FUNCTION
+
+  {
+    for (int i = 0; i < 10; ++i) {
+      PROFILE_BLOCK("water_the_plant")
+      work();
+
+      if (i == 5 || i == 7) {
+        PROFILE_BLOCK("change_soil")
+        work();
+      }
+    }
+
+    {
+      PROFILE_BLOCK("clean_dishes")
+      work();
+    }
+
+    for (int i = 0; i < 3; ++i) {
+      PROFILE_BLOCK("clean_the_room")
+
+      if (i == 0) {
+        PROFILE_BLOCK("collect_toys")
+        work();
+      }
+
+      {
+        PROFILE_BLOCK("wipe_dust")
+
+        for (int j = 0; j < 4; ++j) {
+          PROFILE_BLOCK("sort_shelf") {
+            PROFILE_BLOCK("vaccuum")
+            work();
+          }
+
+          work();
+        }
+
+        work();
+      }
+
+      {
+        PROFILE_BLOCK("vaccuum")
+        work();
+      }
+    }
+  }
+
+  work();
+}
+
+void total_count_and_time_is_calculated_correctly() {
+  call_tree = calloc(CALL_TREE_CAPACITY, sizeof(final_sample));
+
+  profiler_config config = profiler_default_config();
+  config.auto_enable_monitors = false;
+
+  profiler_init(config);
+
+  profiler_monitor monitor;
+  profiler_monitor_start(&monitor);
+
+  profiler_start_frame();
+
+  simulate_frame();
+
+  profiler_end_frame((profiler_frame_metadata){0});
+
+  assert(profiler_monitor_read_next_frame(&monitor));
+  assert(monitor.samples_available == 48);
+
+  uint32_t processed_count =
+      process_samples(monitor.framebuffer, monitor.samples_available, call_tree, CALL_TREE_CAPACITY);
+
+  print_call_tree(call_tree, processed_count);
+
+  assert(processed_count == 10);
+  assert(label_equals(call_tree[0], "simulate_frame"));
+  assert(label_equals(call_tree[1], "water_the_plant"));
+  assert(label_equals(call_tree[2], "change_soil"));
+  assert(label_equals(call_tree[3], "clean_dishes"));
+  assert(label_equals(call_tree[4], "clean_the_room"));
+  assert(label_equals(call_tree[5], "collect_toys"));
+  assert(label_equals(call_tree[6], "wipe_dust"));
+  assert(label_equals(call_tree[7], "sort_shelf"));
+  assert(label_equals(call_tree[8], "vaccuum"));
+  assert(label_equals(call_tree[9], "vaccuum"));
+
+  assert(call_tree[0].call_count == 1);
+  assert(call_tree[1].call_count == 10);
+  assert(call_tree[2].call_count == 2);
+  assert(call_tree[3].call_count == 1);
+  assert(call_tree[4].call_count == 3);
+  assert(call_tree[5].call_count == 1);
+  assert(call_tree[6].call_count == 3);
+  assert(call_tree[7].call_count == 12);
+  assert(call_tree[8].call_count == 12);
+  assert(call_tree[9].call_count == 3);
+
+  // TODO check total times
+
+  assert(!profiler_monitor_read_next_frame(&monitor));
+
+  profiler_teardown();
+  free(call_tree);
+}
+
+void csv_file_monitor_tests() {
+  TESTS_BEGIN("Text file monitor")
+  TEST(total_count_and_time_is_calculated_correctly)
+  TESTS_END
+}
+
+#endif
+
+// ================
+//   profiler.c
+// ================
+#ifdef __linux__
+#define _POSIX_C_SOURCE 199309L // This is to have clock_gettime, which is otherwise not available under -std=c99
+#endif
+
+
+#define MAX_MONITORS_COUNT 1
+
+labels labels_storage;
+
+profiler_marker *markers_stack;
+uint32_t markers_count;
+uint32_t markers_capacity;
+
+profiler_sample *samples;
+uint32_t samples_capacity;
+uint32_t frame_start;
+uint32_t frame_offset;
+uint32_t max_frame_size;
+
+profiler_frame_header *frame_headers;
+profiler_frame_metadata *metadata;
+uint32_t frame_header_index;
+uint32_t frame_headers_capacity;
+uint32_t frame_headers_mask;
+
+const uint32_t monitors_framebuffer_capacity = 1024;
+
+pthread_t monitor_threads[MAX_MONITORS_COUNT];
+semaphore monitor_semaphores[MAX_MONITORS_COUNT];
+
+struct monitors_t {
+  uint8_t count;
+  uint8_t mask;
+  bool running;
+} monitors;
+
+void *csv_file_monitor_run();
+
+static void notify_monitors() {
+  uint8_t count = monitors.count;
+  for (uint8_t i = 0; i < count; ++i) {
+    semaphore_post(&monitor_semaphores[i]);
+  }
+}
+
+static void update_header_atomic(uint32_t offset, uint16_t count) {
+  profiler_frame_header updated_header = {
+    .offset = offset,
+    .count = count,
+    .mask = monitors.mask,
+  };
+
+  uint64_t new_header;
+  memcpy(&new_header, &updated_header, sizeof(uint64_t));
+
+  uint64_t *current_header = (uint64_t *)&frame_headers[frame_header_index];
+  __atomic_store_n(current_header, new_header, __ATOMIC_RELEASE);
+}
+
+static label marker_label(profiler_marker marker) {
+  return (label){marker.label, strlen(marker.label)};
+}
+
+static uint64_t get_time() {
+  struct timespec time;
+  clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &time);
+  return time.tv_nsec;
+}
+
+static void end_block() {
+  if (markers_count == 0)
+    return;
+
+  profiler_marker last_marker = markers_stack[--markers_count];
+
+  uint64_t elapsed_ns = get_time() - last_marker.start_time;
+  samples[frame_start + last_marker.sample_index].time = elapsed_ns;
+}
+
+void profiler_init_default() {
+  profiler_init(profiler_default_config());
+}
+
+profiler_config profiler_default_config() {
+  return (profiler_config){
+    .samples_memory_size = 1 << 20, // 1 Mb
+    .labels_slots_capacity = 128,
+    .labels_storage_capacity = 1 << 16, // 32 Kb
+    .stack_capacity = 512,
+    .frame_headers_capacity = 64,
+    .auto_enable_monitors = true,
+  };
+}
+
+void profiler_init(profiler_config config) {
+  labels_storage = labels_init(config.labels_storage_capacity, config.labels_slots_capacity);
+  markers_stack = calloc(config.stack_capacity, sizeof(profiler_marker));
+  markers_count = 0;
+  markers_capacity = config.stack_capacity;
+
+  uint32_t desired_samples_capacity = config.samples_memory_size / sizeof(profiler_sample);
+  samples_capacity = 1;
+  while (samples_capacity < desired_samples_capacity) {
+    samples_capacity <<= 1;
+  }
+
+  samples = calloc(samples_capacity, sizeof(profiler_sample));
+  frame_start = frame_offset = 0;
+  max_frame_size = 0;
+
+  frame_headers_capacity = 1;
+  while (frame_headers_capacity < config.frame_headers_capacity) {
+    frame_headers_capacity <<= 1;
+  }
+
+  frame_headers_mask = frame_headers_capacity - 1;
+  frame_headers = calloc(frame_headers_capacity, sizeof(profiler_frame_header));
+  metadata = calloc(frame_headers_capacity, sizeof(profiler_frame_metadata));
+
+  monitors.count = 0;
+  monitors.mask = 0;
+  monitors.running = true;
+
+  for (uint32_t i = 0; i < MAX_MONITORS_COUNT; ++i) {
+    semaphore_init(&monitor_semaphores[i], 0);
+  }
+
+  if (config.auto_enable_monitors) {
+    pthread_create(&monitor_threads[0], NULL, &csv_file_monitor_run, NULL);
+  }
+}
+
+void profiler_teardown() {
+  monitors.running = false;
+
+  notify_monitors();
+
+  for (uint32_t i = 0; i < monitors.count; ++i) {
+    pthread_join(monitor_threads[i], NULL);
+  }
+
+  for (uint32_t i = 0; i < MAX_MONITORS_COUNT; ++i) {
+    semaphore_destroy(&monitor_semaphores[i]);
+  }
+
+  labels_teardown(labels_storage);
+  free(markers_stack);
+  free(samples);
+  free(frame_headers);
+  free(metadata);
+}
+
+void profiler_start_frame() {
+  frame_offset = 0;
+  markers_count = 0;
+}
+
+void profiler_end_frame(profiler_frame_metadata frame_metadata) {
+  max_frame_size = frame_offset > max_frame_size ? frame_offset : max_frame_size;
+
+  metadata[frame_header_index] = frame_metadata;
+  update_header_atomic(frame_start, frame_offset);
+  notify_monitors();
+
+  frame_start += frame_offset;
+  frame_header_index = (frame_header_index + 1) & frame_headers_mask;
+
+  if (samples_capacity < frame_start || samples_capacity - frame_start < max_frame_size) {
+    frame_start = 0;
+  }
+}
+
+profiler_marker profiler_start_block(const char *name) {
+  assert(markers_count < markers_capacity);
+
+  profiler_marker marker = {(char *)name, get_time(), frame_offset};
+  profiler_marker parent_marker = markers_count > 0 ? markers_stack[markers_count - 1] : (profiler_marker){.sample_index = 0xFFFFFFFF};
+
+  uint32_t sample_index = frame_start + frame_offset;
+  samples[sample_index] = (profiler_sample) {
+    .label_id = labels_store(&labels_storage, marker_label(marker)),
+    .parent_index = parent_marker.sample_index,
+    .time = 0
+  };
+
+  markers_stack[markers_count++] = marker;
+  frame_offset += 1;
+
+  return marker;
+}
+
+void profiler_end_block(profiler_marker *marker) {
+  end_block();
+}
+
+bool profiler_get_label(uint32_t label_id, label *label) {
+  *label = labels_get(&labels_storage, label_id);
+  return label_is_valid(*label);
+}
+
+bool profiler_monitor_start(profiler_monitor *monitor) {
+  if (monitors.count >= MAX_MONITORS_COUNT) {
+    return false;
+  }
+
+  /**
+   *  With current implementation there might be a situation when:
+   *  - Monitor A increments the count
+   *  - Monitor B increments the count
+   *  - Reader A updates the mask
+   *  - Profiler submits another frame, but uses mask only with A.
+   *  - Therefore monitor B looses one frame, even though it's in the process of registering itself.
+   *
+   *  This is an okay tradeoff for simplicity sake.
+   */
+
+  uint8_t monitor_id = __atomic_fetch_add(&monitors.count, (uint8_t)1, __ATOMIC_RELAXED);
+  uint8_t new_monitor_mask = 1 << monitor_id;
+
+  __atomic_fetch_or(&monitors.mask, new_monitor_mask, __ATOMIC_RELAXED);
+
+  monitor->framebuffer = calloc(monitors_framebuffer_capacity, sizeof(profiler_sample));
+  monitor->framebuffer_capacity = monitors_framebuffer_capacity;
+  monitor->id = monitor_id;
+  monitor->frame_index = frame_header_index;
+
+  return true;
+}
+
+bool profiler_monitor_should_run(profiler_monitor *monitor) {
+  bool running = monitors.running;
+  if (!running) {
+    free(monitor->framebuffer);
+  }
+
+  return running;
+}
+
+bool profiler_monitor_read_next_frame(profiler_monitor *monitor) {
+  profiler_frame_header *frame = &frame_headers[monitor->frame_index];
+  uint8_t monitor_mask = 1 << monitor->id;
+  uint8_t disable_mask = ~monitor_mask;
+  uint8_t frame_mask = frame->mask;
+
+  if ((frame_mask & monitor_mask) == 0) {
+    return false;
+  }
+
+  if (frame->count > monitor->framebuffer_capacity) {
+    while (frame->count >= monitor->framebuffer_capacity) {
+      monitor->framebuffer_capacity <<= 1;
+    }
+
+    monitor->framebuffer = realloc(monitor->framebuffer, monitor->framebuffer_capacity * sizeof(profiler_sample));
+  }
+
+  monitor->samples_available = frame->count;
+  monitor->frame_metadata = metadata[monitor->frame_index];
+  monitor->frame_index = (monitor->frame_index + 1) & frame_headers_mask;
+
+  memcpy(monitor->framebuffer, &samples[frame->offset], frame->count * sizeof(profiler_sample));
+
+  uint8_t new_frame_mask;
+  do {
+    new_frame_mask = frame_mask & disable_mask;
+  } while (!__atomic_compare_exchange_n(&frame->mask, &frame_mask, new_frame_mask, true, __ATOMIC_RELEASE, __ATOMIC_RELAXED));
+
+  return true;
+}
+
+void profiler_monitor_wait_for_frame(const profiler_monitor *monitor) {
+  semaphore_wait(&monitor_semaphores[monitor->id]);
+}
+
+// ================
+//   labels.c
+// ================
+#if defined(MSC_VER)
+#pragma message("Profiling is not supported with MSVC")
+#endif
+
+
+static inline uint32_t hash(label l) {
+  uint32_t h = 2166136261u;
+  for (uint8_t i = 0; i < l.len; i++) {
+    h ^= (uint8_t)l.s[i];
+    h *= 16777619u;
+  }
+  return h;
+}
+
+static inline uint64_t slot_pack(uint32_t offset, uint32_t length) {
+  return ((uint64_t)offset << 32) | length;
+}
+
+static inline void slot_unpack(uint64_t value, uint32_t *offset, uint32_t *length) {
+  *offset = (uint32_t)(value >> 32);
+  *length = (uint32_t)(value & 0xFFFFFFFF);
+}
+
+static inline bool slot_free(labels_slot slot) {
+  return slot.value == (uint64_t)~0;
+}
+
+static void slot_write(labels *labels, labels_slot *slot, label l) {
+  uint64_t new_value = slot_pack(labels->storage_ptr, l.len);
+
+  memcpy(labels->storage + labels->storage_ptr, l.s, l.len);
+  labels->storage_ptr += l.len;
+
+  __atomic_store_n(&slot->value, new_value, __ATOMIC_RELEASE);
+}
+
+static label slot_read(const labels *labels, labels_slot slot) {
+  if (slot_free(slot)) {
+    return INVALID_LABEL;
+  }
+
+  uint32_t offset, len;
+  slot_unpack(slot.value, &offset, &len);
+
+  return (label){labels->storage + offset, (uint8_t)len};
+}
+
+bool label_is_valid(label l) {
+  return l.s != NULL && l.len != 0;
+}
+
+bool label_is_equal(label l, const char *string) {
+  return strncmp(l.s, string, l.len) == 0;
+}
+
+labels labels_init(uint32_t storage_capacity, uint32_t slots_capacity) {
+  labels self = {0};
+  self.storage = malloc(storage_capacity);
+
+  uint32_t slots_count = 1;
+  while (slots_count < slots_capacity) {
+    slots_count <<= 1;
+  }
+
+  uint32_t slots_memory_size = slots_count * sizeof(labels_slot);
+  self.slots = malloc(slots_memory_size);
+  memset(self.slots, 0xFF, slots_memory_size);
+
+  self.capacity = slots_count;
+  self.mask = slots_count - 1;
+
+  return self;
+}
+
+uint32_t labels_store(labels *self, label l) {
+  uint32_t h = hash(l);
+  uint32_t index = h & self->mask;
+  uint32_t initial_index = index;
+
+  if (slot_free(self->slots[index])) {
+    slot_write(self, &self->slots[index], l);
+    return index;
+  }
+
+  do {
+    label stored_label = slot_read(self, self->slots[index]);
+
+    if (stored_label.len == l.len && strncmp(stored_label.s, l.s, l.len) == 0) {
+      return index;
+    }
+
+    index = (index + 1) & self->mask;
+
+    if (index == initial_index) {
+      return LABELS_STORAGE_FULL;
+    }
+
+  } while (!slot_free(self->slots[index]));
+
+  slot_write(self, &self->slots[index], l);
+
+  return index;
+}
+
+label labels_get(labels *self, uint32_t id) {
+  if (id >= self->capacity) {
+    return INVALID_LABEL;
+  }
+
+  return slot_read(self, self->slots[id]);
+}
+
+void labels_teardown(labels self) {
+  free(self.storage);
+  free(self.slots);
+}
+
+// ========= TESTS ============
+
+#ifdef BND_TESTS
+
+#define LABEL(s)                                                                                                       \
+  (label) { s, strlen(s) }
+
+static bool label_equal(const label l, char *s) { return strncmp(l.s, s, l.len) == 0; }
+
+static void storing_label_allows_to_retreive_it() {
+  labels ls = labels_init(32, 32);
+  uint32_t id = labels_store(&ls, LABEL("Hello"));
+  label l = labels_get(&ls, id);
+
+  assert(label_equal(l, "Hello"));
+
+  labels_teardown(ls);
+}
+
+static void requesting_invalid_id_gives_null_pointer() {
+  labels ls = labels_init(32, 32);
+  label l = labels_get(&ls, 200);
+
+  assert(!label_is_valid(l));
+
+  labels_teardown(ls);
+}
+
+static void storing_same_label_multiple_times_gives_the_same_id() {
+  labels ls = labels_init(32, 32);
+  uint32_t id = labels_store(&ls, LABEL("Hello"));
+
+  for (int i = 0; i < 10; ++i) {
+    uint32_t another_id = labels_store(&ls, LABEL("Hello"));
+    assert(id == another_id);
+  }
+
+  labels_teardown(ls);
+}
+
+static void different_labels_produce_different_ids() {
+  labels ls = labels_init(1000, 32);
+  uint32_t ids[] = {labels_store(&ls, LABEL("Hello")), labels_store(&ls, LABEL("foo")), labels_store(&ls, LABEL("bas")),
+                    labels_store(&ls, LABEL("42")), labels_store(&ls, LABEL("Starship Millenium Falcon"))};
+
+  for (int i = 0; i < 5; ++i) {
+    for (int j = 0; j < 5; ++j) {
+      if (i != j)
+        assert(ids[i] != ids[j]);
+    }
+  }
+
+  labels_teardown(ls);
+}
+
+extern void labels_tests() {
+  TESTS_BEGIN("Profiling labels")
+  TEST(storing_label_allows_to_retreive_it)
+  TEST(requesting_invalid_id_gives_null_pointer)
+  TEST(storing_same_label_multiple_times_gives_the_same_id)
+  TEST(different_labels_produce_different_ids)
+  TESTS_END
+}
+
+#endif
+#endif

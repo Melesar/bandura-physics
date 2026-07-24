@@ -1,3 +1,6 @@
+#ifndef SEMAPHORES_H
+#define SEMAPHORES_H
+
 #ifdef __APPLE__
 #include <dispatch/dispatch.h>
 #else
@@ -11,7 +14,7 @@ typedef sem_t semaphore;
 #endif
 
 static inline void semaphore_init(semaphore *sem, unsigned int value) {
-#ifdef __APPLE__
+  #ifdef __APPLE__
   *sem = dispatch_semaphore_create(value);
 #else
   sem_init(sem, 0, value);
@@ -40,3 +43,5 @@ static inline void semaphore_destroy(semaphore *sem) {
   sem_destroy(sem);
 #endif
 }
+
+#endif
