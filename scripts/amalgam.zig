@@ -327,6 +327,10 @@ fn readSourceFiles(files: []SourceFile, arena: Allocator, dir: std.Io.Dir, io: s
       continue;
     }
 
+    if (lineEq(entry.name, "bandura.c")) {
+      continue;
+    }
+
     const ext = std.fs.path.extension(entry.name);
     if (!std.mem.eql(u8, ".c", ext)) {
       continue;
