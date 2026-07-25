@@ -103,6 +103,8 @@ fn makeModule(b: *std.Build, options: Options, scenarioFile: []const u8, otherFi
     scenarioModule.addIncludePath(raygui.path("src"));
     scenarioModule.addIncludePath(raygui.path("styles"));
     scenarioModule.addIncludePath(b.path("demos/include"));
+    scenarioModule.addIncludePath(b.path("include"));
+    scenarioModule.addIncludePath(b.path("src"));
 
     scenarioModule.linkLibrary(raylib.artifact("raylib"));
 

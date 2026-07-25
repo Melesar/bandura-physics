@@ -14,9 +14,7 @@ const MaxFileCount : u32 = 32;
 const IncludeStatement = "#include";
 const IncludeStatementLen : u32 = IncludeStatement.len;
 
-const WindowsProfilingGuard =  "#if defined(BND_PROFILING) && defined(_WIN32)\n#error Sorry, profiling doesn't work on Windows yet :(\n#endif\n\n";
-const SemaphoreIncludes = "#ifdef __APPLE__\n#include <dispatch/dispatch.h>\n#else\n#include <semaphore.h>\n#endif\n\n";
-const LinuxTimeDefine = "#if defined(__linux__) && defined(BND_PROFILING)\n#define _POSIX_C_SOURCE 199309L // This is to have clock_gettime, which is otherwise not available under -std=c99\n#define _XOPEN_SOURCE 500\n#endif\n\n";
+const ProfilingTopLevelHandle = "#if defined(BND_PROFILING)\n  #if defined(__linux__)\n    #define _POSIX_C_SOURCE 199309L // This is to have clock_gettime, which is otherwise not available under -std=c99\n    #define _XOPEN_SOURCE 500\n    #include <semaphore.h>\n  #elif defined(__APPLE__)\n    #include<dispatch/dispatch.h>\n  #elif defined(_WIN32)\n    #error Sorry, profiling doesn't work on Windows yet :(\n  #endif\n#endif\n\n";
 
 const IgnoreIncludes : [6][]const u8 = .{
   "#include \"bandura.h\"",
@@ -94,8 +92,7 @@ pub fn amalgamate(b: *std.Build) ![]u8 {
     sources[@intFromEnum(Headers.testing)] = try readFile(arena, iop, testingDit, "testing.h");
   }
 
-  try output.appendSlice(b.allocator, LinuxTimeDefine);
-  try output.appendSlice(b.allocator, WindowsProfilingGuard);
+  try output.appendSlice(b.allocator, ProfilingTopLevelHandle);
 
   {
     var set = std.BufSet.init(b.allocator);
@@ -104,8 +101,7 @@ pub fn amalgamate(b: *std.Build) ![]u8 {
     try collectStdIncludes(&set, sources[0..@intFromEnum(Headers.semaphores)], &output, b.allocator);
     try collectStdIncludes(&set, sources[@intFromEnum(Headers.count)..profilerFilesOffset], &output, b.allocator);
 
-    try output.appendSlice(b.allocator, "\n#if defined(BND_PROFILING)\n\n");
-    try output.appendSlice(b.allocator, SemaphoreIncludes);
+    try output.appendSlice(b.allocator, "\n#if defined(BND_PROFILING)\n");
     try collectStdIncludes(&set, sources[profilerFilesOffset..fileCount], &output, b.allocator);
     try output.appendSlice(b.allocator, "#endif\n");
 

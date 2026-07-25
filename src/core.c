@@ -1,6 +1,5 @@
 #include "bnd-core.h"
 #include "profiler.h"
-#include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>

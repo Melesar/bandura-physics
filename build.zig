@@ -71,22 +71,16 @@ pub fn build(b: *std.Build) !void {
     const amalgamatedSource = try amalgam.amalgamate(b);
     const tmpPath = temp.add(AmalgamatedSourceName, amalgamatedSource);
 
-    var flags = try common.CompileFlags.default(b.allocator);
-    try flags.addOptimizations(options.optimize);
+    const defaultBanduraSrc = try amalgamPathToSource(tmpPath, b.allocator, options.optimize);
+    const profilingBanduraSrc = try amalgamPathToSource(tmpPath, b.allocator, .ReleaseFast);
 
-    const banduraSource = std.Build.Module.CSourceFile {
-      .file = tmpPath,
-      .flags = try flags.collect(),
-      .language = .c
-    };
-
-    try defaultStep(b, tmpPath);
-    try targets.append(b.allocator, try testsStep(b, banduraSource, options));
+    try defaultStep(b, tmpPath, options);
+    try targets.append(b.allocator, try testsStep(b, defaultBanduraSrc, options));
 
     const scenarioOptions = options.forScenarios();
     for(try scenarios.enumerate(b, scenarioOptions)) |s| {
-      s.default.linkLibrary(try bandura.buildLibrary(b, options.forBandura()));
-      s.profiling.linkLibrary(try bandura.buildLibrary(b, options.forBandura().forProfiling()));
+      s.default.addCSourceFile(defaultBanduraSrc);
+      s.profiling.addCSourceFile(profilingBanduraSrc);
 
       const target = s.compile(b);
       try targets.append(b.allocator, target.default);
@@ -95,16 +89,22 @@ pub fn build(b: *std.Build) !void {
       target.createSteps(b);
     }
 
-    _ = cc.createStep(b, "cdb", try targets.toOwnedSlice(b.allocator));
+    var compileCommandsStep = cc.createStep(b, "cdb", try targets.toOwnedSlice(b.allocator));
+    compileCommandsStep.dependOn(&temp.step);
 }
 
-fn defaultStep(b: *std.Build, tempPath: std.Build.LazyPath) !void {
+fn defaultStep(b: *std.Build, tempPath: std.Build.LazyPath, options: Options) !void {
   var installStep = b.getInstallStep();
-  const installHeader = b.addInstallHeaderFile(b.path("include/bandura.h"), "bandura.h");
+
+  const installBanduraHeader = b.addInstallHeaderFile(b.path("include/bandura.h"), "bandura.h");
+  const installMathHeader = b.addInstallHeaderFile(b.path("include/bnd-math.h"), "bnd-math.h");
   const installAmalgam = b.addInstallFile(tempPath, AmalgamatedSourceName);
+  const buildBanduraFromOriginalSources = try bandura.buildLibrary(b, options.forBandura());
 
   installStep.dependOn(&installAmalgam.step);
-  installStep.dependOn(&installHeader.step);
+  installStep.dependOn(&installBanduraHeader.step);
+  installStep.dependOn(&installMathHeader.step);
+  installStep.dependOn(&buildBanduraFromOriginalSources.step);
 }
 
 fn testsStep(b: *std.Build, banduraSource: std.Build.Module.CSourceFile, options: Options) !*std.Build.Step.Compile {
@@ -124,4 +124,15 @@ fn testsStep(b: *std.Build, banduraSource: std.Build.Module.CSourceFile, options
   step.dependOn(&artifact.step);
 
   return exe;
+}
+
+fn amalgamPathToSource(path: std.Build.LazyPath, allocator: std.mem.Allocator, optimize: std.builtin.OptimizeMode) !std.Build.Module.CSourceFile {
+  var flags = try common.CompileFlags.default(allocator);
+  try flags.addOptimizations(optimize);
+
+  return std.Build.Module.CSourceFile {
+    .file = path,
+    .flags = try flags.collect(),
+    .language = .c
+  };
 }
