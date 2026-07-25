@@ -6,9 +6,6 @@ Bandura is a traditional Ukrainian [musical instrument](https://en.wikipedia.org
 
 * [Features](#features)
 * [Installation and build](#installation-and-build)
-  * [Requirements](#requirements)
-  * [Building the library itself](#building-the-library-itself)
-  * [Building the demos](#building-the-demos)
 * [Using the library](#using-the-library)
   * [Quickstart](#quickstart)
   * [Spawning bodies](#spawning-bodies)
