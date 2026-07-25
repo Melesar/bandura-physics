@@ -39,7 +39,7 @@ static void std_free(void *ptr, uint64_t size) {
   free(ptr);
 }
 
-bnd_allocator bnd_default_allocator() {
+bnd_allocator bnd_default_allocator(void) {
   return (bnd_allocator){
     .malloc = std_malloc,
     .realloc = std_realloc,
@@ -151,7 +151,7 @@ static void teardown_commons(common_data *data, bnd_allocator allocator) {
   allocator.free(data->inner_lookup, data->capacity * sizeof(count_t));
 }
 
-bnd_config bnd_default_config() {
+bnd_config bnd_default_config(void) {
   return (bnd_config){
     .simulation = {
       .gravity = (bnd_v3){0, -9.81f, 0},

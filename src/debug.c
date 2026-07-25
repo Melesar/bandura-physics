@@ -94,7 +94,7 @@ bool debug_epa_iteration(const bnd_world *world, bnd_body_handle body_a, bnd_bod
   return epa_debug_draw(&ctx, &simplex, world->config.advanced.epa_tolerance, iteration, callbacks, user_data);
 }
 
-collision_test_suite *collision_tests_load() {
+collision_test_suite *collision_tests_load(void) {
 #ifdef COLLISION_TEST_SUITE_PATH
   char *path = COLLISION_TEST_SUITE_PATH;
   FILE *f = fopen(path, "r");

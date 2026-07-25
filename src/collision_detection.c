@@ -828,7 +828,7 @@ count_t collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_ty
   return count;
 }
 
-void collision_detection_init() {
+void collision_detection_init(void) {
   memset(collision_detection_table, 0, sizeof(collision_detection_table));
 
   collision_detection_table[BND_SPHERE][BND_SPHERE] = (collision_detection_entry) { sphere_sphere_collision, true, false };

@@ -257,7 +257,13 @@ typedef struct bnd_world_t bnd_world;
   typedef struct { \
     bnd_error error; \
     type value; \
-  } bnd_result_##suffix;
+  } bnd_result_##suffix; \
+  \
+  bnd_result_##suffix bnd_result_##suffix##_error(bnd_error e) { \
+    type dummy_value = {0}; \
+    return (bnd_result_##suffix) { e, dummy_value }; \
+  }\
+
 
 BND_RESULT_TYPE(world, bnd_world*)
 BND_RESULT_TYPE(v3, bnd_v3)
@@ -290,7 +296,7 @@ typedef struct {
 extern "C" {
 #endif
 
-BNDAPI bnd_config           bnd_default_config();
+BNDAPI bnd_config           bnd_default_config(void);
 BNDAPI uint32_t             bnd_required_memory(const bnd_config *config);
 
 BNDAPI bnd_world           *bnd_init(bnd_config config);

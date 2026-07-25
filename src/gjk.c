@@ -6,8 +6,6 @@
 
 #define TOLERANCE FLT_EPSILON
 
-const bnd_v3 initial_direction = (bnd_v3){ 1, 0, 0 };
-
 inline static int sign(float x) {
   if (fabsf(x) < TOLERANCE) {
     return 0;
@@ -165,7 +163,7 @@ static bool simplex_update(simplex *s, bnd_v3 *direction) {
 bool gjk_check_intersection(const bnd_world *world, const collision_detection_context *ctx, simplex *simplex) {
   PROFILE_FUNCTION
 
-  bnd_v3 direction = initial_direction;
+  bnd_v3 direction = (bnd_v3){ 1, 0, 0 };
 
   simplex->size = 0;
 

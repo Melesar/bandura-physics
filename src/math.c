@@ -1,7 +1,7 @@
 #include "bnd-math.h"
 #include <float.h>
 
-bnd_m3 bnd_m3_identity() {
+bnd_m3 bnd_m3_identity(void) {
   return (bnd_m3){ { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } };
 }
 

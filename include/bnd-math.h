@@ -42,14 +42,6 @@ static inline float bnd_v3_lensqr(bnd_v3 x) {
   return x.x * x.x + x.y * x.y + x.z * x.z;
 }
 
-static inline float bnd_v3_distance(bnd_v3 x, bnd_v3 y) {
-  float dx = x.x - y.x;
-  float dy = x.y - y.y;
-  float dz = x.z - y.z;
-
-  return sqrtf(dx * dx + dy * dy + dz * dz);
-}
-
 static inline float bnd_v3_distancesqr(bnd_v3 x, bnd_v3 y) {
   float dx = x.x - y.x;
   float dy = x.y - y.y;
@@ -58,23 +50,23 @@ static inline float bnd_v3_distancesqr(bnd_v3 x, bnd_v3 y) {
   return dx * dx + dy * dy + dz * dz;
 }
 
-static inline bnd_v3 bnd_v3_zero() {
+static inline bnd_v3 bnd_v3_zero(void) {
   return (bnd_v3){0, 0, 0};
 }
 
-static inline bnd_v3 bnd_v3_one() {
+static inline bnd_v3 bnd_v3_one(void) {
   return (bnd_v3){1, 1, 1};
 }
 
-static inline bnd_v3 bnd_v3_up() {
+static inline bnd_v3 bnd_v3_up(void) {
   return (bnd_v3){0, 1, 0};
 }
 
-static inline bnd_v3 bnd_v3_right() {
+static inline bnd_v3 bnd_v3_right(void) {
   return (bnd_v3){1, 0, 0};
 }
 
-static inline bnd_v3 bnd_v3_forward() {
+static inline bnd_v3 bnd_v3_forward(void) {
   return (bnd_v3){0, 0, 1};
 }
 
@@ -177,11 +169,11 @@ static inline bnd_quat bnd_quat_invert(bnd_quat x) {
   return result;
 }
 
-static inline bnd_quat bnd_quat_identity() {
+static inline bnd_quat bnd_quat_identity(void) {
   return (bnd_quat){0, 0, 0, 1};
 }
 
-bnd_m3 bnd_m3_identity();
+bnd_m3 bnd_m3_identity(void);
 bnd_m3 bnd_m3_transpose(bnd_m3 m);
 bnd_m3 bnd_m3_inverse(bnd_m3 m);
 bnd_m3 bnd_m3_add(bnd_m3 a, bnd_m3 b);

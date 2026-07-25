@@ -33,8 +33,8 @@
 #define PROPAGATE_RESULT(suffix, error) PROPAGATE_RESULT2(suffix, error, __LINE__)
 
 #define BND_RESULT_OK(suffix, value) (bnd_result_##suffix) { OK, value }
-#define BND_RESULT_ERR(suffix, error_type, message) (bnd_result_##suffix) { (bnd_error) { error_type, message }, { 0 } }
-#define BND_RESULT_ERR2(suffix, error) (bnd_result_##suffix) { error, { 0 } }
+#define BND_RESULT_ERR(suffix, error_type, message) bnd_result_##suffix##_error((bnd_error) { error_type, message })
+#define BND_RESULT_ERR2(suffix, error) bnd_result_##suffix##_error(error)
 
 #define ALLOC_BUFFER1(buffer, capacity) ALLOC_BUFFER(buffer, 1, capacity)
 #define ALLOC_BUFFER2(buffer, capacity) ALLOC_BUFFER(buffer, 2, capacity)
@@ -341,7 +341,7 @@ typedef struct {
 
 typedef support_point (*support_func)(const shape_context *, bnd_v3);
 
-bnd_allocator         bnd_default_allocator();
+bnd_allocator         bnd_default_allocator(void);
 
 bnd_body_handle       make_body_handle(const bnd_world *world, bnd_body_type type, count_t index);
 count_t               handle_to_inner_index(const bnd_world *world, bnd_body_handle handle);
@@ -362,7 +362,7 @@ cache_entry          *contacts_cache_query(bnd_world *world, contact *contact, b
 void                  contacts_cache_prune(bnd_world *world);
 void                  contacts_cache_reset(bnd_world *world);
 
-void                  collision_detection_init();
+void                  collision_detection_init(void);
 count_t               collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_type type);
 bnd_error             collision_detection_epa_context(const bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, collision_detection_context *ctx);
 
@@ -421,7 +421,7 @@ bnd_m3                bnd_m3_initial_inertia(bnd_v3 inertia);
 bnd_m3                bnd_m3_inertia(bnd_m3 initial_inertia, bnd_quat rotation);
 bnd_m3                bnd_m3_displacement_inertia(bnd_m3 i0, bnd_v3 offset, float mass);
 
-collision_test_suite *collision_tests_load();
+collision_test_suite *collision_tests_load(void);
 void                  collision_tests_pair_spawn(bnd_world *world, const collision_test_pair *pair, bnd_body_handle *pair_handles);
 void                  collision_tests_free(collision_test_suite *tests);
 #endif

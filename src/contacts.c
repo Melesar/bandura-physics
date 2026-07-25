@@ -138,7 +138,7 @@ static bnd_error cache_table_realloc_if_needed(bnd_world *world) {
   return OK;
 }
 
-static bnd_result_u32 cache_table_insert(bnd_world *world, uint64_t key, const contact *c) {
+static bnd_result_u32 cache_table_insert(bnd_world *world, uint64_t key) {
   contacts_cache *cache = &world->contacts_cache;
 
   PROPAGATE_RESULT(u32, cache_table_realloc_if_needed(world));
@@ -293,7 +293,7 @@ cache_entry *contacts_cache_query(bnd_world *world, contact *contact, bnd_body_t
   key |= gen_b << 23;
   key |= index_b & mask_23bit;
 
-  bnd_result_u32 index = cache_table_insert(world, key, contact);
+  bnd_result_u32 index = cache_table_insert(world, key);
   if (index.error.type != BND_OK) {
     return NULL;
   }
