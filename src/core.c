@@ -23,14 +23,19 @@
 const count_t max_body_index = (count_t)~0 >> 9;
 
 static void *std_malloc(uint64_t alignment, uint64_t size) {
+  // malloc aligns its memory at 16-bytes boundary, which is sufficient for all allocations inside the engine.
+  (void) alignment;
   return malloc(size);
 }
 
 static void *std_realloc(void *ptr, uint64_t alignment, uint64_t old_size, uint64_t new_size) {
+  (void) alignment;
+  (void) old_size;
   return realloc(ptr, new_size);
 }
 
 static void std_free(void *ptr, uint64_t size) {
+  (void) size;
   free(ptr);
 }
 

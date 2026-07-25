@@ -128,6 +128,11 @@ static bool raycast_box(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *hi
 }
 
 static bool raycast_capsule(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *hit) {
+  // TODO
+  (void) r;
+  (void) ctx;
+  (void) hit;
+
   return false;
 }
 

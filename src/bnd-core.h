@@ -362,7 +362,7 @@ cache_entry          *contacts_cache_query(bnd_world *world, contact *contact, b
 void                  contacts_cache_prune(bnd_world *world);
 void                  contacts_cache_reset(bnd_world *world);
 
-void                  collision_detection_init(bnd_world *world);
+void                  collision_detection_init();
 count_t               collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_type type);
 bnd_error             collision_detection_epa_context(const bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, collision_detection_context *ctx);
 
