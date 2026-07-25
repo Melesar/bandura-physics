@@ -58,6 +58,12 @@
     return (bnd_error) { BND_ERROR_OUT_OF_MEMORY, "Allocator.realloc failed to re-allocate buffer" }; \
   }
 
+#define BND_RESULT_FUNC_DECL(suffix, type) \
+  bnd_result_##suffix bnd_result_##suffix##_error(bnd_error e) { \
+    type dummy_value = {0}; \
+    return (bnd_result_##suffix) { e, dummy_value }; \
+  }\
+
 typedef uint32_t count_t;
 
 typedef struct {

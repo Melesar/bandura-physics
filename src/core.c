@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+
 #define MAX_MESSAGE_SIZE 512
 
 #define INVOKE(invocation) \
@@ -19,6 +20,14 @@
     bnd_teardown(world); \
     return (bnd_error){ BND_ERROR_OUT_OF_MEMORY, "Allocator.malloc  to allocate memory" }; \
   }
+
+BND_RESULT_FUNC_DECL(world, bnd_world*)
+BND_RESULT_FUNC_DECL(v3, bnd_v3)
+BND_RESULT_FUNC_DECL(quat, bnd_quat)
+BND_RESULT_FUNC_DECL(aabb, bnd_aabb)
+BND_RESULT_FUNC_DECL(u32, uint32_t)
+BND_RESULT_FUNC_DECL(bool, bool)
+BND_RESULT_FUNC_DECL(handle, bnd_body_handle)
 
 const count_t max_body_index = (count_t)~0 >> 9;
 

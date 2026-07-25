@@ -259,10 +259,7 @@ typedef struct bnd_world_t bnd_world;
     type value; \
   } bnd_result_##suffix; \
   \
-  bnd_result_##suffix bnd_result_##suffix##_error(bnd_error e) { \
-    type dummy_value = {0}; \
-    return (bnd_result_##suffix) { e, dummy_value }; \
-  }\
+  bnd_result_##suffix bnd_result_##suffix##_error(bnd_error e);\
 
 
 BND_RESULT_TYPE(world, bnd_world*)
@@ -314,7 +311,7 @@ BNDAPI bnd_result_handle    bnd_add_mesh_static(bnd_world *world, bnd_mesh_handl
 BNDAPI bnd_result_handle    bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, uint32_t shapes_count);
 BNDAPI bnd_result_handle    bnd_add_compound_body_dynamic(bnd_world *world, bnd_body_shape *shapes, float *masses, uint32_t shapes_count);
 
-BNDAPI bnd_result_handle    bnd_add_primitive_body(bnd_world *world, bnd_body_type type, bnd_body_shape shape, float mass);
+BNDAPI bnd_result_handle    bnd_add_primitive_body(bnd_world *world, bnd_body_type type, bnd_shape_type shape_type, bnd_shape shape, float mass);
 BNDAPI bnd_result_handle    bnd_add_compound_body(bnd_world *world, bnd_body_type type, bnd_body_shape *shapes, float *masses, uint32_t shapes_count);
 
 BNDAPI bnd_error            bnd_remove_body(bnd_world *world, bnd_body_handle handle);

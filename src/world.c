@@ -583,11 +583,12 @@ bnd_result_handle bnd_add_mesh_static(bnd_world *world, bnd_mesh_handle mesh) {
   return add_primitive_body_static(world, (bnd_body_shape){ .type = BND_MESH, .value = {.mesh = mesh }, .offset = bnd_v3_zero(), .rotation = bnd_quat_identity() });
 }
 
-bnd_result_handle bnd_add_primitive_body(bnd_world *world, bnd_body_type type, bnd_body_shape shape, float mass) {
+bnd_result_handle bnd_add_primitive_body(bnd_world *world, bnd_body_type type, bnd_shape_type shape_type, bnd_shape shape, float mass) {
+  bnd_body_shape full_shape = (bnd_body_shape) { shape_type, shape, bnd_v3_zero(), bnd_quat_identity() };
   if (type == BND_BODY_DYNAMIC) {
-    return add_primitive_body_dynamic(world, shape, mass);
+    return add_primitive_body_dynamic(world, full_shape, mass);
   } else if (type == BND_BODY_STATIC) {
-    return add_primitive_body_static(world, shape);
+    return add_primitive_body_static(world, full_shape);
   }
 
   return INVALID_BODY_TYPE;
