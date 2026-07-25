@@ -15,7 +15,8 @@ const IncludeStatement = "#include";
 const IncludeStatementLen : u32 = IncludeStatement.len;
 
 const WindowsProfilingGuard =  "#if defined(BND_PROFILING) && defined(_WIN32)\n#error Sorry, profiling doesn't work on Windows yet :(\n#endif\n\n";
-const SemaphoreIncludes = "#ifdef __APPLE__\n#include <dispatch/dispatch.h>\n#else\n#include <semaphore.h>\n#endif\n";
+const SemaphoreIncludes = "#ifdef __APPLE__\n#include <dispatch/dispatch.h>\n#else\n#include <semaphore.h>\n#endif\n\n";
+const LinuxTimeDefine = "#if defined(__linux__) && defined(BND_PROFILING)\n#define _POSIX_C_SOURCE 199309L // This is to have clock_gettime, which is otherwise not available under -std=c99\n#define _XOPEN_SOURCE 500\n#endif\n\n";
 
 const IgnoreIncludes : [6][]const u8 = .{
   "#include \"bandura.h\"",
@@ -93,6 +94,7 @@ pub fn amalgamate(b: *std.Build) ![]u8 {
     sources[@intFromEnum(Headers.testing)] = try readFile(arena, iop, testingDit, "testing.h");
   }
 
+  try output.appendSlice(b.allocator, LinuxTimeDefine);
   try output.appendSlice(b.allocator, WindowsProfilingGuard);
 
   {

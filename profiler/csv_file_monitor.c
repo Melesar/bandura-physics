@@ -1,8 +1,3 @@
-#ifdef __linux__
-#define _POSIX_C_SOURCE 199309L // This is to have clock_gettime, which is otherwise not available under -std=c99
-#define _XOPEN_SOURCE 500
-#endif
-
 #include "profiler.h"
 #include <stdio.h>
 #include <stdlib.h>

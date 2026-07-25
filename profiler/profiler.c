@@ -1,7 +1,3 @@
-#ifdef __linux__
-#define _POSIX_C_SOURCE 199309L // This is to have clock_gettime, which is otherwise not available under -std=c99
-#endif
-
 #include "profiler.h"
 #include "semaphores.h"
 #include <assert.h>

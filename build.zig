@@ -112,6 +112,7 @@ fn testsStep(b: *std.Build, banduraSource: std.Build.Module.CSourceFile, options
   const testsModule = try tests.createModule(b, testsOpts);
   testsModule.addCSourceFile(banduraSource);
   testsModule.addIncludePath(b.path("src"));
+  testsModule.addCMacro("COLLISION_TEST_SUITE_PATH", "\"tests/collision_test_cases.yaml\"");
 
   common.enableProfiling(testsModule);
   common.enableTests(testsModule);

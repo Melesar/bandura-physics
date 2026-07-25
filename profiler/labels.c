@@ -1,7 +1,3 @@
-#if defined(MSC_VER)
-#pragma message("Profiling is not supported with MSVC")
-#endif
-
 #include "profiler.h"
 #include <stdbool.h>
 #include <stdint.h>
