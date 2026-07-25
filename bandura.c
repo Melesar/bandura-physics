@@ -269,10 +269,7 @@ typedef struct bnd_world_t bnd_world;
     type value; \
   } bnd_result_##suffix; \
   \
-  bnd_result_##suffix bnd_result_##suffix##_error(bnd_error e) { \
-    type dummy_value = {0}; \
-    return (bnd_result_##suffix) { e, dummy_value }; \
-  }\
+  bnd_result_##suffix bnd_result_##suffix##_error(bnd_error e);\
 
 
 BND_RESULT_TYPE(world, bnd_world*)
@@ -322,7 +319,7 @@ BNDAPI bnd_result_handle    bnd_add_mesh_static(bnd_world *world, bnd_mesh_handl
 BNDAPI bnd_result_handle    bnd_add_compound_body_static(bnd_world *world, bnd_body_shape *shapes, uint32_t shapes_count);
 BNDAPI bnd_result_handle    bnd_add_compound_body_dynamic(bnd_world *world, bnd_body_shape *shapes, float *masses, uint32_t shapes_count);
 
-BNDAPI bnd_result_handle    bnd_add_primitive_body(bnd_world *world, bnd_body_type type, bnd_body_shape shape, float mass);
+BNDAPI bnd_result_handle    bnd_add_primitive_body(bnd_world *world, bnd_body_type type, bnd_shape_type shape_type, bnd_shape shape, float mass);
 BNDAPI bnd_result_handle    bnd_add_compound_body(bnd_world *world, bnd_body_type type, bnd_body_shape *shapes, float *masses, uint32_t shapes_count);
 
 BNDAPI bnd_error            bnd_remove_body(bnd_world *world, bnd_body_handle handle);
@@ -564,6 +561,12 @@ label labels_get(labels *self, uint32_t id);
   if (buffer == NULL) { \
     return (bnd_error) { BND_ERROR_OUT_OF_MEMORY, "Allocator.realloc failed to re-allocate buffer" }; \
   }
+
+#define BND_RESULT_FUNC_DECL(suffix, type) \
+  bnd_result_##suffix bnd_result_##suffix##_error(bnd_error e) { \
+    type dummy_value = {0}; \
+    return (bnd_result_##suffix) { e, dummy_value }; \
+  }\
 
 typedef uint32_t count_t;
 
@@ -3146,11 +3149,12 @@ bnd_result_handle bnd_add_mesh_static(bnd_world *world, bnd_mesh_handle mesh) {
   return add_primitive_body_static(world, (bnd_body_shape){ .type = BND_MESH, .value = {.mesh = mesh }, .offset = bnd_v3_zero(), .rotation = bnd_quat_identity() });
 }
 
-bnd_result_handle bnd_add_primitive_body(bnd_world *world, bnd_body_type type, bnd_body_shape shape, float mass) {
+bnd_result_handle bnd_add_primitive_body(bnd_world *world, bnd_body_type type, bnd_shape_type shape_type, bnd_shape shape, float mass) {
+  bnd_body_shape full_shape = (bnd_body_shape) { shape_type, shape, bnd_v3_zero(), bnd_quat_identity() };
   if (type == BND_BODY_DYNAMIC) {
-    return add_primitive_body_dynamic(world, shape, mass);
+    return add_primitive_body_dynamic(world, full_shape, mass);
   } else if (type == BND_BODY_STATIC) {
-    return add_primitive_body_static(world, shape);
+    return add_primitive_body_static(world, full_shape);
   }
 
   return INVALID_BODY_TYPE;
@@ -7016,6 +7020,7 @@ bnd_error events_push(bnd_world *world, common_data *data, count_t index, bnd_ev
 //   core.c
 // ================
 
+
 #define MAX_MESSAGE_SIZE 512
 
 #define INVOKE(invocation) \
@@ -7031,6 +7036,14 @@ bnd_error events_push(bnd_world *world, common_data *data, count_t index, bnd_ev
     bnd_teardown(world); \
     return (bnd_error){ BND_ERROR_OUT_OF_MEMORY, "Allocator.malloc  to allocate memory" }; \
   }
+
+BND_RESULT_FUNC_DECL(world, bnd_world*)
+BND_RESULT_FUNC_DECL(v3, bnd_v3)
+BND_RESULT_FUNC_DECL(quat, bnd_quat)
+BND_RESULT_FUNC_DECL(aabb, bnd_aabb)
+BND_RESULT_FUNC_DECL(u32, uint32_t)
+BND_RESULT_FUNC_DECL(bool, bool)
+BND_RESULT_FUNC_DECL(handle, bnd_body_handle)
 
 const count_t max_body_index = (count_t)~0 >> 9;
 
