@@ -32,51 +32,18 @@ Bandura is a traditional Ukrainian [musical instrument](https://en.wikipedia.org
 * **No dependencies**. The library itself is self-contained, so no third-party code is included.
 * **Data-oriented**. The data layout inside the engine allows for efficient CPU cache utilization, enabling high performance.
 * **Cross-platform**. Works on Linux, MacOS and Windows.
-* **Easy to use**. Include `bandura.h` for the core API and link against the static library. You may also include `bnd-math.h` for convenient math helpers if you need them.
+* **Easy to use**. Include `bandura.h` for the core API and compile `bandura.c` with your other source files. No need to build or link the library.
 * **Rigidbody physics simulation**. Allows for dynamic simulations with different shapes, including primitives, compounds and triangular meshes. Supports forces, impulses, rotations and joints.
 * **Impulse-based collision resolution**. Objects respond to the collisions based on their mass, shape and collision velocity.
 
 ## Installation and build
 
-### Requirements
+To integrate Bandura into your project, take these two files from the repository:
+- `bandura.c`
+- `include/bandura.h`
+Compile `bandura.c` along with your other source files with a compiler and settings of your choice. You don't need to build the library yourself and link it, it's just two files. 
 
-To build Bandura directly, you only need [CMake](https://cmake.org) and a C compiler.
-
-If you only want to use Bandura inside your own CMake game project, you usually do not need to install it separately. You can vendor the repository and add it with `add_subdirectory(...)`.
-
-#### Building the library itself
-
-```bash
-cmake -S . -B build
-cmake --build build
-```
-
-By default, this builds Bandura in `Release` mode and produces a static library.
-
-If you want to install the library and public headers somewhere on your system:
-
-```bash
-cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/your/install/path
-cmake --build build
-cmake --install build
-```
-
-That installs the library together with `bandura.h` and `bnd-math.h`.
-
-#### Building the demos
-
-Demos require dependencies for window management, rendering and UI. To download them, run the following command once:
-
-```bash
-git submodule update --init
-```
-
-Then build the library and all demos at once:
-
-```bash
-cmake -S . -B build -DBANDURA_BUILD_DEMOS=ON
-cmake --build build
-```
+Optionally you may want to also grab `include/bnd-math.h`. This file contains some math helper functions if you need them.
 
 ## Using the library
 
@@ -127,6 +94,12 @@ bnd_result_handle bnd_add_sphere_static(bnd_world *world, float radius);
 
 Note that the static version doesn't require to specify mass, since static objects are treated as having _infinite_ mass.
 
+There is also a more generic method that allows you to specify the type and shape of the body as parameters:
+
+```c
+bnd_result_handle bnd_add_primitive_body(bnd_world *world, bnd_body_type type, bnd_shape_type shape_type, bnd_shape shape, float mass);
+```
+
 The returned value `bnd_result_handle` is wrapper around the body handle with an error attached. The actual body handle is stored in its `value` field. The handle can then be used to refer to that body.
 
 ```c
@@ -149,11 +122,11 @@ int main() {
 Bandura also supports combining multiple primitive shapes into a single body. This allows for creation of complex shapes without using more expensive meshes.
 
 ```c
-  // Make a dumbell shape with a rotated cylinder and two spheres.
+  // Make a dumbell shape with a rotated capsule and two spheres.
   bnd_body_shape shapes[] = {
     (bnd_body_shape) { 
-      .type = BND_CYLINDER,
-      .value = { .cylinder = { .radius = 0.3, .height = 3 } },
+      .type = BND_CAPSULE,
+      .value = { .capsule = { .radius = 0.3, .height = 3 } },
       .offset = bnd_v3_zero(),
       .rotation = (bnd_quat) { sinf(PI / 4), 0, 0, cosf(PI / 4) } 
     },
@@ -233,38 +206,38 @@ Bandura supports imposing constraints on the bodies, so that they cannot move fu
   bnd_body_handle head = bnd_add_sphere_dynamic(world, 3, 0.4).value;
   bnd_set_position(world, head, (bnd_v3){0, 5, 0});
 
-  bnd_body_handle torso = bnd_add_cylinder_dynamic(world, 25, 0.3, 1.0).value;
+  bnd_body_handle torso = bnd_add_capsule_dynamic(world, 25, 0.3, 1.0).value;
   bnd_set_position(world, torso, (bnd_v3){0, 4, 0});
 
-  bnd_body_handle pelvis = bnd_add_cylinder_dynamic(world, 20, 0.25, 1.0).value;
+  bnd_body_handle pelvis = bnd_add_capsule_dynamic(world, 20, 0.25, 1.0).value;
   bnd_set_position(world, pelvis, (bnd_v3){0, 3, 0});
 
-  bnd_body_handle left_upper_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2).value;
+  bnd_body_handle left_upper_leg = bnd_add_capsule_dynamic(world, 10, 0.2, 1.2).value;
   bnd_set_position(world, left_upper_leg, (bnd_v3){0.23, 1.8, -0.2});
   bnd_set_rotation(world, left_upper_leg, (bnd_quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) });
 
-  bnd_body_handle left_lower_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2).value;
+  bnd_body_handle left_lower_leg = bnd_add_capsule_dynamic(world, 10, 0.2, 1.2).value;
   bnd_set_position(world, left_lower_leg, (bnd_v3){0.23, 0.6, -0.2});
   bnd_set_rotation(world, left_lower_leg, (bnd_quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) });
 
-  bnd_body_handle right_upper_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2).value;
+  bnd_body_handle right_upper_leg = bnd_add_capsule_dynamic(world, 10, 0.2, 1.2).value;
   bnd_set_position(world, right_upper_leg, (bnd_v3){-0.23, 1.8, 0});
 
-  bnd_body_handle right_lower_leg = bnd_add_cylinder_dynamic(world, 10, 0.2, 1.2).value;
+  bnd_body_handle right_lower_leg = bnd_add_capsule_dynamic(world, 10, 0.2, 1.2).value;
   bnd_set_position(world, right_lower_leg, (bnd_v3){-0.23, 0.6, 0});
 
-  bnd_body_handle left_upper_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2).value;
+  bnd_body_handle left_upper_arm = bnd_add_capsule_dynamic(world, 10, 0.1, 1.2).value;
   bnd_set_position(world, left_upper_arm, (bnd_v3){0.4, 3.9, -0.4});
   bnd_set_rotation(world, left_upper_arm, (bnd_quat) { sinf(PI / 10), 0, 0, cosf(PI / 10) });
 
-  bnd_body_handle left_lower_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2).value;
+  bnd_body_handle left_lower_arm = bnd_add_capsule_dynamic(world, 10, 0.1, 1.2).value;
   bnd_set_position(world, left_lower_arm, (bnd_v3){0.43, 3.37, -1.45});
   bnd_set_rotation(world, left_lower_arm, (bnd_quat) { sinf(PI / 4), 0, 0, cosf(PI / 12) });
 
-  bnd_body_handle right_upper_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2).value;
+  bnd_body_handle right_upper_arm = bnd_add_capsule_dynamic(world, 10, 0.1, 1.2).value;
   bnd_set_position(world, right_upper_arm, (bnd_v3){-0.43, 3.8, 0});
 
-  bnd_body_handle right_lower_arm = bnd_add_cylinder_dynamic(world, 10, 0.1, 1.2).value;
+  bnd_body_handle right_lower_arm = bnd_add_capsule_dynamic(world, 10, 0.1, 1.2).value;
   bnd_set_position(world, right_lower_arm, (bnd_v3){-0.43, 2.63, -0.3});
   bnd_set_rotation(world, right_lower_arm, (bnd_quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) });
 
