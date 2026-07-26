@@ -121,7 +121,7 @@ count_t joints_generate_contacts(bnd_world *world, count_t contacts_offset, bnd_
       continue;
     }
 
-    contact *contact = contacts + spawned_count;
+    contact *contact = contacts + contacts_offset + spawned_count;
     contact->index_a = indices[0];
     contact->index_b = indices[1];
     contact->point = bnd_v3_scale(bnd_v3_add(world_points[0], world_points[1]), 0.5);
