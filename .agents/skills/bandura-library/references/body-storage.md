@@ -133,7 +133,7 @@ Because body generations are not advanced, reset currently fails to guarantee th
 
 `bnd_teardown` releases common arrays, dynamic arrays, auxiliary world stores, and finally the world object. The allocator API receives a byte size for every free. A size-sensitive allocator therefore requires the exact current allocation size, including capacity growth and ephemeral slots.
 
-The current code violates this requirement for body arrays: common frees omit the ephemeral tail, and dynamic frees use configured initial capacity rather than live capacity. Preserve this as a known defect until it is explicitly fixed.
+Both `teardown_commons` and the dynamics-only frees in `bnd_teardown` compute their freed size as `(live capacity + EPHEMERAL_BODIES_COUNT) * element_size`, matching what `init_commons`/`bnd_init_internal` allocate and what `realloc_data` grows to.
 
 ## Lifecycle Coupling for New Buffers
 

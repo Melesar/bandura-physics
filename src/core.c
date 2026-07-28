@@ -148,16 +148,18 @@ static bnd_error init_commons(common_data *data, count_t capacity, bnd_allocator
 }
 
 static void teardown_commons(common_data *data, bnd_allocator allocator) {
-  allocator.free(data->positions, data->capacity * sizeof(bnd_v3));
-  allocator.free(data->rotations, data->capacity * sizeof(bnd_quat));
-  allocator.free(data->shapes, data->capacity * sizeof(body_shapes));
-  allocator.free(data->aabbs, data->capacity * sizeof(bnd_aabb));
-  allocator.free(data->event_masks, data->capacity * sizeof(bnd_event_type));
-  allocator.free(data->event_links, data->capacity * sizeof(event_link));
-  allocator.free(data->free_list, data->capacity * sizeof(count_t));
-  allocator.free(data->generations, data->capacity * sizeof(uint8_t));
-  allocator.free(data->outer_lookup, data->capacity * sizeof(outer_lookup_node));
-  allocator.free(data->inner_lookup, data->capacity * sizeof(count_t));
+  count_t total_capacity = data->capacity + EPHEMERAL_BODIES_COUNT;
+
+  allocator.free(data->positions, total_capacity * sizeof(bnd_v3));
+  allocator.free(data->rotations, total_capacity * sizeof(bnd_quat));
+  allocator.free(data->shapes, total_capacity * sizeof(body_shapes));
+  allocator.free(data->aabbs, total_capacity * sizeof(bnd_aabb));
+  allocator.free(data->event_masks, total_capacity * sizeof(bnd_event_type));
+  allocator.free(data->event_links, total_capacity * sizeof(event_link));
+  allocator.free(data->free_list, total_capacity * sizeof(count_t));
+  allocator.free(data->generations, total_capacity * sizeof(uint8_t));
+  allocator.free(data->outer_lookup, total_capacity * sizeof(outer_lookup_node));
+  allocator.free(data->inner_lookup, total_capacity * sizeof(count_t));
 }
 
 bnd_config bnd_default_config(void) {
@@ -277,18 +279,20 @@ void bnd_teardown(bnd_world *world) {
   teardown_commons((common_data *)&world->dynamics, world->allocator);
   teardown_commons((common_data *)&world->statics, world->allocator);
 
-  world->allocator.free(world->dynamics.forces, world->config.memory.dynamics_capacity * sizeof(bnd_v3));
-  world->allocator.free(world->dynamics.torques, world->config.memory.dynamics_capacity * sizeof(bnd_v3));
-  world->allocator.free(world->dynamics.impulses, world->config.memory.dynamics_capacity * sizeof(bnd_v3));
-  world->allocator.free(world->dynamics.angular_impulses, world->config.memory.dynamics_capacity * sizeof(bnd_v3));
-  world->allocator.free(world->dynamics.accelerations, world->config.memory.dynamics_capacity * sizeof(bnd_v3));
+  count_t dynamics_total_capacity = world->dynamics.capacity + EPHEMERAL_BODIES_COUNT;
 
-  world->allocator.free(world->dynamics.inv_masses, world->config.memory.dynamics_capacity * sizeof(float));
-  world->allocator.free(world->dynamics.velocities, world->config.memory.dynamics_capacity * sizeof(bnd_v3));
-  world->allocator.free(world->dynamics.angular_momenta, world->config.memory.dynamics_capacity * sizeof(bnd_v3));
-  world->allocator.free(world->dynamics.inv_inertia_tensors, world->config.memory.dynamics_capacity * sizeof(bnd_m3));
-  world->allocator.free(world->dynamics.inv_intertias, world->config.memory.dynamics_capacity * sizeof(bnd_m3));
-  world->allocator.free(world->dynamics.motion_avgs, world->config.memory.dynamics_capacity * sizeof(float));
+  world->allocator.free(world->dynamics.forces, dynamics_total_capacity * sizeof(bnd_v3));
+  world->allocator.free(world->dynamics.torques, dynamics_total_capacity * sizeof(bnd_v3));
+  world->allocator.free(world->dynamics.impulses, dynamics_total_capacity * sizeof(bnd_v3));
+  world->allocator.free(world->dynamics.angular_impulses, dynamics_total_capacity * sizeof(bnd_v3));
+  world->allocator.free(world->dynamics.accelerations, dynamics_total_capacity * sizeof(bnd_v3));
+
+  world->allocator.free(world->dynamics.inv_masses, dynamics_total_capacity * sizeof(float));
+  world->allocator.free(world->dynamics.velocities, dynamics_total_capacity * sizeof(bnd_v3));
+  world->allocator.free(world->dynamics.angular_momenta, dynamics_total_capacity * sizeof(bnd_v3));
+  world->allocator.free(world->dynamics.inv_inertia_tensors, dynamics_total_capacity * sizeof(bnd_m3));
+  world->allocator.free(world->dynamics.inv_intertias, dynamics_total_capacity * sizeof(bnd_m3));
+  world->allocator.free(world->dynamics.motion_avgs, dynamics_total_capacity * sizeof(float));
 
   shapes_teardown(world);
   joints_teardown(world);

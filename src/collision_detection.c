@@ -213,8 +213,8 @@ body_support support(const collision_detection_context *ctx, bnd_v3 direction) {
 }
 
 static count_t sphere_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
-  bnd_v3 center_a = ctx->data_a->positions[ctx->body_a];
-  bnd_v3 center_b = ctx->data_b->positions[ctx->body_b];
+  bnd_v3 center_a = body_a_center(ctx);
+  bnd_v3 center_b = body_b_center(ctx);
 
   float radius_a = ctx->shape_a.value.sphere.radius;
   float radius_b = ctx->shape_b.value.sphere.radius;
@@ -271,11 +271,10 @@ static count_t capsule_sphere_collision(bnd_world *world, const collision_detect
     } else if (horizontal_distance < capsule_radius + sphere_radius) {
       bnd_v3 closest = bnd_v3_scale(horizontal_offset, capsule_radius / horizontal_distance);
       closest.y = local_sphere_center.y;
-      closest = bnd_v3_rotate(closest, capsule_rotation);
 
       contact *c = new_contact(ctx, 0);
-      c->point = bnd_v3_add(capsule_center, closest);
-      c->normal = bnd_v3_normalize(bnd_v3_negate(closest));
+      c->point = bnd_v3_add(capsule_center, bnd_v3_rotate(closest, capsule_rotation));
+      c->normal = bnd_v3_normalize(bnd_v3_rotate(bnd_v3_negate(horizontal_offset), capsule_rotation));
       c->depth = sphere_radius - horizontal_distance + capsule_radius;
 
       return 1;

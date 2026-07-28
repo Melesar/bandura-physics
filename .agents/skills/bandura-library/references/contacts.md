@@ -39,7 +39,7 @@ Consequences:
 
 Do not flip the event normal per subscriber. Consumers can negate it themselves when they need the normal relative to body B.
 
-The convention describes intended collision-contact semantics, not a guarantee that every current narrow-phase implementation is correct. Known violations include sphere-sphere ignoring shape offsets and a capsule-sphere branch introducing an axial normal component. Plane paths also rely on callers supplying a unit normal even though the API does not enforce or document that requirement.
+The convention describes intended collision-contact semantics, not a guarantee that every current narrow-phase implementation is correct. Plane paths rely on callers supplying a unit normal even though the API does not enforce or document that requirement.
 
 ## Dispatch Inversion
 
@@ -80,14 +80,11 @@ Distance joints are lowered into the same `contact` representation, but they cor
 
 Treat these as internal constraint rows, not as examples for collision-normal construction. They currently share debug drawing and `bnd_get_contacts`, which exposes an inconsistency with the public B-to-A collision convention.
 
-Two additional known defects affect joint rows:
+A known defect affects joint rows:
 
-- `joints_generate_contacts` receives `contacts_offset` and reserves capacity for that region but writes from the start of `world->contacts.values`, overwriting prior rows.
 - Body removal leaves joints containing stale handles, and joint generation resolves them without calling `bnd_handle_valid`.
 
 ## Known Collision-Normal Defects
 
-- `sphere_sphere_collision` reads `data->positions` rather than `body_a_center` and `body_b_center`. Compound or otherwise offset sphere shapes therefore use body origins for separation and normal construction.
-- In the capsule-sphere side-overlap case where the sphere center is outside the capsule radius but the shapes overlap, `closest` includes the sphere's local Y coordinate before `normal = normalize(-closest)`. The B-to-A direction should come from the rotated negative horizontal offset; the current value tilts toward the capsule origin when the sphere is above or below its local midplane.
 - Shape-plane routines use `shape.value.plane.normal` directly for signed distance, depth, contact normal, and solver basis. A non-unit configured normal scales penetration and violates the solver's unit-normal assumption.
 - Degenerate coincident centers require an arbitrary fallback direction; do not classify those mathematically undefined cases as orientation bugs. EPA's invalid-contact fallback likewise emits explicitly bogus placeholder data rather than a reliable geometric normal.

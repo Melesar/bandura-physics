@@ -56,7 +56,6 @@ void shapes_reset(bnd_world *world) {
     shapes_bracket *bracket = &world->shape_brackets[i];
     count_t blocks_count = bracket_block_count(world, i);
 
-    bracket->capacity = 0;
     memset(bracket->slots, 0, blocks_count * sizeof(uint64_t));
   }
 }
