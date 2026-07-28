@@ -44,7 +44,7 @@ Optionally you may want to also grab `include/bnd-math.h`. This file contains so
 
 ## Using the library
 
-The examples below use `bnd-math.h` for helpers such as `bnd_v3_zero`, `bnd_v3_up`, `bnd_v3_add`, and `bnd_qidentity`.
+The examples below use `bnd-math.h` for helpers such as `bnd_v3_zero`, `bnd_v3_up`, `bnd_v3_add`, and `bnd_quat_identity`.
 
 ### Quickstart
 
@@ -131,18 +131,18 @@ Bandura also supports combining multiple primitive shapes into a single body. Th
       .type = BND_SPHERE,
       .value = { .sphere = { .radius = 0.7 } },
       .offset = (bnd_v3){0, 0, 1.5},
-      .rotation = bnd_qidentity()
+      .rotation = bnd_quat_identity()
     },
     (bnd_body_shape) {
       .type = BND_SPHERE,
       .value = { .sphere = { .radius = 0.7 } },
       .offset = (bnd_v3){0, 0, -1.5},
-      .rotation = bnd_qidentity() 
+      .rotation = bnd_quat_identity() 
     }
   };
 
-  // Masses correspond to the shapes: 3 for the cylinder, 5's for the spheres.
-  float masses[] = { 3, 5, 5 }
+  // Masses correspond to the shapes: `3` for the capsule, `5's` for the spheres.
+  float masses[] = { 3, 5, 5 };
 
   // As a last parameter the function takes the number of shapes in the arrays.
   bnd_body_handle dumbell = bnd_add_compound_body_dynamic(world, shapes, masses, 3).value;
@@ -203,38 +203,38 @@ Bandura supports imposing constraints on the bodies, so that they cannot move fu
   bnd_body_handle head = bnd_add_sphere_dynamic(world, 3, 0.4).value;
   bnd_set_position(world, head, (bnd_v3){0, 5, 0});
 
-  bnd_body_handle torso = bnd_add_capsule_dynamic(world, 25, 0.3, 1.0).value;
-  bnd_set_position(world, torso, (bnd_v3){0, 4, 0});
+  bnd_body_handle torso = bnd_add_capsule_dynamic(world, 25, 0.3, 0.4).value;
+  bnd_set_position(world, torso, (bnd_v3){0, 4.1, 0});
 
-  bnd_body_handle pelvis = bnd_add_capsule_dynamic(world, 20, 0.25, 1.0).value;
-  bnd_set_position(world, pelvis, (bnd_v3){0, 3, 0});
+  bnd_body_handle pelvis = bnd_add_capsule_dynamic(world, 20, 0.25, 0.5).value;
+  bnd_set_position(world, pelvis, (bnd_v3){0, 3.1, 0});
 
-  bnd_body_handle left_upper_leg = bnd_add_capsule_dynamic(world, 10, 0.2, 1.2).value;
-  bnd_set_position(world, left_upper_leg, (bnd_v3){0.23, 1.8, -0.2});
+  bnd_body_handle left_upper_leg = bnd_add_capsule_dynamic(world, 10, 0.2, 0.8).value;
+  bnd_set_position(world, left_upper_leg, (bnd_v3){0.23, 2, -0.2});
   bnd_set_rotation(world, left_upper_leg, (bnd_quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) });
 
-  bnd_body_handle left_lower_leg = bnd_add_capsule_dynamic(world, 10, 0.2, 1.2).value;
-  bnd_set_position(world, left_lower_leg, (bnd_v3){0.23, 0.6, -0.2});
+  bnd_body_handle left_lower_leg = bnd_add_capsule_dynamic(world, 10, 0.2, 0.8).value;
+  bnd_set_position(world, left_lower_leg, (bnd_v3){0.23, 0.9, -0.2});
   bnd_set_rotation(world, left_lower_leg, (bnd_quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) });
 
-  bnd_body_handle right_upper_leg = bnd_add_capsule_dynamic(world, 10, 0.2, 1.2).value;
-  bnd_set_position(world, right_upper_leg, (bnd_v3){-0.23, 1.8, 0});
+  bnd_body_handle right_upper_leg = bnd_add_capsule_dynamic(world, 10, 0.2, 0.8).value;
+  bnd_set_position(world, right_upper_leg, (bnd_v3){-0.23, 2, 0});
 
-  bnd_body_handle right_lower_leg = bnd_add_capsule_dynamic(world, 10, 0.2, 1.2).value;
-  bnd_set_position(world, right_lower_leg, (bnd_v3){-0.23, 0.6, 0});
+  bnd_body_handle right_lower_leg = bnd_add_capsule_dynamic(world, 10, 0.2, 0.8).value;
+  bnd_set_position(world, right_lower_leg, (bnd_v3){-0.23, 0.7, 0});
 
-  bnd_body_handle left_upper_arm = bnd_add_capsule_dynamic(world, 10, 0.1, 1.2).value;
+  bnd_body_handle left_upper_arm = bnd_add_capsule_dynamic(world, 10, 0.1, 1).value;
   bnd_set_position(world, left_upper_arm, (bnd_v3){0.4, 3.9, -0.4});
   bnd_set_rotation(world, left_upper_arm, (bnd_quat) { sinf(PI / 10), 0, 0, cosf(PI / 10) });
 
-  bnd_body_handle left_lower_arm = bnd_add_capsule_dynamic(world, 10, 0.1, 1.2).value;
+  bnd_body_handle left_lower_arm = bnd_add_capsule_dynamic(world, 10, 0.1, 1).value;
   bnd_set_position(world, left_lower_arm, (bnd_v3){0.43, 3.37, -1.45});
   bnd_set_rotation(world, left_lower_arm, (bnd_quat) { sinf(PI / 4), 0, 0, cosf(PI / 12) });
 
-  bnd_body_handle right_upper_arm = bnd_add_capsule_dynamic(world, 10, 0.1, 1.2).value;
+  bnd_body_handle right_upper_arm = bnd_add_capsule_dynamic(world, 10, 0.1, 1).value;
   bnd_set_position(world, right_upper_arm, (bnd_v3){-0.43, 3.8, 0});
 
-  bnd_body_handle right_lower_arm = bnd_add_capsule_dynamic(world, 10, 0.1, 1.2).value;
+  bnd_body_handle right_lower_arm = bnd_add_capsule_dynamic(world, 10, 0.1, 1).value;
   bnd_set_position(world, right_lower_arm, (bnd_v3){-0.43, 2.63, -0.3});
   bnd_set_rotation(world, right_lower_arm, (bnd_quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) });
 
