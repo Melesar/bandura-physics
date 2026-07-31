@@ -549,7 +549,7 @@ static count_t polytope_polytope_collision(bnd_world *world, const collision_det
   }
 
   contact *c = new_contact(ctx, 0);
-  epa_get_contact(ctx, &s, world->config.advanced.epa_tolerance, c);
+  epa_get_contact(world, ctx, &s, world->config.advanced.epa_tolerance, c);
 
   return 1;
 }

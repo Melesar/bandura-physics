@@ -210,6 +210,75 @@ typedef struct {
   count_t count : 5;
 } body_shapes;
 
+typedef enum {
+  EPA_NODE_VERTEX,
+  EPA_NODE_EDGE,
+  EPA_NODE_FACE,
+
+  EPA_NODE_TYPE_COUNT,
+} epa_polytope_node_type;
+
+typedef enum {
+  EPA_FLAG_FOR_REMOVAL = 1,
+  EPA_FLAG_BORDER_EDGE = 2,
+} epa_polytope_node_flags;
+
+typedef struct {
+  bnd_v3 point;
+  uint16_t id;
+} support_point;
+
+typedef struct {
+  bnd_v3 p;
+  support_point p1;
+  support_point p2;
+} body_support;
+
+typedef struct {
+  body_support v;
+  uint16_t first_attached_edge;
+} epa_vertex;
+
+typedef struct {
+  uint16_t verticies[2];
+  uint16_t next_attached_edges[2];
+  uint16_t attached_faces[2];
+} epa_edge;
+
+typedef struct {
+  uint16_t edges[3];
+  bnd_v3 normal;
+  float distance;
+} epa_face;
+
+typedef union {
+  epa_vertex vertex;
+  epa_edge edge;
+  epa_face face;
+} epa_polytope_node_value;
+
+typedef struct {
+  epa_polytope_node_type type;
+  epa_polytope_node_value value;
+
+  uint16_t prev;
+} epa_polytope_node;
+
+typedef struct {
+  epa_polytope_node *nodes;
+  uint8_t *flags;
+  uint16_t *free_list;
+
+  uint16_t last_nodes[EPA_NODE_TYPE_COUNT];
+
+  uint16_t node_count;
+  uint16_t free_count;
+  uint16_t max_nodes;
+
+  uint16_t nearest;
+  float nearest_distance;
+} epa_polytope;
+
 typedef struct {
   uint64_t *slots;
   bnd_body_shape *shapes;
@@ -270,6 +339,7 @@ struct bnd_world_t {
   mesh_storage meshes;
   events_storage events;
   contacts_cache contacts_cache;
+  epa_polytope epa_polytope;
 
   shapes_bracket shape_brackets[BRACKET_COUNT];
 
@@ -282,16 +352,6 @@ struct bnd_world_t {
   count_t age;
 };
 
-typedef struct {
-  bnd_v3 point;
-  uint16_t id;
-} support_point;
-
-typedef struct {
-  bnd_v3 p;
-  support_point p1;
-  support_point p2;
-} body_support;
 
 typedef struct {
   body_support points[4];
@@ -407,11 +467,12 @@ bool                  gjk_check_intersection(const bnd_world *world, const colli
 
 uint32_t              polytope_memory_size(uint16_t max_nodes);
 bnd_error             epa_init(bnd_world *world);
-count_t               epa_get_contact(const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact);
-bool                  epa_debug_draw(const collision_detection_context *ctx, const simplex *simplex, float tolerance, uint32_t iteration, bnd_debug_draw_epa_callbacks callbacks, void *user_data);
+void                  epa_teardown(bnd_world *world);
+count_t               epa_get_contact(bnd_world *world, const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact);
+bool                  epa_debug_draw(bnd_world *world, const collision_detection_context *ctx, const simplex *simplex, float tolerance, uint32_t iteration, bnd_debug_draw_epa_callbacks callbacks, void *user_data);
 body_support          support(const collision_detection_context *ctx, bnd_v3 direction);
-BNDAPI bnd_result_u32 debug_epa_begin(const bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b);
-BNDAPI bool           debug_epa_iteration(const bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, uint32_t iteration, bnd_debug_draw_epa_callbacks callbacks, void *user_data);
+BNDAPI bnd_result_u32 debug_epa_begin(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b);
+BNDAPI bool           debug_epa_iteration(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, uint32_t iteration, bnd_debug_draw_epa_callbacks callbacks, void *user_data);
 
 float                 sqr_distance_to_triangle(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_v3 *closest);
 float                 sqr_distance_to_line_segment(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 *closest);

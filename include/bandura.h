@@ -206,7 +206,6 @@ typedef struct {
 } bnd_config_contacts_cache;
 
 typedef struct {
-  uint32_t epa_max_nodes;
   uint32_t shapes_brackets_capacity[5];
   uint32_t max_gjk_iterations;
   float epa_tolerance;
@@ -214,6 +213,7 @@ typedef struct {
   float penetration_epsilon;
   float velocity_epsilon;
   bnd_config_contacts_cache contacts_cache;
+  uint16_t epa_max_nodes;
 } bnd_config_advanced;
 
 typedef struct {

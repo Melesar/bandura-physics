@@ -302,6 +302,7 @@ void bnd_teardown(bnd_world *world) {
   contacts_teardown(world);
   meshes_teardown(world);
   events_teardown(world);
+  epa_teardown(world);
 
   world->allocator.free(world, sizeof(bnd_world));
 
