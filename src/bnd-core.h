@@ -377,6 +377,7 @@ bnd_error             joints_init(bnd_world *world);
 void                  joints_teardown(bnd_world *world);
 void                  joints_reset(bnd_world *world);
 count_t               joints_generate_contacts(bnd_world *world, count_t contacts_offset, bnd_body_type type);
+void                  joints_remove_stale_if_needed(bnd_world *world, bnd_body_handle removed_body);
 
 bnd_error             meshes_init(bnd_world *world);
 void                  meshes_teardown(bnd_world *world);

@@ -325,6 +325,7 @@ bnd_body_handle make_body_handle(const bnd_world *world, bnd_body_type type, cou
 
   return (bnd_body_handle){
     .type = type,
+    .world_id = world->id,
     .index = outer_index,
     .generation = data->generations[outer_index],
   };
@@ -640,6 +641,8 @@ bnd_error bnd_remove_body(bnd_world *world, bnd_body_handle handle) {
   }
 
   data->count -= 1;
+
+  joints_remove_stale_if_needed(world, handle);
 
   outer_lookup_node *outer_node = &data->outer_lookup[handle.index];
   outer_node->index = max_body_index;
