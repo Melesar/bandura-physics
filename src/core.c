@@ -1,6 +1,7 @@
 #include "bnd-core.h"
 #include "profiler.h"
 #include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -30,6 +31,7 @@ BND_RESULT_FUNC_DECL(bool, bool)
 BND_RESULT_FUNC_DECL(handle, bnd_body_handle)
 
 const count_t max_body_index = (count_t)~0 >> 9;
+count_t next_world_id;
 
 static void *std_malloc(uint64_t alignment, uint64_t size) {
   // malloc aligns its memory at 16-bytes boundary, which is sufficient for all allocations inside the engine.
@@ -204,6 +206,7 @@ bnd_config bnd_default_config(void) {
 static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allocator allocator) {
   world->allocator = allocator;
   world->config = config;
+  world->id = next_world_id++; // TODO: make this thread-safe.
 
   bnd_error e;
   INVOKE(init_commons((common_data *)&world->dynamics, config.memory.dynamics_capacity, allocator))

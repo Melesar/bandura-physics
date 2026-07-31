@@ -10,7 +10,7 @@
 #include <string.h>
 
 #define INVALID_INDEX ((count_t)~0)
-#define INVALID_HANDLE (bnd_body_handle) { 0, 0, INVALID_INDEX }
+#define INVALID_HANDLE (bnd_body_handle) { 0, 0, INVALID_INDEX, 0 }
 
 #define INVALID_BODY_TYPE ((bnd_result_handle) { .error = (bnd_error) { .type = BND_ERROR_INVALID_BODY_TYPE, .message = "Unknown body type" } })
 
@@ -724,6 +724,10 @@ bnd_error bnd_apply_impulse_at(bnd_world *world, bnd_body_handle handle, bnd_v3 
 }
 
 bnd_error bnd_handle_valid(const bnd_world *world, bnd_body_handle handle) {
+  if (handle.world_id != world->id) {
+    return (bnd_error) { BND_ERROR_BODY_HANDLE_INVALID, "Handle belongs to a different world" };
+  }
+
   const common_data *data = as_common_const(world, handle.type);
   if (handle.index == INVALID_INDEX) {
     return (bnd_error) { BND_ERROR_BODY_HANDLE_INVALID, "Handle doesn't belong to an actual body" };

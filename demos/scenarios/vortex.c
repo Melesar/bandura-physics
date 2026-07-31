@@ -38,7 +38,7 @@ static vortex vortex_create(bnd_v3 pos, float pull_force, float kick_radius) {
 }
 
 static float force_falloff(vortex v, bnd_v3 body_position) {
-  float dist = bnd_v3_distance(v.position, body_position);
+  float dist = sqrtf(bnd_v3_distancesqr(v.position, body_position));
   float ln = logf(1 + dist / FORCE_FALLOFF_DISTANCE);
   return v.pull_force * FORCE_FALLOFF_DISTANCE / (1 + FORCE_ROLLOFF_FACTOR * ln);
 }

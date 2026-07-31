@@ -277,6 +277,7 @@ struct bnd_world_t {
   bnd_world_stats stats;
   bnd_allocator allocator;
 
+  count_t id;
   count_t generation;
   count_t age;
 };

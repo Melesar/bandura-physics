@@ -165,8 +165,9 @@ typedef struct {
 
 typedef struct {
   bnd_body_type type;
-  uint8_t generation;
+  uint32_t world_id;
   uint32_t index;
+  uint8_t generation;
 } bnd_body_handle;
 
 typedef struct {
