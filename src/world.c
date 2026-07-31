@@ -265,6 +265,12 @@ static void update_awake_statuses(bnd_world *world, float dt) {
   dynamics->awake_count = awake_count;
 }
 
+static void bump_generations_upon_reset(common_data *data) {
+  for (count_t i = data->first_outer_node; i != max_body_index; i = data->outer_lookup[i].next) {
+    data->generations[i] += 1;
+  }
+}
+
 static void calculate_compound_shape_dynamic(const bnd_world *world, bnd_body_shape *shapes, float *masses, count_t count, float *total_mass, bnd_m3 *inertia) {
   *total_mass = 0;
   for (count_t i = 0; i < count; ++i) {
@@ -1069,6 +1075,9 @@ bnd_error bnd_awaken_body(bnd_world *world, bnd_body_handle handle) {
 
 void bnd_reset_world(bnd_world *world) {
   world->age = 0;
+
+  bump_generations_upon_reset((common_data *) &world->dynamics);
+  bump_generations_upon_reset((common_data *) &world->statics);
 
   world->dynamics.count = 0;
   world->dynamics.free_count = 0;
