@@ -360,6 +360,7 @@ static void build_ui() {
       ui_label_stat("Body count", stats.body_count);
       ui_label_stat("Contacts count", stats.contacts_count);
       ui_label_stat("Incomplete resolutions", stats.incomplete_resolutions);
+      ui_label_stat("World age", stats.world_age);
     }
   }
 }

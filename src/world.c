@@ -1004,6 +1004,7 @@ void bnd_simulate(bnd_world *world, float dt) {
     PROFILE_FUNCTION
 
     world->stats.body_count = world->dynamics.count + world->statics.count;
+    world->stats.world_age = world->age;
 
     // TODO before changing the order of integration and collision detection,
     // revisit aabb generation.

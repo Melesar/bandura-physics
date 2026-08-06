@@ -228,6 +228,7 @@ typedef struct {
   uint32_t contacts_count;
   uint32_t incomplete_resolutions;
   uint32_t incomplete_collision_detections;
+  uint32_t world_age;
 } bnd_world_stats;
 
 typedef struct {
