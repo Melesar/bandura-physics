@@ -24,7 +24,7 @@ static void *memory_alloc(uint64_t alignment, uint64_t bytes) {
 }
 
 void scenario_configure(program_config *config, bnd_config *physics) {
-  config->window_title = "Rigidbodies";
+  config->window_title = "Allocator";
   config->camera_position = (bnd_v3){ 22.542, 11.645, 20.752 };
   config->camera_target = (bnd_v3){ 0, 0, 0 };
 
