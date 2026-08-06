@@ -1,5 +1,6 @@
 #include "scenario-core.h"
 #include "bnd-math.h"
+#include "raylib.h"
 #include "raymath.h"
 #include "rlgl.h"
 
@@ -286,6 +287,13 @@ void draw_shape(bnd_v3 position, bnd_quat rotation, bnd_body_handle body_handle,
   if (widget_state->bodies_as_wireframe) {
     rlDisableWireMode();
   }
+}
+
+void draw_joint(bnd_body_handle body_a, bnd_body_handle body_b, bnd_v3 point_a, bnd_v3 point_b, void *user_data) {
+  bnd_v3 center = bnd_v3_scale(bnd_v3_add(point_a, point_b), 0.5);
+
+  DrawSphereWires(center, 0.03, 16, 15, GREEN);
+  DrawLine3D(point_a, point_b, RED);
 }
 
 void draw_aabb(bnd_v3 center, bnd_v3 half_extents, bnd_body_handle handle, void *user_data) {

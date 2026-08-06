@@ -7,6 +7,10 @@
 #include <string.h>
 
 static void draw_contacts(const bnd_world *world, bnd_debug_draw_callbacks callbacks, void *user_data) {
+  if (callbacks.draw_contact == NULL) {
+    return;
+  }
+
   for (count_t i = 0; i < world->contacts.count; i++) {
     const contact *contact = &world->contacts.values[i];
     callbacks.draw_contact(contact->point, contact->normal, contact->depth, user_data);
@@ -14,6 +18,10 @@ static void draw_contacts(const bnd_world *world, bnd_debug_draw_callbacks callb
 }
 
 static void draw_shapes(const bnd_world *world, bnd_body_type type, bnd_debug_draw_callbacks callbacks, void *user_data) {
+  if (callbacks.draw_shape == NULL) {
+    return;
+  }
+
   const common_data *data = as_common_const(world, type);
   for (count_t i = 0; i < data->count; i++) {
     body_shapes body_shapes = data->shapes[i];
@@ -37,12 +45,38 @@ static void draw_shapes(const bnd_world *world, bnd_body_type type, bnd_debug_dr
 }
 
 void draw_aabbs(const bnd_world *world, bnd_debug_draw_callbacks callbacks, void *user_data) {
+  if (callbacks.draw_aabb == NULL) {
+    return;
+  }
+
   for (bnd_body_type type = BND_BODY_DYNAMIC; type <= BND_BODY_STATIC; type++) {
     const common_data *data = as_common_const(world, type);
     for (count_t i = 0; i < data->count; i++) {
       bnd_aabb aabb = data->aabbs[i];
       callbacks.draw_aabb(aabb.center, aabb.half_extents, make_body_handle(world, type, i), user_data);
     }
+  }
+}
+
+void draw_joints(const bnd_world *world, bnd_debug_draw_callbacks callbacks, void *user_data) {
+  if (callbacks.draw_joint == NULL) {
+    return;
+  }
+
+  const joints *joints = &world->joints;
+  for (count_t i = 0; i < joints->count; ++i) {
+    const bnd_joint *j = &joints->values[i];
+
+    bnd_v3 points[2];
+    for (count_t k = 0; k < 2; ++k) {
+      count_t body_index = handle_to_inner_index(world, j->bodies[k]);
+      const common_data *data = as_common_const(world, j->bodies[k].type);
+
+      points[k] = bnd_v3_rotate(j->relative_contact_positions[k], data->rotations[body_index]);
+      points[k] = bnd_v3_add(points[k], data->positions[body_index]);
+    }
+   
+    callbacks.draw_joint(j->bodies[0], j->bodies[1], points[0], points[1], user_data);
   }
 }
 
@@ -58,6 +92,9 @@ void bnd_debug_draw(const bnd_world *world, bnd_debug_draw_flags flags, bnd_debu
   }
   if (flags & BND_DEBUG_DRAW_AABBS) {
     draw_aabbs(world, callbacks, user_data);
+  }
+  if (flags & BND_DEBUG_DRAW_JOINTS) {
+    draw_joints(world, callbacks, user_data);
   }
 }
 

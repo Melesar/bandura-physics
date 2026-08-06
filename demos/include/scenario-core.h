@@ -44,6 +44,7 @@ typedef struct {
   bool bodies_as_wireframe;
   bool draw_collisions;
   bool draw_bounding_boxes;
+  bool draw_joints;
 } master_widget_state;
 
 typedef struct {
@@ -100,6 +101,7 @@ ragdoll ragdoll_create(bnd_world *world, bnd_v3 position);
 void draw_contact(bnd_v3 point, bnd_v3 normal, float depth, void *user_data);
 void draw_shape(bnd_v3 position, bnd_quat rotation, bnd_body_handle body_handle, bnd_shape_type shape_type, bnd_shape shape, void *user_data);
 void draw_aabb(bnd_v3 center, bnd_v3 half_extents, bnd_body_handle handle, void *user_data);
+void draw_joint(bnd_body_handle body_a, bnd_body_handle body_b, bnd_v3 point_a, bnd_v3 point_b, void *user_data);
 
 void ui_initialize();
 void ui_teardown();

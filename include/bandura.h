@@ -86,6 +86,7 @@ typedef enum {
   BND_DEBUG_DRAW_SHAPES = BND_DEBUG_DRAW_SHAPES_DYNAMIC | BND_DEBUG_DRAW_SHAPES_STATIC,
 
   BND_DEBUG_DRAW_AABBS = 8,
+  BND_DEBUG_DRAW_JOINTS = 16,
 
   BND_DEBUG_DRAW_ALL = ~0,
 } bnd_debug_draw_flags;
@@ -245,11 +246,13 @@ typedef struct {
 typedef void (*bnd_debug_draw_contact_fn)(bnd_v3 point, bnd_v3 normal, float depth, void *user_data);
 typedef void (*bnd_debug_draw_shape_fn)(bnd_v3 position, bnd_quat rotation, bnd_body_handle body_handle, bnd_shape_type shape_type, bnd_shape shape, void *user_data);
 typedef void (*bnd_debug_draw_aabb_fn)(bnd_v3 center, bnd_v3 size, bnd_body_handle body_handle, void *user_data);
+typedef void (*bnd_debug_draw_joint_fn)(bnd_body_handle body_a, bnd_body_handle body_b, bnd_v3 point_a, bnd_v3 point_b, void *user_data);
 
 typedef struct {
   bnd_debug_draw_contact_fn draw_contact;
   bnd_debug_draw_shape_fn draw_shape;
   bnd_debug_draw_aabb_fn draw_aabb;
+  bnd_debug_draw_joint_fn draw_joint;
 } bnd_debug_draw_callbacks;
 
 typedef struct bnd_world_t bnd_world;

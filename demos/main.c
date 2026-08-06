@@ -57,6 +57,7 @@ bnd_debug_draw_callbacks debug_callbacks = {
   .draw_shape = draw_shape,
   .draw_aabb = draw_aabb,
   .draw_contact = draw_contact,
+  .draw_joint = draw_joint,
 };
 
 bool edit_mode = false;
@@ -203,6 +204,9 @@ static void draw_scene(program_config program_config, Camera camera, Shader shad
   if (widget_state.draw_collisions) {
     flags |= BND_DEBUG_DRAW_CONTACTS;
   }
+  if (widget_state.draw_joints) {
+    flags |= BND_DEBUG_DRAW_JOINTS;
+  }
   bnd_debug_draw(world, flags, debug_callbacks, &widget_state);
 
   EndMode3D();
@@ -312,6 +316,7 @@ static void build_ui() {
       ui_checkbox("Bodies as wireframe", &widget_state.bodies_as_wireframe);
       ui_checkbox("Draw collisions", &widget_state.draw_collisions);
       ui_checkbox("Draw bounding boxes", &widget_state.draw_bounding_boxes);
+      ui_checkbox("Draw joints", &widget_state.draw_joints);
     }
 
     ui_end_area();
