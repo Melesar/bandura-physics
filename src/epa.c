@@ -2,6 +2,7 @@
 #include "bnd-math.h"
 #include "profiler.h"
 
+#include <stdio.h>
 #include <string.h>
 #include <float.h>
 
@@ -600,10 +601,10 @@ static void epa_debug_render_iteration(const epa_polytope *polytope, body_suppor
 
     bnd_debug_epa_flags flags = DEBUG_EPA_NONE;
     if (index == polytope->nearest) {
-      flags = (bnd_debug_epa_flags)(flags | DEBUG_EPA_FACE_NEAREST);
+      flags |= DEBUG_EPA_FACE_NEAREST;
     }
     if (polytope->flags[index] & EPA_FLAG_FOR_REMOVAL) {
-      flags = (bnd_debug_epa_flags)(flags | DEBUG_EPA_FACE_REMOVED);
+      flags |= DEBUG_EPA_FACE_REMOVED;
     }
 
     if (callbacks.draw_face != NULL) {
@@ -672,6 +673,11 @@ count_t epa_get_contact(bnd_world *world, const collision_detection_context *ctx
 
       case EPA_STATUS_CONVERGED:
         epa_calculate_contact(polytope, contact);
+        count_t i1 = ctx->data_a->inner_lookup[ctx->body_a];
+        count_t i2 = ctx->data_b->inner_lookup[ctx->body_b];
+        if ((world->age == 122 || world->age == 121 || world->age == 120) && (i1 == 4 || i2 == 4)) {
+          printf("[NORM] Age %u, normal: (%.3f, %.3f, %.3f)\n", world->age, contact->normal.x, contact->normal.y, contact->normal.z);
+        }
         return attempts;
 
       default:
