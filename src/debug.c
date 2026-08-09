@@ -98,6 +98,14 @@ void bnd_debug_draw(const bnd_world *world, bnd_debug_draw_flags flags, bnd_debu
   }
 }
 
+#if defined(BND_DEBUG)
+
+void epa_debug_next_frame(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, epa_debug_status *status) {
+  world->epa_debug = status;
+  world->epa_debug->src_body_a = body_a;
+  world->epa_debug->src_body_b = body_b;
+}
+
 bnd_result_u32 debug_epa_begin(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b) {
   collision_detection_context ctx;
   bnd_error error = collision_detection_epa_context(world, body_a, body_b, &ctx);
@@ -130,6 +138,31 @@ bool debug_epa_iteration(bnd_world *world, bnd_body_handle body_a, bnd_body_hand
 
   return epa_debug_draw(world, &ctx, &simplex, world->config.advanced.epa_tolerance, iteration, callbacks, user_data);
 }
+
+void epa_debug_capture(bnd_world *world) {
+  if (world->epa_debug == NULL) {
+    return;
+  }
+
+  bnd_body_handle src[] = { world->epa_debug->src_body_a, world->epa_debug->src_body_b };
+  bnd_body_handle *dst[] = { &world->epa_debug->dst_body_a, &world->epa_debug->dst_body_b };
+
+  for (count_t i = 0; i < 2; ++i) {
+    count_t index = handle_to_inner_index(world, src[i]);
+    common_data *data = as_common(world, src[i].type);
+    
+    count_t ephemeral = ephemeral_body_index(data) + 2;
+    data->positions[ephemeral] = data->positions[index];
+    data->rotations[ephemeral] = data->rotations[index];
+    data->shapes[ephemeral] = data->shapes[index];
+
+    *dst[i] = make_body_handle(world, src[i].type, ephemeral);
+  }
+
+  world->epa_debug = NULL;
+}
+
+#endif
 
 collision_test_suite *collision_tests_load(void) {
 #ifdef COLLISION_TEST_SUITE_PATH

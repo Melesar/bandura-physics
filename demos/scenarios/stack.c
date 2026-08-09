@@ -7,6 +7,7 @@ int target_age;
 int target_iteration;
 uint32_t iterations_count;
 
+epa_debug_status debug_status;
 bnd_error error;
 
 bnd_body_handle box_top;
@@ -49,9 +50,16 @@ void scenario_handle_input(bnd_world *world, Camera *camera) {
 }
 
 void scenario_simulate(bnd_world *world, float dt) {
-  if (world->age <= target_age) {
-    bnd_simulate(world, dt);
+#if defined(BND_DEBUG)
+  if (world->age > target_age) {
+    return;
   }
+  if (world->age == target_age) {
+    epa_debug_next_frame(world, box_underneath, box_top, &debug_status);
+  }
+#endif
+
+  bnd_simulate(world, dt);
 }
 
 void draw_face(bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_debug_epa_flags flags, void *user_data) {
@@ -72,6 +80,7 @@ void draw_support(bnd_v3 point, void *user_data) {
 }
 
 void scenario_draw_scene(bnd_world *world) {
+#if defined(BND_DEBUG)
   if (world->age == (count_t)target_age) {
     bnd_result_u32 iterations_count_result = debug_epa_begin(world, box_underneath, box_top);
     error = iterations_count_result.error;
@@ -81,6 +90,7 @@ void scenario_draw_scene(bnd_world *world) {
   if (error.type == BND_OK) {
     debug_epa_iteration(world, box_underneath, box_top, target_iteration, (bnd_debug_draw_epa_callbacks) { draw_face, draw_normal, draw_support }, NULL);
   }
+#endif
 }
 
 void scenario_build_ui(bnd_world *world) {

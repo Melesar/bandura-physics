@@ -1012,6 +1012,9 @@ void bnd_simulate(bnd_world *world, float dt) {
     update_aabbs(world);
     contacts_reset(world);
     events_reset(world);
+#if defined(BND_DEBUG)
+    epa_debug_capture(world);
+#endif
     contacts_generate(world);
     contacts_resolve(world, dt);
     update_awake_statuses(world, dt);

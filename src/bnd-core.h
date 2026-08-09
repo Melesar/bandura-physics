@@ -210,6 +210,12 @@ typedef struct {
   count_t count : 5;
 } body_shapes;
 
+typedef struct {
+  bnd_body_handle src_body_a, src_body_b;
+  bnd_body_handle dst_body_a, dst_body_b;
+  bnd_result_u32 iterations_count_result;
+} epa_debug_status;
+
 typedef enum {
   EPA_NODE_VERTEX,
   EPA_NODE_EDGE,
@@ -341,6 +347,8 @@ struct bnd_world_t {
   contacts_cache contacts_cache;
   epa_polytope epa_polytope;
 
+  epa_debug_status *epa_debug;
+
   shapes_bracket shape_brackets[BRACKET_COUNT];
 
   bnd_config config;
@@ -469,10 +477,16 @@ uint32_t              polytope_memory_size(uint16_t max_nodes);
 bnd_error             epa_init(bnd_world *world);
 void                  epa_teardown(bnd_world *world);
 count_t               epa_get_contact(bnd_world *world, const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact);
-bool                  epa_debug_draw(bnd_world *world, const collision_detection_context *ctx, const simplex *simplex, float tolerance, uint32_t iteration, bnd_debug_draw_epa_callbacks callbacks, void *user_data);
 body_support          support(const collision_detection_context *ctx, bnd_v3 direction);
-BNDAPI bnd_result_u32 debug_epa_begin(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b);
-BNDAPI bool           debug_epa_iteration(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, uint32_t iteration, bnd_debug_draw_epa_callbacks callbacks, void *user_data);
+
+#if defined(BND_DEBUG)
+bool                  epa_debug_draw(bnd_world *world, const collision_detection_context *ctx, const simplex *simplex, float tolerance, uint32_t iteration, bnd_debug_draw_epa_callbacks callbacks, void *user_data);
+void                  epa_debug_next_frame(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, epa_debug_status *status);
+void                  epa_debug_capture(bnd_world *world);
+void                  epa_debug_capture(bnd_world *world);
+bnd_result_u32        debug_epa_begin(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b);
+bool                  debug_epa_iteration(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, uint32_t iteration, bnd_debug_draw_epa_callbacks callbacks, void *user_data);
+#endif
 
 float                 sqr_distance_to_triangle(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_v3 *closest);
 float                 sqr_distance_to_line_segment(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 *closest);

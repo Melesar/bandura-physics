@@ -242,6 +242,8 @@ static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allo
   INVOKE(events_init(world))
   INVOKE(epa_init(world))
 
+  world->epa_debug = NULL;
+
   PROFILER_INIT;
 
   return OK;

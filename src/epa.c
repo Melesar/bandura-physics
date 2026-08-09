@@ -584,6 +584,44 @@ static epa_status epa_run(epa_polytope *polytope, const collision_detection_cont
   return EPA_STATUS_OK;
 }
 
+
+count_t epa_get_contact(bnd_world *world, const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact) {
+  PROFILE_FUNCTION
+
+  epa_polytope *polytope = &world->epa_polytope;
+  body_support support_point = simplex->points[0];
+  if (!polytope_from_simplex(polytope, simplex)) {
+    epa_invalid_contact(support_point, contact);
+    return 0;
+  }
+
+  count_t attempts = 1;
+  for (; attempts <= EPA_MAX_ATTEMPTS; ++attempts) {
+    epa_status result = epa_run(polytope, ctx, &support_point, tolerance);
+    switch(result) {
+      case EPA_STATUS_OK:
+        continue;
+
+      case EPA_STATUS_CONVERGED:
+        epa_calculate_contact(polytope, contact);
+        count_t i1 = ctx->data_a->inner_lookup[ctx->body_a];
+        count_t i2 = ctx->data_b->inner_lookup[ctx->body_b];
+        if ((world->age == 122 || world->age == 121 || world->age == 120) && (i1 == 4 || i2 == 4)) {
+          printf("[NORM] Age %u, normal: (%.3f, %.3f, %.3f)\n", world->age, contact->normal.x, contact->normal.y, contact->normal.z);
+        }
+        return attempts;
+
+      default:
+        epa_invalid_contact(support_point, contact);
+        return attempts;
+    }
+  }
+
+  return attempts;
+}
+
+#if defined(BND_DEBUG)
+
 static void epa_debug_render_iteration(const epa_polytope *polytope, body_support support_point, bnd_debug_draw_epa_callbacks callbacks, void *user_data) {
   polytope_for_each_node(polytope, index, EPA_NODE_FACE) {
     const epa_polytope_node *face = &polytope->nodes[index];
@@ -654,37 +692,4 @@ bool epa_debug_draw(bnd_world *world, const collision_detection_context *ctx, co
   return false;
 }
 
-count_t epa_get_contact(bnd_world *world, const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact) {
-  PROFILE_FUNCTION
-
-  epa_polytope *polytope = &world->epa_polytope;
-  body_support support_point = simplex->points[0];
-  if (!polytope_from_simplex(polytope, simplex)) {
-    epa_invalid_contact(support_point, contact);
-    return 0;
-  }
-
-  count_t attempts = 1;
-  for (; attempts <= EPA_MAX_ATTEMPTS; ++attempts) {
-    epa_status result = epa_run(polytope, ctx, &support_point, tolerance);
-    switch(result) {
-      case EPA_STATUS_OK:
-        continue;
-
-      case EPA_STATUS_CONVERGED:
-        epa_calculate_contact(polytope, contact);
-        count_t i1 = ctx->data_a->inner_lookup[ctx->body_a];
-        count_t i2 = ctx->data_b->inner_lookup[ctx->body_b];
-        if ((world->age == 122 || world->age == 121 || world->age == 120) && (i1 == 4 || i2 == 4)) {
-          printf("[NORM] Age %u, normal: (%.3f, %.3f, %.3f)\n", world->age, contact->normal.x, contact->normal.y, contact->normal.z);
-        }
-        return attempts;
-
-      default:
-        epa_invalid_contact(support_point, contact);
-        return attempts;
-    }
-  }
-
-  return attempts;
-}
+#endif
