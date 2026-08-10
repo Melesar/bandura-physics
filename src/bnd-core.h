@@ -484,9 +484,9 @@ count_t               epa_get_contact(bnd_world *world, const collision_detectio
 body_support          support(const collision_detection_context *ctx, bnd_v3 direction);
 
 #if defined(BND_DEBUG)
-bool                  epa_debug_draw(bnd_world *world, const epa_debug_status *debug_status, float tolerance, bnd_debug_draw_epa_callbacks callbacks, void *user_data);
 void                  epa_debug_next_frame(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, epa_debug_status *status);
 void                  epa_debug_capture(bnd_world *world);
+bool                  epa_debug_draw(bnd_world *world, const epa_debug_status *debug_status, bnd_debug_draw_epa_callbacks callbacks, void *user_data);
 #endif
 
 float                 sqr_distance_to_triangle(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_v3 *closest);

@@ -1,4 +1,5 @@
 #include "raylib.h"
+#include "rlgl.h"
 #include "scenario-core.h"
 #include "bnd-core.h"
 #include "bnd-math.h"
@@ -51,10 +52,10 @@ void scenario_handle_input(bnd_world *world, Camera *camera) {
 
 void scenario_simulate(bnd_world *world, float dt) {
 #if defined(BND_DEBUG)
-  if (world->age > target_age) {
+  if (world->age > (count_t) target_age) {
     return;
   }
-  if (world->age == target_age) {
+  if (world->age == (count_t) target_age) {
     epa_debug_next_frame(world, box_underneath, box_top, &debug_status);
   }
 #endif
@@ -76,13 +77,23 @@ void draw_normal(bnd_v3 origin, bnd_v3 unit_normal, bnd_debug_epa_flags flags, v
 }
 
 void draw_support(bnd_v3 point, void *user_data) {
-  
+  DrawSphere(point, 0.04, BROWN);
 }
 
 void scenario_draw_scene(bnd_world *world) {
 #if defined(BND_DEBUG)
   if (debug_status.initialized) {
-    epa_debug_draw(world, &debug_status, world->config.advanced.epa_tolerance, (bnd_debug_draw_epa_callbacks) { draw_face, draw_normal, draw_support }, NULL);
+    epa_debug_draw(world, &debug_status, (bnd_debug_draw_epa_callbacks) { draw_face, draw_normal, draw_support }, NULL);
+
+    bnd_body_handle bodies[] = { debug_status.dst_body_a, debug_status.dst_body_b };
+    for (int i = 0; i < 2; ++i) {
+      bnd_body_handle b = bodies[i];
+      bnd_v3 pos = bnd_get_position(world, b).value;
+      bnd_quat rot = bnd_get_rotation(world, b).value;
+
+      master_widget_state s = { .bodies_as_wireframe = true };
+      draw_shape(pos, rot, b, BND_BOX, (bnd_shape) { .box = { .size = { 1, 1, 1 } } }, &s);
+    }
   }
 #endif
 }

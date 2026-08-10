@@ -661,7 +661,7 @@ static void epa_debug_render_iteration(const epa_polytope *polytope, body_suppor
   }
 }
 
-bool epa_debug_draw(bnd_world *world, const epa_debug_status *debug_status, float tolerance, bnd_debug_draw_epa_callbacks callbacks, void *user_data) {
+bool epa_debug_draw(bnd_world *world, const epa_debug_status *debug_status, bnd_debug_draw_epa_callbacks callbacks, void *user_data) {
   epa_polytope *polytope = &world->epa_polytope;
   if (!polytope_from_simplex(polytope, &debug_status->s)) {
     return false;
@@ -679,7 +679,7 @@ bool epa_debug_draw(bnd_world *world, const epa_debug_status *debug_status, floa
       return false;
     }
 
-    status = epa_run(polytope, &debug_status->ctx, &support_point, tolerance);
+    status = epa_run(polytope, &debug_status->ctx, &support_point, world->config.advanced.epa_tolerance);
     if (status != EPA_STATUS_OK && status != EPA_STATUS_CONVERGED) {
       return false;
     }
