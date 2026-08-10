@@ -661,32 +661,36 @@ static void epa_debug_render_iteration(const epa_polytope *polytope, body_suppor
   }
 }
 
-bool epa_debug_draw(bnd_world *world, const collision_detection_context *ctx, const simplex *simplex, float tolerance, uint32_t target_iteration, bnd_debug_draw_epa_callbacks callbacks, void *user_data) {
+bool epa_debug_draw(bnd_world *world, const epa_debug_status *debug_status, float tolerance, bnd_debug_draw_epa_callbacks callbacks, void *user_data) {
   epa_polytope *polytope = &world->epa_polytope;
-  if (!polytope_from_simplex(polytope, simplex)) {
+  if (!polytope_from_simplex(polytope, &debug_status->s)) {
     return false;
   }
 
-  body_support support_point = simplex->points[0];
+  body_support support_point = debug_status->s.points[0];
+  if (debug_status->target_iteration == 0) {
+    epa_debug_render_iteration(polytope, support_point, callbacks, user_data);
+    return true;
+  }
+
   epa_status status = EPA_STATUS_OK;
-  for (count_t iteration = 0; iteration < EPA_MAX_ATTEMPTS; ++iteration) {
-    if (iteration > target_iteration) {
+  for (int iteration = 1; iteration < EPA_MAX_ATTEMPTS; ++iteration) {
+    if (iteration > debug_status->target_iteration) {
       return false;
     }
 
-    if (iteration == target_iteration) {
+    status = epa_run(polytope, &debug_status->ctx, &support_point, tolerance);
+    if (status != EPA_STATUS_OK && status != EPA_STATUS_CONVERGED) {
+      return false;
+    }
+
+    if (iteration == debug_status->target_iteration) {
       bnd_v3 direction = bnd_v3_normalize(polytope->nodes[polytope->nearest].value.face.normal);
-      body_support next_support = support(ctx, direction);
+      body_support next_support = support(&debug_status->ctx, direction);
 
       epa_debug_render_iteration(polytope, next_support, callbacks, user_data);
       return true;
     }
-
-    if (status != EPA_STATUS_OK) {
-      return false;
-    }
-
-    status = epa_run(polytope, ctx, &support_point, tolerance);
   }
 
   return false;

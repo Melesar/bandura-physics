@@ -81,14 +81,8 @@ void draw_support(bnd_v3 point, void *user_data) {
 
 void scenario_draw_scene(bnd_world *world) {
 #if defined(BND_DEBUG)
-  if (world->age == (count_t)target_age) {
-    bnd_result_u32 iterations_count_result = debug_epa_begin(world, box_underneath, box_top);
-    error = iterations_count_result.error;
-    iterations_count = iterations_count_result.value;
-  }
-
-  if (error.type == BND_OK) {
-    debug_epa_iteration(world, box_underneath, box_top, target_iteration, (bnd_debug_draw_epa_callbacks) { draw_face, draw_normal, draw_support }, NULL);
+  if (debug_status.initialized) {
+    epa_debug_draw(world, &debug_status, world->config.advanced.epa_tolerance, (bnd_debug_draw_epa_callbacks) { draw_face, draw_normal, draw_support }, NULL);
   }
 #endif
 }
@@ -97,12 +91,12 @@ void scenario_build_ui(bnd_world *world) {
   ui_begin_area("Stack", &ui_collapsed);
   ui_value_int("Target age", &target_age, 120, 122);
 
-  if (world->age == (count_t) (target_age + 1)) {
-    if (error.type == BND_OK) {
-      ui_label_int("Iterations count", iterations_count);
-      ui_value_int("Iteration to render", &target_iteration, 0, iterations_count);
+  if (debug_status.initialized) {
+    if (debug_status.iterations_count_result.error.type == BND_OK) {
+      ui_label_int("Iterations count", debug_status.iterations_count_result.value);
+      ui_value_int("Iteration to render", &debug_status.target_iteration, 0, debug_status.iterations_count_result.value);
     } else {
-      ui_label(error.message);
+      ui_label(debug_status.iterations_count_result.error.message);
     }
   }
 

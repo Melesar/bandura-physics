@@ -55,6 +55,7 @@ typedef enum {
   BND_ERROR_INVALID_POLYTOPE,
   BND_ERROR_NOT_FOUND,
   BND_ERROR_EPA_NOT_APPLICABLE,
+  BND_ERROR_EPA_NO_INTERSECTION,
 } bnd_error_type;
 
 typedef void* (*bnd_malloc_fn)(uint64_t alignment, uint64_t size);

@@ -104,39 +104,7 @@ void epa_debug_next_frame(bnd_world *world, bnd_body_handle body_a, bnd_body_han
   world->epa_debug = status;
   world->epa_debug->src_body_a = body_a;
   world->epa_debug->src_body_b = body_b;
-}
-
-bnd_result_u32 debug_epa_begin(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b) {
-  collision_detection_context ctx;
-  bnd_error error = collision_detection_epa_context(world, body_a, body_b, &ctx);
-  if (IS_ERROR(error)) {
-    return BND_RESULT_ERR2(u32, error);
-  }
-
-  simplex simplex;
-  if (!gjk_check_intersection(world, &ctx, &simplex)) {
-    return BND_RESULT_OK(u32, 0);
-  }
-
-  contact c;
-  count_t iterations_count = epa_get_contact(world, &ctx, &simplex, world->config.advanced.epa_tolerance, &c);
-
-  return BND_RESULT_OK(u32, iterations_count);
-}
-
-bool debug_epa_iteration(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, uint32_t iteration, bnd_debug_draw_epa_callbacks callbacks, void *user_data) {
-  collision_detection_context ctx;
-  bnd_error error = collision_detection_epa_context(world, body_a, body_b, &ctx);
-  if (IS_ERROR(error)) {
-    return false;
-  }
-
-  simplex simplex;
-  if (!gjk_check_intersection(world, &ctx, &simplex)) {
-    return false;
-  }
-
-  return epa_debug_draw(world, &ctx, &simplex, world->config.advanced.epa_tolerance, iteration, callbacks, user_data);
+  world->epa_debug->initialized = true;
 }
 
 void epa_debug_capture(bnd_world *world) {
@@ -151,14 +119,40 @@ void epa_debug_capture(bnd_world *world) {
     count_t index = handle_to_inner_index(world, src[i]);
     common_data *data = as_common(world, src[i].type);
     
-    count_t ephemeral = ephemeral_body_index(data) + 2;
+    count_t ephemeral = ephemeral_body_index(data) + i + 2;
     data->positions[ephemeral] = data->positions[index];
     data->rotations[ephemeral] = data->rotations[index];
     data->shapes[ephemeral] = data->shapes[index];
+    data->inner_lookup[ephemeral] = ephemeral;
+    data->outer_lookup[ephemeral].index = ephemeral;
+    data->generations[ephemeral] = 0;
 
     *dst[i] = make_body_handle(world, src[i].type, ephemeral);
   }
 
+  bnd_error error = collision_detection_epa_context(world, *dst[0], *dst[1], &world->epa_debug->ctx);
+  if (IS_ERROR(error)) {
+    world->epa_debug->iterations_count_result = (bnd_result_u32) { error, 0 };
+    world->epa_debug = NULL;
+    return;
+  }
+
+  if (!gjk_check_intersection(world, &world->epa_debug->ctx, &world->epa_debug->s)) {
+    world->epa_debug->iterations_count_result = (bnd_result_u32) { { BND_ERROR_EPA_NO_INTERSECTION, "Bodies do not intersect" }, 0 };
+    world->epa_debug = NULL;
+    return;
+  }
+
+  contact c;
+  count_t iterations_count = epa_get_contact(
+    world,
+    &world->epa_debug->ctx,
+    &world->epa_debug->s,
+    world->config.advanced.epa_tolerance,
+    &c);
+
+  world->epa_debug->target_iteration = 0;
+  world->epa_debug->iterations_count_result = (bnd_result_u32) { OK, iterations_count };
   world->epa_debug = NULL;
 }
 
