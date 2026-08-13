@@ -8,7 +8,7 @@
 
 #define NIL 0
 #define EPA_MAX_ATTEMPTS 128
-#define VISIBLE_FACES_STACK_SIZE 16
+#define VISIBLE_NODES_STACK_SIZE 16
 
 #define polytope_for_each_node(p, index, type)                                                                         \
   for (count_t index = p->last_nodes[type]; index != NIL; index = p->nodes[index].prev)
@@ -160,6 +160,15 @@ static void polytope_detach_edge(epa_polytope *polytope, uint16_t edge, uint16_t
   current_node->value.edge.next_attached_edges[current_i] = next_edge_node->value.edge.next_attached_edges[i];
 }
 
+static void polytope_get_edge_verticies(const epa_polytope *polytope, uint16_t edge, bnd_v3 *v1, bnd_v3 *v2) {
+  epa_polytope_node node = polytope->nodes[edge];
+  uint16_t vertex_1 = node.value.edge.verticies[0];
+  uint16_t vertex_2 = node.value.edge.verticies[1];
+
+  *v1 = polytope->nodes[vertex_1].value.vertex.v.p;
+  *v2 = polytope->nodes[vertex_2].value.vertex.v.p;
+}
+
 static void polytope_get_face_verticies(const epa_polytope *polytope, uint16_t face, bnd_v3 *v1, bnd_v3 *v2, bnd_v3 *v3) {
   epa_polytope_node node = polytope->nodes[face];
   uint16_t e1 = node.value.face.edges[0];
@@ -206,6 +215,10 @@ static uint16_t polytope_add_edge(epa_polytope *polytope, uint16_t v1, uint16_t 
   node->value.edge.verticies[0] = v1;
   node->value.edge.verticies[1] = v2;
 
+  bnd_v3 closest;
+  node->distance = sqr_distance_to_line_segment(bnd_v3_zero(), polytope->nodes[v1].value.vertex.v.p, polytope->nodes[v2].value.vertex.v.p, &closest);
+  node->normal = closest;
+
   memset(node->value.edge.attached_faces, 0, 2 * sizeof(uint16_t));
   memset(node->value.edge.next_attached_edges, 0, 2 * sizeof(uint16_t));
 
@@ -246,8 +259,8 @@ static uint16_t polytope_add_face(epa_polytope *polytope, uint16_t e1, uint16_t 
     normal = bnd_v3_negate(normal);
   }
 
-  node->value.face.distance = sqr_distance_to_triangle(bnd_v3_zero(), v1, v2, v3, &p);
-  node->value.face.normal = normal;
+  node->distance = sqr_distance_to_triangle(bnd_v3_zero(), v1, v2, v3, &p);
+  node->normal = normal;
 
   polytope_attach_face(polytope, index, e1);
   polytope_attach_face(polytope, index, e2);
@@ -312,8 +325,22 @@ static void polytope_update_nearest(epa_polytope *polytope) {
   polytope_for_each_node(polytope, index, EPA_NODE_FACE) {
     epa_polytope_node node = polytope->nodes[index];
 
-    float distance = node.value.face.distance;
+    float distance = node.distance;
     if (distance < polytope->nearest_distance) {
+      polytope->nearest_distance = distance;
+      polytope->nearest = index;
+    }
+  }
+
+  polytope_for_each_node(polytope, index, EPA_NODE_EDGE) {
+    epa_polytope_node node = polytope->nodes[index];
+    epa_polytope_node current_nearest = polytope->nodes[polytope->nearest];
+
+    float distance = node.distance;
+    if (fabsf(distance - polytope->nearest_distance) < 0.001 && current_nearest.type == EPA_NODE_FACE) {
+      polytope->nearest_distance = distance;
+      polytope->nearest = index;
+    } else if (distance < polytope->nearest_distance) {
       polytope->nearest_distance = distance;
       polytope->nearest = index;
     }
@@ -321,7 +348,7 @@ static void polytope_update_nearest(epa_polytope *polytope) {
 }
 
 static bool polytope_is_face_visible(const epa_polytope_node *face, bnd_v3 support_point) {
-  return bnd_v3_dot(bnd_v3_normalize(face->value.face.normal), bnd_v3_normalize(support_point)) > visibility_epsilon;
+  return bnd_v3_dot(bnd_v3_normalize(face->normal), bnd_v3_normalize(support_point)) > visibility_epsilon;
 }
 
 static bool polytope_contains_vertex(const epa_polytope *polytope, bnd_v3 point) {
@@ -376,28 +403,41 @@ static void epa_invalid_contact(body_support p, contact *contact) {
 
 static void epa_calculate_contact(const epa_polytope *polytope, contact *contact) {
   epa_polytope_node node = polytope->nodes[polytope->nearest];
-  uint16_t e1 = node.value.face.edges[0];
-  uint16_t e2 = node.value.face.edges[1];
-  uint16_t *edge_verts_1 = polytope->nodes[e1].value.edge.verticies;
-  uint16_t *edge_verts_2 = polytope->nodes[e2].value.edge.verticies;
+  bnd_v3 p1, p2;
+  if (node.type == EPA_NODE_FACE) {
+    uint16_t e1 = node.value.face.edges[0];
+    uint16_t e2 = node.value.face.edges[1];
+    uint16_t *edge_verts_1 = polytope->nodes[e1].value.edge.verticies;
+    uint16_t *edge_verts_2 = polytope->nodes[e2].value.edge.verticies;
 
-  body_support v0 = polytope->nodes[edge_verts_1[0]].value.vertex.v;
-  body_support v1 = polytope->nodes[edge_verts_1[1]].value.vertex.v;
+    body_support v0 = polytope->nodes[edge_verts_1[0]].value.vertex.v;
+    body_support v1 = polytope->nodes[edge_verts_1[1]].value.vertex.v;
 
-  body_support v2 = edge_verts_2[1] != edge_verts_1[1] && edge_verts_2[1] != edge_verts_1[0]
-    ? polytope->nodes[edge_verts_2[1]].value.vertex.v
-    : polytope->nodes[edge_verts_2[0]].value.vertex.v;
+    body_support v2 = edge_verts_2[1] != edge_verts_1[1] && edge_verts_2[1] != edge_verts_1[0]
+      ? polytope->nodes[edge_verts_2[1]].value.vertex.v
+      : polytope->nodes[edge_verts_2[0]].value.vertex.v;
 
-  bnd_v3 barycenter = bnd_v3_barycentric(bnd_v3_zero(), v0.p, v1.p, v2.p);
-  bnd_v3 p1 = bnd_v3_add(bnd_v3_scale(v0.p1.point, barycenter.x), bnd_v3_add(bnd_v3_scale(v1.p1.point, barycenter.y), bnd_v3_scale(v2.p1.point, barycenter.z)));
-  bnd_v3 p2 = bnd_v3_add(bnd_v3_scale(v0.p2.point, barycenter.x), bnd_v3_add(bnd_v3_scale(v1.p2.point, barycenter.y), bnd_v3_scale(v2.p2.point, barycenter.z)));
+    bnd_v3 barycenter = bnd_v3_barycentric(bnd_v3_zero(), v0.p, v1.p, v2.p);
+    p1 = bnd_v3_add(bnd_v3_scale(v0.p1.point, barycenter.x), bnd_v3_add(bnd_v3_scale(v1.p1.point, barycenter.y), bnd_v3_scale(v2.p1.point, barycenter.z)));
+    p2 = bnd_v3_add(bnd_v3_scale(v0.p2.point, barycenter.x), bnd_v3_add(bnd_v3_scale(v1.p2.point, barycenter.y), bnd_v3_scale(v2.p2.point, barycenter.z)));
+  } else if (node.type == EPA_NODE_EDGE) {
+    body_support v0 = polytope->nodes[node.value.edge.verticies[0]].value.vertex.v;
+    body_support v1 = polytope->nodes[node.value.edge.verticies[1]].value.vertex.v;
+
+    bnd_v3 d = bnd_v3_sub(v1.p, v0.p);
+    float t = -1.0 * bnd_v3_dot(v0.p, d) / bnd_v3_lensqr(d);
+    p1 = bnd_v3_add(v0.p1.point, bnd_v3_scale(bnd_v3_sub(v1.p1.point, v0.p1.point), t));
+    p2 = bnd_v3_add(v0.p2.point, bnd_v3_scale(bnd_v3_sub(v1.p2.point, v0.p2.point), t));
+  } else {
+    return;
+  }
 
   contact->point = bnd_v3_scale(bnd_v3_add(p1, p2), 0.5);
-  contact->depth = sqrt(node.value.face.distance);
+  contact->depth = sqrt(node.distance);
 
-  float length = bnd_v3_len(node.value.face.normal);
+  float length = bnd_v3_len(node.normal);
   if (length > EPSILON) {
-    contact->normal = bnd_v3_scale(node.value.face.normal, -1.0 / length);
+    contact->normal = bnd_v3_scale(node.normal, -1.0 / length);
   } else {
     contact->normal = bnd_v3_up();
   }
@@ -407,40 +447,49 @@ static void epa_calculate_contact(const epa_polytope *polytope, contact *contact
   contact->features.normal = contact->normal;
 }
 
-static void epa_update_visible_faces(epa_polytope *polytope, body_support p) {
-  uint16_t stack_ptr = 1;
-  uint16_t stack[VISIBLE_FACES_STACK_SIZE] = { polytope->nearest };
+static void mark_edge_for_removal(epa_polytope *polytope, uint16_t edge_index, body_support p, uint16_t *stack, uint16_t *stack_ptr) {
+  epa_polytope_node *edge_node = &polytope->nodes[edge_index];
 
-  epa_polytope_node *face_node = &polytope->nodes[polytope->nearest];
+  count_t visible_count = 0;
+  for (count_t j = 0; j < 2; ++j) {
+    uint16_t adjasent_face_index = edge_node->value.edge.attached_faces[j];
+    const epa_polytope_node *adjasent_face_node = &polytope->nodes[adjasent_face_index];
+
+    if (polytope->flags[adjasent_face_index] & EPA_FLAG_FOR_REMOVAL) {
+      visible_count += 1;
+    } else if (polytope_is_face_visible(adjasent_face_node, p.p)) {
+      visible_count += 1;
+      polytope->flags[adjasent_face_index] |= EPA_FLAG_FOR_REMOVAL;
+      stack[*stack_ptr] = adjasent_face_index;
+      *stack_ptr += 1;
+    }
+  }
+
+  if (visible_count == 2) {
+    polytope->flags[edge_index] |= EPA_FLAG_FOR_REMOVAL;
+  } else if (visible_count == 1) {
+    polytope->flags[edge_index] |= EPA_FLAG_BORDER_EDGE;
+  }
+}
+
+static void epa_update_visible_nodes(epa_polytope *polytope, body_support p) {
+  uint16_t stack_ptr = 1;
+  uint16_t stack[VISIBLE_NODES_STACK_SIZE] = { polytope->nearest };
+
+  epa_polytope_node *node = &polytope->nodes[polytope->nearest];
   polytope->flags[polytope->nearest] |= EPA_FLAG_FOR_REMOVAL;
 
   while (stack_ptr > 0) {
-    uint16_t face_index = stack[--stack_ptr];
-    face_node = &polytope->nodes[face_index];
+    uint16_t node_index = stack[--stack_ptr];
+    node = &polytope->nodes[node_index];
 
-    for (count_t i = 0; i < 3; ++i) {
-      uint16_t edge_index = face_node->value.face.edges[i];
-      epa_polytope_node *edge_node = &polytope->nodes[edge_index];
-
-      count_t visible_count = 0;
-      for (count_t j = 0; j < 2; ++j) {
-        uint16_t adjasent_face_index = edge_node->value.edge.attached_faces[j];
-        const epa_polytope_node *adjasent_face_node = &polytope->nodes[adjasent_face_index];
-
-        if (polytope->flags[adjasent_face_index] & EPA_FLAG_FOR_REMOVAL) {
-          visible_count += 1;
-        } else if (polytope_is_face_visible(adjasent_face_node, p.p)) {
-          visible_count += 1;
-          polytope->flags[adjasent_face_index] |= EPA_FLAG_FOR_REMOVAL;
-          stack[stack_ptr++] = adjasent_face_index;
-        }
+    if (node->type == EPA_NODE_FACE) {
+      for (count_t i = 0; i < 3; ++i) {
+        uint16_t edge_index = node->value.face.edges[i];
+        mark_edge_for_removal(polytope, edge_index, p, stack, &stack_ptr);
       }
-
-      if (visible_count == 2) {
-        polytope->flags[edge_index] |= EPA_FLAG_FOR_REMOVAL;
-      } else if (visible_count == 1) {
-        polytope->flags[edge_index] |= EPA_FLAG_BORDER_EDGE;
-      }
+    } else if (node->type == EPA_NODE_EDGE) {
+      mark_edge_for_removal(polytope, node_index, p, stack, &stack_ptr);
     }
   }
 }
@@ -550,21 +599,29 @@ void epa_teardown(bnd_world *world) {
 }
 
 static epa_status epa_run(epa_polytope *polytope, const collision_detection_context *ctx, body_support *support_point, float tolerance) {
-  epa_polytope_node closest_face = polytope->nodes[polytope->nearest];
-  bnd_v3 direction = closest_face.value.face.normal;
+  epa_polytope_node closest_node = polytope->nodes[polytope->nearest];
+  bnd_v3 direction = closest_node.normal;
   bnd_v3 normal_direction = bnd_v3_normalize(direction);
 
   *support_point = support(ctx, normal_direction);
 
   float support_distance = bnd_v3_dot(normal_direction, support_point->p);
-  float face_distance = sqrtf(closest_face.value.face.distance);
+  float face_distance = sqrtf(closest_node.distance);
   if (support_distance - face_distance < tolerance) {
     return EPA_STATUS_CONVERGED;
   }
 
+  float distance;
   bnd_v3 a, b, c, closest;
-  polytope_get_face_verticies(polytope, polytope->nearest, &a, &b, &c);
-  float distance = sqr_distance_to_triangle(support_point->p, a, b, c, &closest);
+  if (closest_node.type == EPA_NODE_FACE) {
+    polytope_get_face_verticies(polytope, polytope->nearest, &a, &b, &c);
+    distance = sqr_distance_to_triangle(support_point->p, a, b, c, &closest);
+  } else if (closest_node.type == EPA_NODE_EDGE) {
+    polytope_get_edge_verticies(polytope, polytope->nearest, &a, &b);
+    distance = sqr_distance_to_line_segment(support_point->p, a, b, &closest);
+  } else {
+    return EPA_STATUS_INVALID_POLYTOPE;
+  }
 
   if (distance < tolerance) {
     return EPA_STATUS_CONVERGED;
@@ -575,7 +632,7 @@ static epa_status epa_run(epa_polytope *polytope, const collision_detection_cont
     return EPA_STATUS_CONVERGED;
   }
 
-  epa_update_visible_faces(polytope, *support_point);
+  epa_update_visible_nodes(polytope, *support_point);
 
   if (!epa_expand_polytope(polytope, *support_point)) {
     return EPA_STATUS_EXPANSION_FAILED;
@@ -604,11 +661,6 @@ count_t epa_get_contact(bnd_world *world, const collision_detection_context *ctx
 
       case EPA_STATUS_CONVERGED:
         epa_calculate_contact(polytope, contact);
-        count_t i1 = ctx->data_a->inner_lookup[ctx->body_a];
-        count_t i2 = ctx->data_b->inner_lookup[ctx->body_b];
-        if ((world->age == 122 || world->age == 121 || world->age == 120) && (i1 == 4 || i2 == 4)) {
-          printf("[NORM] Age %u, normal: (%.3f, %.3f, %.3f)\n", world->age, contact->normal.x, contact->normal.y, contact->normal.z);
-        }
         return attempts;
 
       default:
@@ -625,7 +677,7 @@ count_t epa_get_contact(bnd_world *world, const collision_detection_context *ctx
 static void epa_debug_render_iteration(const epa_polytope *polytope, body_support support_point, bnd_debug_draw_epa_callbacks callbacks, void *user_data) {
   polytope_for_each_node(polytope, index, EPA_NODE_FACE) {
     const epa_polytope_node *face = &polytope->nodes[index];
-    const bnd_v3 normal = face->value.face.normal;
+    const bnd_v3 normal = face->normal;
 
     bnd_v3 a, b, c;
     polytope_get_face_verticies(polytope, index, &a, &b, &c);
@@ -650,9 +702,26 @@ static void epa_debug_render_iteration(const epa_polytope *polytope, body_suppor
     }
 
     if (callbacks.draw_normal != NULL) {
-      flags = index == polytope->nearest ? DEBUG_EPA_NORMAL_NEAREST : DEBUG_EPA_NONE;
+      flags |= DEBUG_EPA_NORMAL_FACE;
       bnd_v3 center = bnd_v3_scale(bnd_v3_add(bnd_v3_add(a, b), c), 0.333);
       callbacks.draw_normal(center, bnd_v3_normalize(normal), flags, user_data);
+    }
+  }
+
+  polytope_for_each_node(polytope, index, EPA_NODE_EDGE) {
+    const epa_polytope_node *edge = &polytope->nodes[index];
+
+    bnd_v3 a, b;
+    polytope_get_edge_verticies(polytope, index, &a, &b);
+
+    bnd_debug_epa_flags flags = DEBUG_EPA_NORMAL_EDGE;
+    if (index == polytope->nearest) {
+      flags |= DEBUG_EPA_NORMAL_NEAREST;
+    }
+
+    if (callbacks.draw_normal != NULL) {
+      bnd_v3 center = bnd_v3_scale(bnd_v3_add(a, b), 0.5);
+      callbacks.draw_normal(center, bnd_v3_normalize(edge->normal), flags, user_data);
     }
   }
 
@@ -685,7 +754,7 @@ bool epa_debug_draw(bnd_world *world, const epa_debug_status *debug_status, bnd_
     }
 
     if (iteration == debug_status->target_iteration) {
-      bnd_v3 direction = bnd_v3_normalize(polytope->nodes[polytope->nearest].value.face.normal);
+      bnd_v3 direction = bnd_v3_normalize(polytope->nodes[polytope->nearest].normal);
       body_support next_support = support(&debug_status->ctx, direction);
 
       epa_debug_render_iteration(polytope, next_support, callbacks, user_data);

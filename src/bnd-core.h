@@ -247,8 +247,6 @@ typedef struct {
 
 typedef struct {
   uint16_t edges[3];
-  bnd_v3 normal;
-  float distance;
 } epa_face;
 
 typedef union {
@@ -260,6 +258,8 @@ typedef union {
 typedef struct {
   epa_polytope_node_type type;
   epa_polytope_node_value value;
+  bnd_v3 normal;
+  float distance;
 
   uint16_t prev;
 } epa_polytope_node;
@@ -405,7 +405,9 @@ typedef enum {
   DEBUG_EPA_FACE_NEAREST = 1,
   DEBUG_EPA_FACE_REMOVED = 2,
 
-  DEBUG_EPA_NORMAL_NEAREST = 4,
+  DEBUG_EPA_NORMAL_EDGE = 4,
+  DEBUG_EPA_NORMAL_FACE = 8,
+  DEBUG_EPA_NORMAL_NEAREST = 16,
 } bnd_debug_epa_flags;
 
 typedef void (*bnd_debug_draw_epa_face_fn)(bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_debug_epa_flags flags, void *user_data);

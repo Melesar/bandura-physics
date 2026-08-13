@@ -581,7 +581,7 @@ bnd_error collision_detection_epa_context(const bnd_world *world, bnd_body_handl
     count_t tmp_index = index_a;
     index_a = index_b;
     index_b = tmp_index;
-  } else if (body_a.type == BND_BODY_DYNAMIC && body_b.type == BND_BODY_DYNAMIC && index_a < index_b) {
+  } /*else if (body_a.type == BND_BODY_DYNAMIC && body_b.type == BND_BODY_DYNAMIC && index_a < index_b) {
     const common_data *tmp_data = data_a;
     data_a = data_b;
     data_b = tmp_data;
@@ -589,7 +589,7 @@ bnd_error collision_detection_epa_context(const bnd_world *world, bnd_body_handl
     count_t tmp_index = index_a;
     index_a = index_b;
     index_b = tmp_index;
-  }
+    }*/
 
   if (data_a == data_b && index_a == index_b) {
     return (bnd_error) { BND_ERROR_EPA_NOT_APPLICABLE, message };
