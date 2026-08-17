@@ -1,3 +1,4 @@
+#include "raylib.h"
 #include "scenario-core.h"
 #include "raygui.h"
 #include "raymath.h"
@@ -79,11 +80,11 @@ int main(int argc, char **argv) {
 
   scenario_configure(&program_config, &config);
 
+  SetTraceLogLevel(LOG_NONE);
   InitWindow(screen_width, screen_height, program_config.window_title);
   SetWindowState(FLAG_WINDOW_RESIZABLE);
   SetExitKey(KEY_F10);
   SetTargetFPS(frame_rate);
-  SetTraceLogLevel(LOG_DEBUG);
 
   Camera camera = setup_camera(program_config);
   Shader shader = setup_lighting();

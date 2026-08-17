@@ -3,6 +3,7 @@
 #include "profiler.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <float.h>
 
@@ -661,6 +662,14 @@ count_t epa_get_contact(bnd_world *world, const collision_detection_context *ctx
 
       case EPA_STATUS_CONVERGED:
         epa_calculate_contact(polytope, contact);
+        if (contact->normal.y < 0) {
+          printf("Age: %u, index A: %u, index B: %u, attempt: %u\n",
+            world->age,
+            ctx->body_a,
+            ctx->body_b,
+            attempts);
+          exit(1);
+        }
         return attempts;
 
       default:
