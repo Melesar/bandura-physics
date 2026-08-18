@@ -35,6 +35,9 @@ pub fn createStep(b: *std.Build, target: common.ResolvedTarget, banduraSourcePat
     });
 
     const run = b.addRunArtifact(exe);
+    if (b.args) |args| {
+        run.addArgs(args);
+    }
     const step = b.step("bench", "Run benchmarks");
 
     step.dependOn(&run.step);
