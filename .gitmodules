@@ -13,3 +13,6 @@
 [submodule "vendor/google_benchmark"]
 	path = vendor/google_benchmark
 	url = gh:google/benchmark
+[submodule "vendor/tracy"]
+	path = vendor/tracy
+	url = gh:wolfpld/tracy

@@ -5,7 +5,6 @@ const amalgam = @import("scripts/amalgam.zig");
 
 const bandura = @import("src/build.zig");
 const tests = @import("tests/build.zig");
-const profiler = @import("profiler/build.zig");
 const scenarios = @import("demos/build.zig");
 const benchmarks = @import("benchmarks/build.zig");
 
@@ -42,10 +41,6 @@ const Options = struct {
             .optimize = opts.optimize,
             .installBinaries = opts.installTests,
         };
-    }
-
-    fn forProfiler(opts: Options) profiler.Options {
-        return .{ .target = opts.target, .optimize = opts.optimize };
     }
 
     fn forScenarios(opts: Options) scenarios.Options {

@@ -7,4 +7,5 @@
         .hash = "zig_compile_commands-0.0.1-OZg5-e_JAAAGg1WHAePtq4l4Uvjs34BexnFFCZk63EaG",
     },
     .benchmarks = .{ .path = "vendor/google_benchmark" },
+    .tracy = .{ .path = "vendor/tracy" },
 }, .paths = .{"vendor"}, .fingerprint = 0xa52d1734ade93f22 }
