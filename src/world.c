@@ -510,7 +510,7 @@ static bnd_result_handle add_primitive_body_dynamic(bnd_world *world, bnd_body_s
 
 bnd_error bnd_add_plane(bnd_world *world, bnd_v3 point, bnd_v3 normal) {
   bnd_result_handle plane = add_primitive_body_static(world, (bnd_body_shape){ .type = BND_PLANE, .value = {.plane = { .normal = normal } }, .offset = bnd_v3_zero(), .rotation = bnd_quat_identity() });
-  if (plane.error.type != BND_OK) {
+  if (plane.error.type == BND_OK) {
     world->statics.positions[handle_to_inner_index(world, plane.value)] = point;
   }
 
@@ -1069,7 +1069,7 @@ bnd_error bnd_awaken_body(bnd_world *world, bnd_body_handle handle) {
     return (bnd_error) { BND_ERROR_BODY_HANDLE_INVALID, "The body is already awake" };
   }
 
-  count_t target_index = dynamics->awake_count > 0 ? dynamics->awake_count - 1 : 0;
+  count_t target_index = dynamics->awake_count;
   if (index != target_index) {
     swap_bodies(world, BND_BODY_DYNAMIC, index, target_index);
   }

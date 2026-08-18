@@ -420,10 +420,9 @@ count_t bnd_raycast_multiple(const bnd_world *world, bnd_ray ray, bnd_raycast_hi
 }
 
 static count_t overlap_typed(const bnd_world *world, bnd_v3 origin, float radius, bnd_body_handle *overlaps, count_t max_overlaps, bnd_body_type type) {
-  const common_data *dynamics = (common_data *) &world->dynamics;
   const common_data *data = as_common_const(world, type);
 
-  count_t ephemeral_index = ephemeral_body_index(dynamics);
+  count_t ephemeral_index = ephemeral_body_index(data);
   data->positions[ephemeral_index] = origin;
   data->aabbs[ephemeral_index] = (bnd_aabb){ origin, (bnd_v3){radius, radius, radius} };
 
@@ -432,13 +431,13 @@ static count_t overlap_typed(const bnd_world *world, bnd_v3 origin, float radius
   count_t overlap_count = 0;
   simplex s = { 0 };
   for (count_t i = 0; i < data->count; ++i) {
-    if (!aabb_intersect(dynamics, data, ephemeral_index, i)) {
+    if (!aabb_intersect(data, data, ephemeral_index, i)) {
       continue;
     }
 
     collision_detection_context ctx;
     ctx.world = world;
-    ctx.data_a = dynamics;
+    ctx.data_a = data;
     ctx.data_b = data;
     ctx.body_a = ephemeral_index;
     ctx.body_b = i;

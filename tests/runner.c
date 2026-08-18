@@ -1,14 +1,20 @@
 
-extern void labels_tests();
-extern void csv_file_monitor_tests();
 extern void shapes_tests();
 extern void joints_tests();
 extern void collisions_tests();
+extern void allocator_tests();
+extern void events_tests();
+extern void joint_api_tests();
+extern void queries_tests();
+extern void world_tests();
 
 int main() {
-  labels_tests();
-  csv_file_monitor_tests();
   shapes_tests();
   joints_tests();
   collisions_tests();
+  allocator_tests();
+  events_tests();
+  joint_api_tests();
+  queries_tests();
+  world_tests();
 }
