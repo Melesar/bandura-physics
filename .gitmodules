@@ -10,3 +10,6 @@
 [submodule "vendor/libccd"]
 	path = vendor/libccd
 	url = https://github.com/danfis/libccd
+[submodule "vendor/google_benchmark"]
+	path = vendor/google_benchmark
+	url = gh:google/benchmark

@@ -7,6 +7,7 @@ const bandura = @import("src/build.zig");
 const tests = @import("tests/build.zig");
 const profiler = @import("profiler/build.zig");
 const scenarios = @import("demos/build.zig");
+const benchmarks = @import("benchmarks/build.zig");
 
 const cc = @import("compile_commands");
 
@@ -28,35 +29,31 @@ const Options = struct {
     }
 
     fn forBandura(opts: Options) bandura.Options {
-      return bandura.Options {
-        .target =  opts.target,
-        .optimize = opts.optimize,
-        .linkage = opts.linkage,
-      };
+        return bandura.Options{
+            .target = opts.target,
+            .optimize = opts.optimize,
+            .linkage = opts.linkage,
+        };
     }
 
     fn forTests(opts: Options) tests.Options {
-      return tests.Options {
-        .target = opts.target,
-        .optimize = opts.optimize,
-        .installBinaries = opts.installTests,
-      };
+        return tests.Options{
+            .target = opts.target,
+            .optimize = opts.optimize,
+            .installBinaries = opts.installTests,
+        };
     }
 
     fn forProfiler(opts: Options) profiler.Options {
-      return .{
-        .target = opts.target,
-        .optimize = opts.optimize
-      };
+        return .{ .target = opts.target, .optimize = opts.optimize };
     }
 
     fn forScenarios(opts: Options) scenarios.Options {
-      return .{
-        .target = opts.target,
-        .optimize = opts.optimize,
-      };
+        return .{
+            .target = opts.target,
+            .optimize = opts.optimize,
+        };
     }
-
 };
 
 pub fn build(b: *std.Build) !void {
@@ -78,60 +75,58 @@ pub fn build(b: *std.Build) !void {
     try targets.append(b.allocator, try testsStep(b, defaultBanduraSrc, options));
 
     const scenarioOptions = options.forScenarios();
-    for(try scenarios.enumerate(b, scenarioOptions)) |s| {
-      s.default.addCSourceFile(defaultBanduraSrc);
-      s.profiling.addCSourceFile(profilingBanduraSrc);
+    for (try scenarios.enumerate(b, scenarioOptions)) |s| {
+        s.default.addCSourceFile(defaultBanduraSrc);
+        s.profiling.addCSourceFile(profilingBanduraSrc);
 
-      const target = s.compile(b);
-      try targets.append(b.allocator, target.default);
-      try targets.append(b.allocator, target.profiling);
+        const target = s.compile(b);
+        try targets.append(b.allocator, target.default);
+        try targets.append(b.allocator, target.profiling);
 
-      target.createSteps(b);
+        target.createSteps(b);
     }
+
+    try targets.append(b.allocator, try benchmarks.createStep(b, options.target, tmpPath));
 
     var compileCommandsStep = cc.createStep(b, "cdb", try targets.toOwnedSlice(b.allocator));
     compileCommandsStep.dependOn(&temp.step);
 }
 
 fn defaultStep(b: *std.Build, tempPath: std.Build.LazyPath, options: Options) !void {
-  var installStep = b.getInstallStep();
+    var installStep = b.getInstallStep();
 
-  const installBanduraHeader = b.addInstallHeaderFile(b.path("include/bandura.h"), "bandura.h");
-  const installMathHeader = b.addInstallHeaderFile(b.path("include/bnd-math.h"), "bnd-math.h");
-  const installAmalgam = b.addInstallFile(tempPath, AmalgamatedSourceName);
-  const buildBanduraFromOriginalSources = try bandura.buildLibrary(b, options.forBandura());
+    const installBanduraHeader = b.addInstallHeaderFile(b.path("include/bandura.h"), "bandura.h");
+    const installMathHeader = b.addInstallHeaderFile(b.path("include/bnd-math.h"), "bnd-math.h");
+    const installAmalgam = b.addInstallFile(tempPath, AmalgamatedSourceName);
+    const buildBanduraFromOriginalSources = try bandura.buildLibrary(b, options.forBandura());
 
-  installStep.dependOn(&installAmalgam.step);
-  installStep.dependOn(&installBanduraHeader.step);
-  installStep.dependOn(&installMathHeader.step);
-  installStep.dependOn(&buildBanduraFromOriginalSources.step);
+    installStep.dependOn(&installAmalgam.step);
+    installStep.dependOn(&installBanduraHeader.step);
+    installStep.dependOn(&installMathHeader.step);
+    installStep.dependOn(&buildBanduraFromOriginalSources.step);
 }
 
 fn testsStep(b: *std.Build, banduraSource: std.Build.Module.CSourceFile, options: Options) !*std.Build.Step.Compile {
-  const testsOpts = options.forTests();
-  const testsModule = try tests.createModule(b, testsOpts);
-  testsModule.addCSourceFile(banduraSource);
-  testsModule.addIncludePath(b.path("src"));
-  testsModule.addCMacro("COLLISION_TEST_SUITE_PATH", "\"tests/collision_test_cases.yaml\"");
+    const testsOpts = options.forTests();
+    const testsModule = try tests.createModule(b, testsOpts);
+    testsModule.addCSourceFile(banduraSource);
+    testsModule.addIncludePath(b.path("src"));
+    testsModule.addCMacro("COLLISION_TEST_SUITE_PATH", "\"tests/collision_test_cases.yaml\"");
 
-  common.enableTests(testsModule);
+    common.enableTests(testsModule);
 
-  var step = b.step("test", "Run tests");
+    var step = b.step("test", "Run tests");
 
-  const exe = tests.createExe(b, testsModule);
-  var artifact = tests.createArtifact(b, testsOpts, exe);
-  step.dependOn(&artifact.step);
+    const exe = tests.createExe(b, testsModule);
+    var artifact = tests.createArtifact(b, testsOpts, exe);
+    step.dependOn(&artifact.step);
 
-  return exe;
+    return exe;
 }
 
 fn amalgamPathToSource(path: std.Build.LazyPath, allocator: std.mem.Allocator, optimize: std.builtin.OptimizeMode) !std.Build.Module.CSourceFile {
-  var flags = try common.CompileFlags.default(allocator);
-  try flags.addOptimizations(optimize);
+    var flags = try common.CompileFlags.default(allocator);
+    try flags.addOptimizations(optimize);
 
-  return std.Build.Module.CSourceFile {
-    .file = path,
-    .flags = try flags.collect(),
-    .language = .c
-  };
+    return std.Build.Module.CSourceFile{ .file = path, .flags = try flags.collect(), .language = .c };
 }
