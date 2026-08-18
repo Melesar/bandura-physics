@@ -35,9 +35,11 @@ pub fn createStep(b: *std.Build, target: common.ResolvedTarget, banduraSourcePat
     });
 
     const run = b.addRunArtifact(exe);
-    if (b.args) |args| {
-        run.addArgs(args);
-    }
+    run.addArgs(&.{
+        "--benchmark_format=console",
+        "--benchmark_out=benchmark-result.json",
+        "--benchmark_out_format=json",
+    });
     const step = b.step("bench", "Run benchmarks");
 
     step.dependOn(&run.step);
