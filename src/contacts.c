@@ -275,16 +275,7 @@ cache_entry *contacts_cache_query(bnd_world *world, contact *contact, bnd_body_t
   uint64_t gen_a = data_a->generations[index_a];
   uint64_t gen_b = data_b->generations[index_b];
 
-  if (index_a > index_b) {
-    uint64_t tmp = index_a;
-    index_a = index_b;
-    index_b = tmp;
-
-    tmp = gen_a;
-    gen_a = gen_b;
-    gen_b = tmp;
-  }
-
+  // Features are stored in A and B's local spaces, so the cache key must retain their order.
   const uint64_t mask_23bit = 0x7FFFFF;
 
   uint64_t key = (uint64_t)type << 62;

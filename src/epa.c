@@ -2,8 +2,6 @@
 #include "bnd-math.h"
 #include "profiler.h"
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <float.h>
 
@@ -338,10 +336,8 @@ static void polytope_update_nearest(epa_polytope *polytope) {
     epa_polytope_node current_nearest = polytope->nodes[polytope->nearest];
 
     float distance = node.distance;
-    if (fabsf(distance - polytope->nearest_distance) < 0.001 && current_nearest.type == EPA_NODE_FACE) {
-      polytope->nearest_distance = distance;
-      polytope->nearest = index;
-    } else if (distance < polytope->nearest_distance) {
+    if (distance < polytope->nearest_distance ||
+        (distance == polytope->nearest_distance && current_nearest.type == EPA_NODE_FACE)) {
       polytope->nearest_distance = distance;
       polytope->nearest = index;
     }
@@ -662,14 +658,6 @@ count_t epa_get_contact(bnd_world *world, const collision_detection_context *ctx
 
       case EPA_STATUS_CONVERGED:
         epa_calculate_contact(polytope, contact);
-        if (contact->normal.y < 0) {
-          printf("Age: %u, index A: %u, index B: %u, attempt: %u\n",
-            world->age,
-            ctx->body_a,
-            ctx->body_b,
-            attempts);
-          exit(1);
-        }
         return attempts;
 
       default:
