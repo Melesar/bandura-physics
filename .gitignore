@@ -6,6 +6,7 @@ zig-pkg/
 build
 
 compile_commands.json
+benchmark-result-*.json
 
 # Other artifacts
 *.csv
