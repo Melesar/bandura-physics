@@ -43,6 +43,7 @@ typedef enum {
   BND_ERROR_MESH_IS_CONCAVE,
   BND_ERROR_BODY_HANDLE_INVALID,
   BND_ERROR_INVALID_BODY_TYPE,
+  BND_ERROR_INVALID_INPUT,
 
   // Debug mode errors
   BND_ERROR_INVALID_POLYTOPE,
@@ -1846,7 +1847,13 @@ static bnd_result_handle add_primitive_body_dynamic(bnd_world *world, bnd_body_s
 }
 
 bnd_error bnd_add_plane(bnd_world *world, bnd_v3 point, bnd_v3 normal) {
+  if (bnd_v3_lensqr(normal) < EPSILON * EPSILON) {
+    return (bnd_error) { BND_ERROR_INVALID_INPUT, "Plane normal cannot be a zero-vector" };
+  }
+
+  normal = bnd_v3_normalize(normal);
   bnd_result_handle plane = add_primitive_body_static(world, (bnd_body_shape){ .type = BND_PLANE, .value = {.plane = { .normal = normal } }, .offset = bnd_v3_zero(), .rotation = bnd_quat_identity() });
+
   if (plane.error.type == BND_OK) {
     world->statics.positions[handle_to_inner_index(world, plane.value)] = point;
   }
@@ -3070,6 +3077,7 @@ collision_test_suite *collision_tests_load(void) {
   char *path = COLLISION_TEST_SUITE_PATH;
   FILE *f = fopen(path, "r");
   if (!f) {
+    printf("Failed to open file %s\n", path);
     return NULL;
   }
 
@@ -6223,6 +6231,8 @@ bnd_error shapes_expand_bracket(bnd_world *world, shape_dimension_bracket bracke
 
   REALLOC_BUFFER8(current_bracket->slots, world->allocator, sizeof(uint64_t), current_block_count, new_block_count);
   REALLOC_BUFFER4(current_bracket->shapes, world->allocator, sizeof(bnd_body_shape), bracket_capacity * current_block_count * SHAPE_BRACKET_BLOCK_CAPACITY, shapes_count);
+
+  memset(current_bracket->slots + current_block_count, 0, sizeof(uint64_t));
 
   current_bracket->capacity = new_capacity;
 
