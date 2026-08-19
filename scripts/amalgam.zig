@@ -14,13 +14,12 @@ const MaxFileCount: u32 = 32;
 const IncludeStatement = "#include";
 const IncludeStatementLen: u32 = IncludeStatement.len;
 
-const IgnoreIncludes: [6][]const u8 = .{
+const IgnoreIncludes: [5][]const u8 = .{
     "#include \"bandura.h\"",
     "#include \"bnd-core.h\"",
     "#include \"bnd-math.h\"",
     "#include \"profiler.h\"",
     "#include \"testing.h\"",
-    "#include \"semaphores.h\"",
 };
 
 const Headers = enum(u32) {
@@ -28,7 +27,6 @@ const Headers = enum(u32) {
     bnd_core,
     bnd_math,
     profiler,
-    semaphores,
     testing,
 
     count,

@@ -12,5 +12,6 @@ benchmark-result-*.json
 *.csv
 *.png
 *.pdf
+*.o
 
 tests/test_cases_generator/test_cases_generator*
