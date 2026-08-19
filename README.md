@@ -22,7 +22,6 @@ Bandura is a traditional Ukrainian [musical instrument](https://en.wikipedia.org
   * [Math](#math)
   * [Memory allocator](#memory-allocator)
 * [License](#license)
-* [Third-party code](#third-party-code)
 * [LLM Usage](#llm-usage)
 
 ## Features 
@@ -38,7 +37,7 @@ Bandura is a traditional Ukrainian [musical instrument](https://en.wikipedia.org
 ## Limitations
 
 * **No concave meshes support yet**. Currently the library can only use convex meshes as collision shapes. Support for concave ones will be added in the future.
-* **Only discrete collision detection**. Object that move very fast can pass through objects. This will be fixed in the future versions.
+* **Only discrete collision detection**. Object that move very fast can pass through other objects. This will be fixed in the future versions.
 * **Not thread-safe**. All library APIs can only be called from a single thread. This limitation will also be lifted in the future.
 
 ## Installation and build
