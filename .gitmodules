@@ -12,7 +12,7 @@
 	url = https://github.com/danfis/libccd
 [submodule "vendor/google_benchmark"]
 	path = vendor/google_benchmark
-	url = gh:google/benchmark
+	url = https://github.com/google/benchmark
 [submodule "vendor/tracy"]
 	path = vendor/tracy
-	url = gh:wolfpld/tracy
+	url = https://github.com/wolfpld/tracy
