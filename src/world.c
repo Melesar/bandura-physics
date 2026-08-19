@@ -509,7 +509,13 @@ static bnd_result_handle add_primitive_body_dynamic(bnd_world *world, bnd_body_s
 }
 
 bnd_error bnd_add_plane(bnd_world *world, bnd_v3 point, bnd_v3 normal) {
+  if (bnd_v3_lensqr(normal) < EPSILON * EPSILON) {
+    return (bnd_error) { BND_ERROR_INVALID_INPUT, "Plane normal cannot be a zero-vector" };
+  }
+
+  normal = bnd_v3_normalize(normal);
   bnd_result_handle plane = add_primitive_body_static(world, (bnd_body_shape){ .type = BND_PLANE, .value = {.plane = { .normal = normal } }, .offset = bnd_v3_zero(), .rotation = bnd_quat_identity() });
+
   if (plane.error.type == BND_OK) {
     world->statics.positions[handle_to_inner_index(world, plane.value)] = point;
   }
