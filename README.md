@@ -23,6 +23,7 @@ Bandura is a traditional Ukrainian [musical instrument](https://en.wikipedia.org
   * [Memory allocator](#memory-allocator)
 * [License](#license)
 * [Third-party code](#third-party-code)
+* [LLM Usage](#llm-usage)
 
 ## Features 
 
@@ -618,5 +619,13 @@ int main() {
 ## License
 The project is licensed under the Zlib License. See [`LICENSE`](LICENSE).
 
-## Third-party code
-See [THIRD_PARTY_NOTICES](./THIRD_PARTY_NOTICES) for details.
+## LLM Usage
+
+On this project, LLMs are used for:
+
+* Writing tests and benchmarks
+* Code reviews
+* Occasional bugfix support
+* Making demo scenes
+
+Core library functionality is written manually without relying on AI neither for design nor implementation. I'm responsible for every line of code written there.
