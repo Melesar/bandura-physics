@@ -87,6 +87,8 @@ bnd_error shapes_expand_bracket(bnd_world *world, shape_dimension_bracket bracke
   REALLOC_BUFFER8(current_bracket->slots, world->allocator, sizeof(uint64_t), current_block_count, new_block_count);
   REALLOC_BUFFER4(current_bracket->shapes, world->allocator, sizeof(bnd_body_shape), bracket_capacity * current_block_count * SHAPE_BRACKET_BLOCK_CAPACITY, shapes_count);
 
+  memset(current_bracket->slots + current_block_count, 0, sizeof(uint64_t));
+
   current_bracket->capacity = new_capacity;
 
   return OK;

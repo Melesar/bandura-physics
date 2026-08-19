@@ -8,6 +8,12 @@
 
 void collisions_are_detected_correctly() {
   collision_test_suite *tests = collision_tests_load();
+  if (tests == NULL) {
+    printf("Failed to load collision tests");
+    exit(1);
+    return;
+  }
+
   bnd_config config = bnd_default_config();
   config.simulation.gravity = bnd_v3_zero();
 

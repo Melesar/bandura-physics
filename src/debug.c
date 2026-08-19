@@ -163,6 +163,7 @@ collision_test_suite *collision_tests_load(void) {
   char *path = COLLISION_TEST_SUITE_PATH;
   FILE *f = fopen(path, "r");
   if (!f) {
+    printf("Failed to open file %s\n", path);
     return NULL;
   }
 
