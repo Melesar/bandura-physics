@@ -1,12 +1,12 @@
-#include <string.h>
 #include <float.h>
 #include <math.h>
-#include <stdbool.h>
 #include <assert.h>
-#include <stdint.h>
-#include <stdarg.h>
+#include <stdbool.h>
+#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <stdarg.h>
 
 #if defined(BND_PROFILING)
 
@@ -1141,1272 +1141,204 @@ struct test {
 #endif
 
 // ================
-//   contacts.c
+//   gjk.c
 // ================
 
 
-#define HASH_TABLE_TOMBSTONE UINT32_MAX
-#define HASH_TABLE_EMPTY 0
+#define TOLERANCE FLT_EPSILON
 
-typedef enum {
-  SLOT_EMPTY      = 1,
-  SLOT_SAME_KEY   = 2,
-
-  SLOT_ANY        = SLOT_EMPTY | SLOT_SAME_KEY,
-} hash_table_slot_flags;
-
-static bnd_event make_collision_event(const bnd_world *world, bnd_body_type type, const contact *c) {
-  return (bnd_event) { .type = BND_EVENT_COLLISION, .collision =  (bnd_contact) {
-    .point = c->point,
-    .normal = c->normal,
-    .depth = c->depth,
-    .body_a = make_body_handle(world, BND_BODY_DYNAMIC, c->index_a),
-    .body_b = make_body_handle(world, type, c->index_b),
-  }};
-}
-
-static void emit_collision_events(bnd_world *world, const contact *contacts, count_t count, bnd_body_type type) {
-  for (count_t i = 0; i < count; ++i) {
-    const contact *c = &contacts[i];
-    common_data *data_a = as_common(world, BND_BODY_DYNAMIC);
-    common_data *data_b = as_common(world, type);
-
-    if (events_subscribed(data_a, c->index_a, BND_EVENT_COLLISION)) {
-      events_push(world, data_a, c->index_a, make_collision_event(world, type, c));
-    }
-
-    if (events_subscribed(data_b, c->index_b, BND_EVENT_COLLISION)) {
-      events_push(world, data_b, c->index_b, make_collision_event(world, type, c));
-    }
-  }
-}
-
-static inline uint64_t cache_key_hash(uint64_t key) {
-  key ^= key >> 30; key *= 0xbf58476d1ce4e5b9ULL;
-  key ^= key >> 27; key *= 0x94d049bb133111ebULL;
-  key ^= key >> 31;
-
-  return key;
-}
-
-static bnd_result_u32 cache_table_find_slot(bnd_world *world, uint64_t key, hash_table_slot_flags flags) {
-  contacts_cache *cache = &world->contacts_cache;
-
-  uint64_t hash = cache_key_hash(key);
-  count_t hash_table_index = hash & (cache->hash_table_capacity - 1);
-
-  bool search_empty = flags & SLOT_EMPTY;
-  bool search_same_key = flags & SLOT_SAME_KEY;
-  int32_t first_tombstone = -1;
-
-  count_t i = hash_table_index;
-  do {
-    count_t index = cache->hash_table[i];
-
-    if (index == HASH_TABLE_EMPTY) {
-      if (search_same_key && search_empty && first_tombstone >= 0) {
-        return BND_RESULT_OK(u32, first_tombstone);
-      }
-
-      if (search_empty) {
-        return BND_RESULT_OK(u32, i);
-      }
-
-      return BND_RESULT_ERR(u32, BND_ERROR_NOT_FOUND, "");
-    }
-
-    if (index == HASH_TABLE_TOMBSTONE) {
-      if (search_empty && search_same_key) {
-        if (first_tombstone < 0) {
-          first_tombstone = i;
-        }
-      } else if (search_empty) {
-        return BND_RESULT_OK(u32, i);
-      }
-
-      goto next;
-    }
-
-    cache_entry *entry = &cache->entries[index];
-    if ((flags & SLOT_SAME_KEY) && entry->key == key) {
-      return BND_RESULT_OK(u32, i);
-    }
-
-    next:
-    i = (i + 1) & (cache->hash_table_capacity - 1);
-  } while(i != hash_table_index);
-
-  if (search_same_key && search_empty && first_tombstone >= 0) {
-    return BND_RESULT_OK(u32, first_tombstone);
-  }
-
-  return BND_RESULT_ERR(u32, BND_ERROR_OUT_OF_MEMORY, "Hash table is full");
-}
-
-static bnd_error cache_table_realloc_if_needed(bnd_world *world) {
-  contacts_cache *cache = &world->contacts_cache;
-
-  if (cache->hash_table_capacity * 0.75f < cache->entry_count) {
-    count_t new_capacity = cache->hash_table_capacity * 2;
-    REALLOC_BUFFER4(cache->hash_table, world->allocator, sizeof(count_t), cache->hash_table_capacity, new_capacity)
-    memset(cache->hash_table, 0, new_capacity * sizeof(count_t));
-
-    cache->hash_table_capacity = new_capacity;
-
-    for (count_t i = 1; i <= cache->entry_count; ++i) {
-      uint64_t key = cache->entries[i].key;
-      bnd_result_u32 index = cache_table_find_slot(world, key, SLOT_ANY);
-      if (index.error.type != BND_OK) {
-        return index.error;
-      }
-
-      cache->hash_table[index.value] = i;
-    }
-  }
-
-  if (cache->entry_count + 1 >= cache->buffer_capacity) {
-    count_t new_capacity = cache->buffer_capacity * 2;
-
-    REALLOC_BUFFER8(cache->entries, world->allocator, sizeof(cache_entry), cache->buffer_capacity, new_capacity);
-    memset(cache->entries + cache->buffer_capacity, 0, cache->buffer_capacity * sizeof(cache_entry));
-
-    cache->buffer_capacity = new_capacity;
-  }
-
-  return OK;
-}
-
-static bnd_result_u32 cache_table_insert(bnd_world *world, uint64_t key) {
-  contacts_cache *cache = &world->contacts_cache;
-
-  PROPAGATE_RESULT(u32, cache_table_realloc_if_needed(world));
-
-  bnd_result_u32 hash_table_slot = cache_table_find_slot(world, key, SLOT_ANY);
-  if (hash_table_slot.error.type != BND_OK) {
-    return hash_table_slot;
-  }
-
-  cache_entry *entry;
-  count_t entry_index = cache->hash_table[hash_table_slot.value];
-  if (entry_index == HASH_TABLE_EMPTY || entry_index == HASH_TABLE_TOMBSTONE) {
-    entry_index = ++cache->entry_count; // Prefix-increment because we want to skip 0 index
-
-    entry = &cache->entries[entry_index];
-    entry->key = key;
-    entry->access_time = world->age;
-    entry->feature_count = 0;
-
-    cache->hash_table[hash_table_slot.value] = entry_index;
-  } else if (cache->entries[entry_index].key == key) {
-    entry = &cache->entries[entry_index];
-    entry->access_time = world->age;
-  }
-
-  return BND_RESULT_OK(u32, entry_index);
-}
-
-void contacts_cache_reset(bnd_world *world) {
-  contacts_cache *cache = &world->contacts_cache;
-  cache->entry_count = 0;
-  memset(cache->hash_table, 0, cache->hash_table_capacity * sizeof(uint32_t));
-}
-
-void contacts_generate(bnd_world *world) {
-  PROFILER_FUNCTION_START
-
-  count_t dynamic_count = collisions_detect(world, 0, BND_BODY_DYNAMIC);
-  emit_collision_events(world, world->contacts.values, dynamic_count, BND_BODY_DYNAMIC);
-
-  dynamic_count += joints_generate_contacts(world, dynamic_count, BND_BODY_DYNAMIC);
-
-  const count_t static_offset = dynamic_count;
-  count_t static_count = collisions_detect(world, static_offset, BND_BODY_STATIC);
-  emit_collision_events(world, world->contacts.values + static_offset, static_count, BND_BODY_STATIC);
-
-  static_count += joints_generate_contacts(world, static_offset + static_count, BND_BODY_STATIC);
-
-  world->contacts.count = dynamic_count + static_count;
-  world->contacts.dynamic_count = dynamic_count;
-  world->stats.contacts_count = world->contacts.count;
-
-  PROFILER_FUNCTION_END
-}
-
-void contacts_reset(bnd_world *world) {
-  world->contacts.count = 0;
-  world->contacts.dynamic_count = 0;
-}
-
-bnd_error contacts_init(bnd_world *world) {
-  contacts *contacts = &world->contacts;
-  bnd_allocator allocator = world->allocator;
-
-  ALLOC_BUFFER4(contacts->values, world->config.memory.contacts_capacity * sizeof(contact));
-
-  contacts->capacity = world->config.memory.contacts_capacity;
-  contacts->count = 0;
-  contacts->dynamic_count = 0;
-
-  collision_detection_init();
-  PROPAGATE_ERROR(contacts_cache_init(world));
-
-  return OK;
-}
-
-void contacts_teardown(bnd_world *world) {
-  world->allocator.free(world->contacts.values, world->contacts.capacity * sizeof(contact));
-
-  contacts_cache *cache = &world->contacts_cache;
-  world->allocator.free(cache->hash_table, cache->hash_table_capacity * sizeof(count_t));
-  world->allocator.free(cache->entries, cache->buffer_capacity * sizeof(cache_entry));
-}
-
-bnd_error contacts_ensure_capacity(bnd_world *world, count_t contacts_offset, count_t additional_count) {
-  count_t desired_count = contacts_offset + additional_count;
-  if (desired_count <= world->contacts.capacity) {
-    return OK;
-  }
-
-  if (world->allocator.realloc == NULL) {
-    return (bnd_error) { BND_ERROR_NO_SPACE_AVAILABLE, "Contacts buffer is full and Allocator.realloc is NULL" };
-  }
-
-  count_t old_capacity = world->contacts.capacity;
-  while (desired_count > world->contacts.capacity) {
-    world->contacts.capacity <<= 1;
-
-    if (world->contacts.capacity >= desired_count) {
-      REALLOC_BUFFER4(world->contacts.values, world->allocator, sizeof(contact), old_capacity, world->contacts.capacity);
-      break;
-    }
-  }
-
-  return OK;
-}
-
-bnd_error contacts_cache_init(bnd_world *world) {
-  bnd_allocator allocator = world->allocator;
-  contacts_cache *cache = &world->contacts_cache;
-
-  cache->entry_count = 0;
-  cache->buffer_capacity = world->config.advanced.contacts_cache.buffer_capacity;
-
-  count_t desired_capacity = world->config.advanced.contacts_cache.hash_table_capacity;
-  cache->hash_table_capacity = 1;
-  while (cache->hash_table_capacity < desired_capacity) {
-    cache->hash_table_capacity *= 2;
-  }
-
-  ALLOC_BUFFER4(cache->hash_table, cache->hash_table_capacity * sizeof(uint32_t));
-  ALLOC_BUFFER8(cache->entries, cache->buffer_capacity * sizeof(cache_entry));
-
-  memset(cache->hash_table, 0, cache->hash_table_capacity * sizeof(uint32_t));
-  memset(cache->entries, 0, cache->buffer_capacity * sizeof(cache_entry));
-
-  return OK;
-}
-
-cache_entry *contacts_cache_query(bnd_world *world, contact *contact, bnd_body_type type) {
-  const common_data *data_a = as_common_const(world, BND_BODY_DYNAMIC);
-  const common_data *data_b = as_common_const(world, type);
-
-  uint64_t index_a = data_a->inner_lookup[contact->index_a];
-  uint64_t index_b = data_b->inner_lookup[contact->index_b];
-  uint64_t gen_a = data_a->generations[index_a];
-  uint64_t gen_b = data_b->generations[index_b];
-
-  // Features are stored in A and B's local spaces, so the cache key must retain their order.
-  const uint64_t mask_23bit = 0x7FFFFF;
-
-  uint64_t key = (uint64_t)type << 62;
-  key |= gen_a << 53;
-  key |= (index_a & mask_23bit) << 31;
-  key |= gen_b << 23;
-  key |= index_b & mask_23bit;
-
-  bnd_result_u32 index = cache_table_insert(world, key);
-  if (index.error.type != BND_OK) {
-    return NULL;
-  }
-
-  return &world->contacts_cache.entries[index.value];
-}
-
-void contacts_cache_prune(bnd_world *world) {
-  PROFILER_FUNCTION_START
-
-  contacts_cache *cache = &world->contacts_cache;
-  cache_entry *entries = cache->entries;
-  int32_t entry_count = (int32_t) cache->entry_count;
-
-  for (int32_t i = entry_count; i > 0; --i) {
-    count_t age = world->age - entries[i].access_time;
-
-    if (age < world->config.advanced.contacts_cache.max_age) {
-      continue;
-    }
-
-    bnd_result_u32 current_slot_index = cache_table_find_slot(world, entries[i].key, SLOT_SAME_KEY);
-    if (current_slot_index.error.type == BND_OK) {
-      cache->hash_table[current_slot_index.value] = HASH_TABLE_TOMBSTONE;
-    }
-
-    bnd_result_u32 replacement_slot_index = cache_table_find_slot(world, entries[entry_count].key, SLOT_SAME_KEY);
-    if (replacement_slot_index.error.type == BND_OK) {
-      cache->hash_table[replacement_slot_index.value] = i;
-    }
-
-    entries[i] = entries[entry_count--];
-  }
-
-  world->contacts_cache.entry_count = entry_count;
-
-  PROFILER_FUNCTION_END
-}
-
-static float cross_2d(bnd_v3 a, bnd_v3 b, bnd_v3 c) {
-  bnd_v3 ab = { b.x - a.x, b.y - a.y, 0 };
-  bnd_v3 ac = { c.x - a.x, c.y - a.y, 0 };
-  return ab.x * ac.y - ab.y * ac.x;
-}
-
-static void sort_points(bnd_v3 *points) {
-  for (count_t i = 1; i < MAX_CONTACTS_PER_PAIR; ++i) {
-    bnd_v3 value = points[i];
-    count_t j = i;
-    while (j > 0) {
-      bnd_v3 previous = points[j - 1];
-      if (previous.x < value.x || (previous.x == value.x && previous.y <= value.y)) {
-        break;
-      }
-
-      points[j] = previous;
-      --j;
-    }
-    points[j] = value;
-  }
-}
-
-static float contact_set_area(contact *contacts, const count_t *indices, bnd_v3 origin, bnd_v3 tangent_x, bnd_v3 tangent_y) {
-  bnd_v3 points[MAX_CONTACTS_PER_PAIR];
-  for (count_t i = 0; i < MAX_CONTACTS_PER_PAIR; ++i) {
-    bnd_v3 offset = bnd_v3_sub(contacts[indices[i]].point, origin);
-    points[i] = (bnd_v3){
-      .x = bnd_v3_dot(offset, tangent_x),
-      .y = bnd_v3_dot(offset, tangent_y),
-    };
-  }
-
-  sort_points(points);
-
-  bnd_v3 hull[MAX_CONTACTS_PER_PAIR * 2];
-  count_t hull_count = 0;
-
-  for (count_t i = 0; i < MAX_CONTACTS_PER_PAIR; ++i) {
-    while (hull_count >= 2 && cross_2d(hull[hull_count - 2], hull[hull_count - 1], points[i]) <= EPSILON) {
-      --hull_count;
-    }
-    hull[hull_count++] = points[i];
-  }
-
-  count_t lower_count = hull_count;
-  for (count_t i = MAX_CONTACTS_PER_PAIR - 1; i < MAX_CONTACTS_PER_PAIR; --i) {
-    while (hull_count > lower_count && cross_2d(hull[hull_count - 2], hull[hull_count - 1], points[i]) <= EPSILON) {
-      --hull_count;
-    }
-    hull[hull_count++] = points[i];
-  }
-
-  if (hull_count <= 3) {
+inline static int sign(float x) {
+  if (fabsf(x) < TOLERANCE) {
     return 0;
   }
 
-  --hull_count;
-
-  float area = 0;
-  for (count_t i = 0; i < hull_count; ++i) {
-    bnd_v3 a = hull[i];
-    bnd_v3 b = hull[(i + 1) % hull_count];
-    area += a.x * b.y - a.y * b.x;
-  }
-
-  return fabsf(area) * 0.5f;
+  return x > 0 ? 1 : -1;
 }
 
-static float contact_set_depth(contact *contacts, const count_t *indices) {
-  float depth = 0;
-  for (count_t i = 0; i < MAX_CONTACTS_PER_PAIR; ++i) {
-    depth += contacts[indices[i]].depth;
-  }
-
-  return depth;
+static inline bool is_zero(float x) {
+  return fabsf(x) < TOLERANCE;
 }
 
-static bool better_contact_set(float area, float depth, float best_area, float best_depth) {
-  if (area > best_area + EPSILON) {
-    return true;
+static void simplex_add_point(simplex *s, body_support p) {
+  s->points[3] = s->points[2];
+  s->points[2] = s->points[1];
+  s->points[1] = s->points[0];
+  s->points[0] = p;
+
+  s->size += 1;
+}
+
+static bool simplex_update_2(simplex *s, bnd_v3 *direction) {
+  bnd_v3 a = s->points[0].p;
+  bnd_v3 b = s->points[1].p;
+  bnd_v3 ab = bnd_v3_sub(b, a);
+  bnd_v3 ao = bnd_v3_negate(a);
+
+  bnd_v3 cr = bnd_v3_cross(ab, ao);
+  float c = bnd_v3_dot(ab, ao);
+
+  if (bnd_v3_lensqr(cr) < TOLERANCE && c > 0) {
+    *direction = bnd_v3_zero();
+    return false;
   }
 
-  if (fabsf(area - best_area) <= EPSILON && depth > best_depth + EPSILON) {
-    return true;
+  if (is_zero(c) || c > 0) {
+    *direction = bnd_v3_cross(cr, ab);
+  } else {
+    s->size = 1;
+    *direction = ao;
   }
 
   return false;
 }
 
-static void sort_indices(count_t *indices) {
-  for (count_t i = 1; i < MAX_CONTACTS_PER_PAIR; ++i) {
-    count_t value = indices[i];
-    count_t j = i;
-    while (j > 0 && indices[j - 1] > value) {
-      indices[j] = indices[j - 1];
-      --j;
-    }
-    indices[j] = value;
-  }
-}
+static bool simplex_update_3(simplex *s, bnd_v3 *direction) {
+  body_support a = s->points[0];
+  body_support b = s->points[1];
+  body_support c = s->points[2];
 
-void contacts_filter_largest_surface_area(contact *contacts, count_t contact_count, count_t *selected_indices) {
-  count_t deepest = 0;
-  for (count_t i = 1; i < contact_count; ++i) {
-    if (contacts[i].depth > contacts[deepest].depth) {
-      deepest = i;
-    }
+  if (bnd_v3_distancesqr(a.p, b.p) < TOLERANCE || bnd_v3_distancesqr(a.p, c.p) < TOLERANCE) {
+    *direction = bnd_v3_zero();
+    return false;
   }
 
-  bnd_v3 normal = contacts[deepest].normal;
-  bnd_v3 tangent_seed = fabsf(normal.y) < 0.70710678f ? bnd_v3_up() : bnd_v3_right();
-  bnd_v3 tangent_x = bnd_v3_cross(tangent_seed, normal);
-  if (bnd_v3_lensqr(tangent_x) <= EPSILON * EPSILON) {
-    tangent_x = bnd_v3_cross(bnd_v3_forward(), normal);
-  }
-  tangent_x = bnd_v3_normalize(tangent_x);
-  bnd_v3 tangent_y = bnd_v3_normalize(bnd_v3_cross(normal, tangent_x));
-  bnd_v3 origin = contacts[deepest].point;
-
-  float best_area = -FLT_MAX;
-  float best_depth = -FLT_MAX;
-
-  for (count_t i = 0; i < contact_count; ++i) {
-    if (i == deepest) {
-      continue;
-    }
-
-    for (count_t j = i + 1; j < contact_count; ++j) {
-      if (j == deepest) {
-        continue;
-      }
-
-      for (count_t k = j + 1; k < contact_count; ++k) {
-        if (k == deepest) {
-          continue;
-        }
-
-        count_t indices[MAX_CONTACTS_PER_PAIR] = { deepest, i, j, k };
-        float area = contact_set_area(contacts, indices, origin, tangent_x, tangent_y);
-        float depth = contact_set_depth(contacts, indices);
-
-        if (better_contact_set(area, depth, best_area, best_depth)) {
-          memcpy(selected_indices, indices, sizeof(indices));
-          best_area = area;
-          best_depth = depth;
-        }
-      }
-    }
-  }
-
-  // Since will move the elements within the same buffer, having the indices in ascending order will prevent data corruption.
-  sort_indices(selected_indices);
-
-  for (count_t i = 0; i < MAX_CONTACTS_PER_PAIR; ++i) {
-    contacts[i] = contacts[selected_indices[i]];
-  }
-}
-
-// ================
-//   math.c
-// ================
-
-bnd_m3 bnd_m3_identity(void) {
-  return (bnd_m3){ { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } };
-}
-
-bnd_v3 bnd_m3_rotate(bnd_v3 v, bnd_m3 m) {
-  return (bnd_v3){ bnd_v3_dot(*(bnd_v3 *)m.m0, v), bnd_v3_dot(*(bnd_v3 *)m.m1, v), bnd_v3_dot(*(bnd_v3 *)m.m2, v) };
-}
-
-bnd_m3 bnd_m3_transpose(bnd_m3 m) {
-  return (bnd_m3){ { m.m0[0], m.m1[0], m.m2[0] }, { m.m0[1], m.m1[1], m.m2[1] }, { m.m0[2], m.m1[2], m.m2[2] } };
-}
-
-bnd_m3 bnd_m3_multiply(bnd_m3 a, bnd_m3 b) {
-  bnd_m3 result;
-
-  result.m0[0] = a.m0[0] * b.m0[0] + a.m0[1] * b.m1[0] + a.m0[2] * b.m2[0];
-  result.m0[1] = a.m0[0] * b.m0[1] + a.m0[1] * b.m1[1] + a.m0[2] * b.m2[1];
-  result.m0[2] = a.m0[0] * b.m0[2] + a.m0[1] * b.m1[2] + a.m0[2] * b.m2[2];
-
-  result.m1[0] = a.m1[0] * b.m0[0] + a.m1[1] * b.m1[0] + a.m1[2] * b.m2[0];
-  result.m1[1] = a.m1[0] * b.m0[1] + a.m1[1] * b.m1[1] + a.m1[2] * b.m2[1];
-  result.m1[2] = a.m1[0] * b.m0[2] + a.m1[1] * b.m1[2] + a.m1[2] * b.m2[2];
-
-  result.m2[0] = a.m2[0] * b.m0[0] + a.m2[1] * b.m1[0] + a.m2[2] * b.m2[0];
-  result.m2[1] = a.m2[0] * b.m0[1] + a.m2[1] * b.m1[1] + a.m2[2] * b.m2[1];
-  result.m2[2] = a.m2[0] * b.m0[2] + a.m2[1] * b.m1[2] + a.m2[2] * b.m2[2];
-
-  return result;
-}
-
-bnd_v3 bnd_m3_rotate_inverse(bnd_v3 v, bnd_m3 m) {
-  return bnd_m3_rotate(v, bnd_m3_transpose(m));
-}
-
-bnd_m3 bnd_m3_from_basis(bnd_v3 x, bnd_v3 y, bnd_v3 z) {
-  return (bnd_m3){ { x.x, y.x, z.x }, { x.y, y.y, z.y }, { x.z, y.z, z.z } };
-}
-
-bnd_m3 bnd_m3_negate(bnd_m3 m) {
-  return (bnd_m3){ { -m.m0[0], -m.m0[1], -m.m0[2] }, { -m.m1[0], -m.m1[1], -m.m1[2] }, { -m.m2[0], -m.m2[1], -m.m2[2] } };
-}
-
-bnd_m3 bnd_m3_inverse(bnd_m3 m) {
-  float t4 = m.m0[0] * m.m1[1];
-  float t6 = m.m0[0] * m.m1[2];
-  float t8 = m.m0[1] * m.m1[0];
-  float t10 = m.m0[2] * m.m1[0];
-  float t12 = m.m0[1] * m.m2[0];
-  float t14 = m.m0[2] * m.m2[0];
-
-  // Calculate the determinant
-  float t16 = (t4 * m.m2[2] - t6 * m.m2[1] - t8 * m.m2[2] + t10 * m.m2[1] + t12 * m.m1[2] - t14 * m.m1[1]);
-
-  // Make sure the determinant is non-zero.
-  if (t16 == (float)0.0f) {
-    return m;
-  }
-
-  float t17 = 1 / t16;
-
-  bnd_m3 result;
-  result.m0[0] = (m.m1[1] * m.m2[2] - m.m1[2] * m.m2[1]) * t17;
-  result.m0[1] = -(m.m0[1] * m.m2[2] - m.m0[2] * m.m2[1]) * t17;
-  result.m0[2] = (m.m0[1] * m.m1[2] - m.m0[2] * m.m1[1]) * t17;
-  result.m1[0] = -(m.m1[0] * m.m2[2] - m.m1[2] * m.m2[0]) * t17;
-  result.m1[1] = (m.m0[0] * m.m2[2] - t14) * t17;
-  result.m1[2] = -(t6 - t10) * t17;
-  result.m2[0] = (m.m1[0] * m.m2[1] - m.m1[1] * m.m2[0]) * t17;
-  result.m2[1] = -(m.m0[0] * m.m2[1] - t12) * t17;
-  result.m2[2] = (t4 - t8) * t17;
-
-  return result;
-}
-
-bnd_m3 bnd_m3_skew_symmetric(bnd_v3 v) {
-  return (bnd_m3){ { 0, -v.z, v.y }, { v.z, 0, -v.x }, { -v.y, v.x, 0 } };
-}
-
-bnd_m3 bnd_m3_add(bnd_m3 a, bnd_m3 b) {
-  return (bnd_m3){
-    { a.m0[0] + b.m0[0], a.m0[1] + b.m0[1], a.m0[2] + b.m0[2] },
-    { a.m1[0] + b.m1[0], a.m1[1] + b.m1[1], a.m1[2] + b.m1[2] },
-    { a.m2[0] + b.m2[0], a.m2[1] + b.m2[1], a.m2[2] + b.m2[2] }
-  };
-}
-
-bnd_m3 bnd_m3_scale(bnd_m3 m, float s) {
-  return (bnd_m3){
-    { m.m0[0] * s, m.m0[1] * s, m.m0[2] * s },
-    { m.m1[0] * s, m.m1[1] * s, m.m1[2] * s },
-    { m.m2[0] * s, m.m2[1] * s, m.m2[2] * s },
-  };
-}
-
-bnd_m3 matrix_sub(bnd_m3 a, bnd_m3 b) {
-  return (bnd_m3){
-    { a.m0[0] - b.m0[0], a.m0[1] - b.m0[1], a.m0[2] - b.m0[2] },
-    { a.m1[0] - b.m1[0], a.m1[1] - b.m1[1], a.m1[2] - b.m1[2] },
-    { a.m2[0] - b.m2[0], a.m2[1] - b.m2[1], a.m2[2] - b.m2[2] }
-  };
-}
-
-bnd_m3 bnd_m3_initial_inertia(bnd_v3 inertia) {
-  return (bnd_m3){ { inertia.x, 0, 0 }, { 0, inertia.y, 0 }, { 0, 0, inertia.z } };
-}
-
-bnd_m3 bnd_m3_inertia(bnd_m3 initial_inertia, bnd_quat q) {
-  float a2 = q.x * q.x;
-  float b2 = q.y * q.y;
-  float c2 = q.z * q.z;
-  float ac = q.x * q.z;
-  float ab = q.x * q.y;
-  float bc = q.y * q.z;
-  float ad = q.w * q.x;
-  float bd = q.w * q.y;
-  float cd = q.w * q.z;
-
-  bnd_m3 rotation;
-
-  rotation.m0[0] = 1 - 2 * (b2 + c2);
-  rotation.m0[1] = 2 * (ab - cd);
-  rotation.m0[2] = 2 * (ac + bd);
-
-  rotation.m1[0] = 2 * (ab + cd);
-  rotation.m1[1] = 1 - 2 * (a2 + c2);
-  rotation.m1[2] = 2 * (bc - ad);
-
-  rotation.m2[0] = 2 * (ac - bd);
-  rotation.m2[1] = 2 * (bc + ad);
-  rotation.m2[2] = 1 - 2 * (a2 + b2);
-
-  return bnd_m3_multiply(bnd_m3_multiply(rotation, initial_inertia), bnd_m3_transpose(rotation));
-}
-
-bnd_m3 bnd_m3_displacement_inertia(bnd_m3 i0, bnd_v3 offset, float mass) {
-  float r = bnd_v3_dot(offset, offset);
-
-  bnd_m3 a = { 0 };
-  a.m0[0] = r;
-  a.m1[1] = r;
-  a.m2[2] = r;
-
-  bnd_m3 b;
-  b.m0[0] = offset.x * offset.x;
-  b.m0[1] = offset.x * offset.y;
-  b.m0[2] = offset.x * offset.z;
-
-  b.m1[0] = b.m0[1];
-  b.m1[1] = offset.y * offset.y;
-  b.m1[2] = offset.y * offset.z;
-
-  b.m2[0] = b.m0[2];
-  b.m2[1] = b.m1[2];
-  b.m2[2] = offset.z * offset.z;
-
-  return bnd_m3_add(i0, bnd_m3_scale(matrix_sub(a, b), mass));
-}
-
-bnd_quat integrate_rotation_midpoint(bnd_quat rotation, bnd_v3 angular_momentum, bnd_m3 base_inv_inertia, float dt) {
-  bnd_m3 inv_inertia = bnd_m3_inertia(base_inv_inertia, rotation);
-  bnd_v3 omega = bnd_m3_rotate(angular_momentum, inv_inertia);
-
-  const float qdt = 0.25f * dt;
-  const float hdt = 0.5f * dt;
-
-  float half_angle = bnd_v3_len(omega) * qdt;
-  bnd_quat half_step;
-  if (half_angle < 1e-6f) {
-    half_step = (bnd_quat){ omega.x * qdt, omega.y * qdt, omega.z * qdt, 1.0f };
-    half_step = bnd_quat_normalize(half_step);
-  } else {
-    float scale_factor = sinf(half_angle) / bnd_v3_len(omega);
-    half_step = (bnd_quat){ omega.x * scale_factor, omega.y * scale_factor, omega.z * scale_factor, cosf(half_angle) };
-  }
-
-  bnd_quat mid_rotation = bnd_quat_normalize(bnd_quat_mul(half_step, rotation));
-
-  inv_inertia = bnd_m3_inertia(base_inv_inertia, mid_rotation);
-  omega = bnd_m3_rotate(angular_momentum, inv_inertia);
-
-  float angle = bnd_v3_len(omega) * hdt;
-  if (angle < 1e-6f) {
-    bnd_quat step = (bnd_quat){ omega.x * hdt, omega.y * hdt, omega.z * hdt, 1.0f };
-    step = bnd_quat_normalize(step);
-    return bnd_quat_normalize(bnd_quat_mul(step, rotation));
-  }
-
-  float scale_factor = sinf(angle) / bnd_v3_len(omega);
-  bnd_quat step = (bnd_quat){ omega.x * scale_factor, omega.y * scale_factor, omega.z * scale_factor, cosf(angle) };
-
-  return bnd_quat_normalize(bnd_quat_mul(step, rotation));
-}
-
-float sqr_distance_to_line_segment(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 *closest) {
-  bnd_v3 d = bnd_v3_sub(b, a);
-  bnd_v3 ao = bnd_v3_sub(a, from);
-
-  float t = -1.0 * bnd_v3_dot(ao, d);
-  t /= bnd_v3_lensqr(d);
-
-  if (t <= 0) {
-    *closest = a;
-    return bnd_v3_distancesqr(a, from);
-  } else if (t >= 1) {
-    *closest = b;
-    return bnd_v3_distancesqr(b, from);
-  } else {
-    *closest = bnd_v3_add(a, bnd_v3_scale(d, t));
-
-    return bnd_v3_distancesqr(*closest, from);
-  }
-}
-
-float sqr_distance_to_triangle(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_v3 *closest) {
-  bnd_v3 d1 = bnd_v3_sub(b, a);
-  bnd_v3 d2 = bnd_v3_sub(c, a);
-  bnd_v3 ao = bnd_v3_sub(a, from);
-
-  float v = bnd_v3_dot(d1, d1);
-  float w = bnd_v3_dot(d2, d2);
-  float p = bnd_v3_dot(ao, d1);
-  float q = bnd_v3_dot(ao, d2);
-  float r = bnd_v3_dot(d1, d2);
-
-  float s, t;
-  float distance = 0;
-  float d = w * v - r * r;
-  if (fabsf(d) < FLT_EPSILON) {
-    s = t = -1;
-  } else {
-    s = (q * r - w * p) / d;
-    t = (-s * r - q) / w;
-  }
-
-  if (s >= 0 && s <= 1 && t >= 0 && t <= 1 && t + s <= 1) {
-    d1 = bnd_v3_scale(d1, s);
-    d2 = bnd_v3_scale(d2, t);
-
-    *closest = bnd_v3_add(a, bnd_v3_add(d1, d2));
-    distance = bnd_v3_distancesqr(*closest, from);
-  } else {
-    distance = sqr_distance_to_line_segment(from, a, b, closest);
-
-    bnd_v3 closest_2;
-    float distance2 = sqr_distance_to_line_segment(from, a, c, &closest_2);
-    if (distance2 < distance) {
-      distance = distance2;
-      *closest = closest_2;
-    }
-
-    distance2 = sqr_distance_to_line_segment(from, b, c, &closest_2);
-    if (distance2 < distance) {
-      distance = distance2;
-      *closest = closest_2;
-    }
-  }
-
-  return distance;
-}
-
-
-bnd_m3 quat_as_matrix(bnd_quat q) {
-  bnd_m3 result;
-
-  float a2 = q.x*q.x;
-  float b2 = q.y*q.y;
-  float c2 = q.z*q.z;
-  float ac = q.x*q.z;
-  float ab = q.x*q.y;
-  float bc = q.y*q.z;
-  float ad = q.w*q.x;
-  float bd = q.w*q.y;
-  float cd = q.w*q.z;
-
-  result.m0[0] = 1 - 2*(b2 + c2);
-  result.m1[0] = 2*(ab + cd);
-  result.m2[0] = 2*(ac - bd);
-
-  result.m0[1] = 2*(ab - cd);
-  result.m1[1] = 1 - 2*(a2 + c2);
-  result.m2[1] = 2*(bc + ad);
-
-  result.m0[2] = 2*(ac + bd);
-  result.m1[2] = 2*(bc - ad);
-  result.m2[2] = 1 - 2*(a2 + b2);
-
-  return result;
-}
-
-// ================
-//   queries.c
-// ================
-
-
-typedef bool (*raycast_func)(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *hit);
-
-typedef struct {
-  const bnd_world *world;
-  const common_data *data;
-  bnd_body_type type;
-  count_t body_index;
-  count_t shape_index;
-} raycast_context;
-
-static bnd_ray ray_transform(bnd_ray r, bnd_v3 witness, bnd_quat rotation) {
-  bnd_quat inv_rotation = bnd_quat_invert(rotation);
-  r.origin = bnd_v3_rotate(bnd_v3_sub(r.origin, witness), inv_rotation);
-  r.direction = bnd_v3_rotate(r.direction, inv_rotation);
-
-  return r;
-}
-
-static bool check_ray_cylinder(bnd_ray local_ray, float half_height, float radius, bnd_raycast_hit *local_hit) {
-  const float epsilon = 1e-6f;
-
-  // --- infinite cylinder (XZ plane) ---
-  float a = local_ray.direction.x * local_ray.direction.x + local_ray.direction.z * local_ray.direction.z;
-  float b = 2.0f * (local_ray.origin.x * local_ray.direction.x + local_ray.origin.z * local_ray.direction.z);
-  float c = local_ray.origin.x * local_ray.origin.x + local_ray.origin.z * local_ray.origin.z - radius * radius;
-
-  float t_body_enter = -FLT_MAX;
-  float t_body_exit = FLT_MAX;
-  bool body_hit = false;
-
-  if (fabsf(a) > epsilon) {
-    float disc = b * b - 4.0f * a * c;
-    if (disc < 0.0f)
-      return false;
-    float sq = sqrtf(disc);
-    float inv2a = 1.0f / (2.0f * a);
-    t_body_enter = (-b - sq) * inv2a;
-    t_body_exit = (-b + sq) * inv2a;
-    body_hit = true;
-  } else {
-    // ray parallel to axis — must be inside the infinite cylinder
-    if (c > 0.0f)
-      return false;
-  }
-
-  // --- end caps (Y axis slab) ---
-  float t_cap_enter, t_cap_exit;
-  bnd_v3 normal_cap_enter, normal_cap_exit;
-
-  if (fabsf(local_ray.direction.y) > epsilon) {
-    float inv_dy = 1.0f / local_ray.direction.y;
-    float t1 = (-half_height - local_ray.origin.y) * inv_dy;
-    float t2 = (half_height - local_ray.origin.y) * inv_dy;
-    if (t1 < t2) {
-      t_cap_enter = t1;
-      normal_cap_enter = (bnd_v3){0, -1, 0};
-      t_cap_exit = t2;
-      normal_cap_exit = (bnd_v3){0, 1, 0};
+  bnd_v3 ab = bnd_v3_sub(b.p, a.p);
+  bnd_v3 ac = bnd_v3_sub(c.p, a.p);
+  bnd_v3 ao = bnd_v3_negate(a.p);
+
+  bnd_v3 abc = bnd_v3_cross(ab, ac);
+
+  float d1 = bnd_v3_dot(bnd_v3_cross(abc, ac), ao);
+  if (is_zero(d1) || d1 > 0) {
+    float d2 = bnd_v3_dot(ac, ao);
+    if (is_zero(d2) || d2 > 0) {
+      s->points[1] = c;
+      s->size = 2;
+      *direction = bnd_v3_cross(bnd_v3_cross(ac, ao), ac);
     } else {
-      t_cap_enter = t2;
-      normal_cap_enter = (bnd_v3){0, 1, 0};
-      t_cap_exit = t1;
-      normal_cap_exit = (bnd_v3){0, -1, 0};
-    }
-  } else {
-    // ray parallel to caps — must be between them
-    if (local_ray.origin.y < -half_height || local_ray.origin.y > half_height)
-      return false;
-    t_cap_enter = -FLT_MAX;
-    normal_cap_enter = (bnd_v3){0, -1, 0};
-    t_cap_exit = FLT_MAX;
-
-    normal_cap_enter = (bnd_v3){0, -1, 0};
-    t_cap_exit = FLT_MAX;
-    normal_cap_exit = (bnd_v3){0, 1, 0};
-  }
-
-  // --- intersect intervals ---
-  float t_enter = (body_hit && t_body_enter > t_cap_enter) ? t_body_enter : t_cap_enter;
-  float t_exit = (body_hit && t_body_exit < t_cap_exit) ? t_body_exit : t_cap_exit;
-
-  if (t_enter > t_exit)
-    return false;
-
-  float t = t_enter;
-  if (t < 0.0f)
-    t = t_exit;
-  if (t < 0.0f || t > local_ray.max_distance)
-    return false;
-
-  // --- normal in local space ---
-  bnd_v3 local_normal;
-  if (t == t_body_enter || (t_enter < 0.0f && t == t_body_exit)) {
-    bnd_v3 p = bnd_v3_add(local_ray.origin, bnd_v3_scale(local_ray.direction, t));
-    bnd_v3 radial = (bnd_v3){p.x, 0, p.z};
-    local_normal = bnd_v3_normalize(radial);
-  } else {
-    local_normal = (t == t_cap_enter) ? normal_cap_enter : normal_cap_exit;
-  }
-
-  local_hit->distance = t;
-  local_hit->point = bnd_v3_add(local_ray.origin, bnd_v3_scale(local_ray.direction, t));
-  local_hit->normal = local_normal;
-
-  return true;
-}
-
-static bool check_ray_sphere(bnd_ray ray, bnd_v3 center, float radius, bnd_raycast_hit *hit) {
-  bnd_v3 offset = bnd_v3_sub(center, ray.origin);
-  float o = bnd_v3_lensqr(offset);
-  float rr = radius * radius;
-
-  float tc = bnd_v3_dot(offset, ray.direction);
-  if (tc < 0.0f && o > rr)
-    return false;
-
-  float d2 = o - tc * tc;
-  if (d2 > rr)
-    return false;
-
-  float delta = sqrtf(rr - d2);
-  float t = (o > rr) ? tc - delta : tc + delta;
-
-  if (t < 0.0f || t > ray.max_distance)
-    return false;
-
-  hit->distance = t;
-  hit->point = bnd_v3_add(ray.origin, bnd_v3_scale(ray.direction, t));
-  hit->normal = bnd_v3_normalize(bnd_v3_sub(hit->point, center));
-
-  return true;
-}
-
-static bool raycast_sphere(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *hit) {
-  bnd_v3 position = body_center(ctx);
-
-  return check_ray_sphere(r, position, ctx->shape.value.sphere.radius, hit);
-}
-
-static bool raycast_box(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *hit) {
-  bnd_v3 half = bnd_v3_scale(ctx->shape.value.box.size, 0.5f);
-  bnd_v3 position = body_center(ctx);
-  bnd_quat rotation = body_rotation(ctx);
-
-  bnd_ray local_ray = ray_transform(r, position, rotation);
-
-  float tmin = -FLT_MAX;
-  float tmax = FLT_MAX;
-  bnd_v3 near_normal = bnd_v3_zero();
-  bnd_v3 far_normal = bnd_v3_zero();
-
-  const float epsilon = 1e-6f;
-
-  for (count_t axis = 0; axis < 3; ++axis) {
-    float o = ((float *)&local_ray.origin)[axis];
-    float d = ((float *)&local_ray.direction)[axis];
-    float h = ((float *)&half)[axis];
-
-    if (fabsf(d) < epsilon) {
-      if (o < -h || o > h) {
-        return false;
+    do_simplex3_edge_ab:;
+      float d3 = bnd_v3_dot(ab, ao);
+      if (is_zero(d3) || d3 > 0) {
+        s->size = 2;
+        *direction = bnd_v3_cross(bnd_v3_cross(ab, ao), ab);
+      } else {
+        s->size = 1;
+        *direction = ao;
       }
-      continue;
     }
-
-    float t1 = (-h - o) / d;
-    float t2 = (h - o) / d;
-
-    bnd_v3 n1 = bnd_v3_zero();
-    bnd_v3 n2 = bnd_v3_zero();
-    ((float *)&n1)[axis] = -1.0f;
-    ((float *)&n2)[axis] = 1.0f;
-
-    if (t1 > t2) {
-      float temp = t1;
-      t1 = t2;
-      t2 = temp;
-
-      bnd_v3 ntemp = n1;
-      n1 = n2;
-      n2 = ntemp;
+  } else {
+    float d4 = bnd_v3_dot(bnd_v3_cross(ab, abc), ao);
+    if (is_zero(d4) || d4 > 0) {
+      goto do_simplex3_edge_ab;
+    } else {
+      float d5 = bnd_v3_dot(abc, ao);
+      if (is_zero(d5) || d5 > 0) {
+        *direction = abc;
+      } else {
+        body_support tmp = s->points[1];
+        s->points[1] = s->points[2];
+        s->points[2] = tmp;
+        *direction = bnd_v3_negate(abc);
+      }
     }
-
-    if (t1 > tmin) {
-      tmin = t1;
-      near_normal = n1;
-    }
-
-    if (t2 < tmax) {
-      tmax = t2;
-      far_normal = n2;
-    }
-
-    if (tmin > tmax) {
-      return false;
-    }
-  }
-
-  float distance = tmin;
-  bnd_v3 local_normal = near_normal;
-
-  if (distance < 0.0f) {
-    distance = tmax;
-    local_normal = far_normal;
-  }
-
-  if (distance < 0.0f || distance > r.max_distance) {
-    return false;
-  }
-
-  hit->distance = distance;
-  hit->point = bnd_v3_add(r.origin, bnd_v3_scale(r.direction, distance));
-  hit->normal = bnd_v3_rotate(local_normal, rotation);
-
-  return true;
-}
-
-static bool raycast_capsule(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *hit) {
-  bnd_v3 center = body_center(ctx);
-  bnd_quat rotation = body_rotation(ctx);
-
-  bnd_ray local_ray = ray_transform(r, center, rotation);
-
-  float height = ctx->shape.value.capsule.height;
-  float radius = ctx->shape.value.capsule.radius;
-
-  bnd_v3 local_cap_top =    (bnd_v3) { 0,  0.5 * height, 0 };
-  bnd_v3 local_cap_bottom = (bnd_v3) { 0, -0.5 * height, 0 };
-
-  bnd_raycast_hit proxy_hit = { 0 };
-  if (check_ray_sphere(local_ray, local_cap_top, radius, &proxy_hit) && proxy_hit.point.y > local_cap_top.y) {
-    goto hit;
-  }
-
-  if (check_ray_sphere(local_ray, local_cap_bottom, radius, &proxy_hit) && proxy_hit.point.y < local_cap_bottom.y) {
-    goto hit;
-  }
-
-  if (check_ray_cylinder(local_ray, 0.5 * height, radius, &proxy_hit)) {
-    goto hit;
   }
 
   return false;
-
-  hit:
-  hit->point = bnd_v3_add(center, bnd_v3_rotate(proxy_hit.point, rotation));
-  hit->normal = bnd_v3_rotate(proxy_hit.normal, rotation);
-  hit->distance = proxy_hit.distance;
-  return true;
 }
 
-static bool raycast_plane(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *hit) {
-  float dod = bnd_v3_dot(bnd_v3_sub(ctx->data->positions[ctx->index], r.origin), ctx->shape.value.plane.normal);
-  float dd = bnd_v3_dot(r.direction, ctx->shape.value.plane.normal);
+static bool simplex_update_4(simplex *s, bnd_v3 *direction) {
+  body_support a = s->points[0];
+  body_support b = s->points[1];
+  body_support c = s->points[2];
+  body_support d = s->points[3];
 
-  if (dd >= 0)
-    return false;
+  bnd_v3 ab = bnd_v3_sub(b.p, a.p);
+  bnd_v3 ac = bnd_v3_sub(c.p, a.p);
+  bnd_v3 ad = bnd_v3_sub(d.p, a.p);
+  bnd_v3 ao = bnd_v3_negate(a.p);
 
-  float distance = dod / dd;
+  bnd_v3 abc = bnd_v3_cross(ab, ac);
+  bnd_v3 acd = bnd_v3_cross(ac, ad);
+  bnd_v3 adb = bnd_v3_cross(ad, ab);
 
-  if (distance > r.max_distance)
-    return false;
+  int b_acd = sign(bnd_v3_dot(ab, acd));
+  int c_adb = sign(bnd_v3_dot(ac, adb));
+  int d_abc = sign(bnd_v3_dot(ad, abc));
 
-  hit->distance = distance;
-  hit->point = bnd_v3_add(r.origin, bnd_v3_scale(r.direction, distance));
-  hit->normal = ctx->shape.value.plane.normal;
+  bool acd_o = sign(bnd_v3_dot(acd, ao)) == b_acd;
+  bool adb_o = sign(bnd_v3_dot(adb, ao)) == c_adb;
+  bool abc_o = sign(bnd_v3_dot(abc, ao)) == d_abc;
 
-  return true;
-}
-
-static bool raycast_mesh(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *hit) {
-  bnd_v3 position = body_center(ctx);
-  bnd_quat rotation = body_rotation(ctx);
-
-  bnd_ray local_ray = ray_transform(r, position, rotation);
-
-  bool has_hit = false;
-  float closest_distance = r.max_distance;
-  bnd_v3 closest_point, normal;
-
-  const mesh_storage *meshes = &ctx->world->meshes;
-  bnd_mesh m = meshes->meshes[ctx->shape.value.mesh];
-
-  count_t submeshes_start = m.submesh_offset;
-  count_t submeshes_end = submeshes_start + m.submesh_count;
-
-  for (count_t i = submeshes_start; i < submeshes_end; ++i) {
-    submesh sm = meshes->submeshes[i];
-
-    count_t index_start = sm.index_offset;
-    count_t index_end = index_start + sm.index_count;
-
-    for (count_t j = index_start; j + 2 < index_end; j += 3) {
-      bnd_v3 v0 = meshes->verticies[meshes->indicies[j + 0]];
-      bnd_v3 v1 = meshes->verticies[meshes->indicies[j + 1]];
-      bnd_v3 v2 = meshes->verticies[meshes->indicies[j + 2]];
-
-      bnd_v3 n = bnd_v3_cross(bnd_v3_sub(v1, v0), bnd_v3_sub(v2, v0));
-      float d = bnd_v3_dot(n, local_ray.direction);
-      if (d >= -EPSILON) {
-        continue;
-      }
-
-      float t = (bnd_v3_dot(n, v0) - bnd_v3_dot(n, local_ray.origin)) / d;
-      if (t < 0 || t > closest_distance) {
-        continue;
-      }
-
-      bnd_v3 p = bnd_v3_add(local_ray.origin, bnd_v3_scale(local_ray.direction, t));
-      bnd_v3 bary = bnd_v3_barycentric(p, v0, v1, v2);
-
-      if (bary.x < -EPSILON || bary.y < -EPSILON || bary.z < -EPSILON) {
-        continue;
-      }
-
-      has_hit = true;
-      closest_distance = t;
-      closest_point = p;
-      normal = n;
-    }
-  }
-
-  if (!has_hit) {
-    return false;
-  }
-
-  hit->point = bnd_v3_add(position, bnd_v3_rotate(closest_point, rotation));
-  hit->normal = bnd_v3_normalize(bnd_v3_rotate(normal, rotation));
-  hit->distance = closest_distance;
-
-  return true;
-}
-
-static raycast_func raycasts[] = {
-  raycast_box,
-  raycast_sphere,
-  raycast_capsule,
-  raycast_mesh,
-  raycast_plane,
-};
-
-static raycast_context begin_raycast(const bnd_world *world, bnd_body_type type) {
-  const common_data *data = as_common_const(world, type);
-
-  return (raycast_context) {
-    .world = world,
-    .data = data,
-    .type = type,
-    .body_index = 0,
-    .shape_index = 0,
-  };
-}
-
-static bool next_raycast(raycast_context *ctx, bnd_ray r, bnd_raycast_hit *hit) {
-  if (ctx->body_index >= ctx->data->count) {
-    return false;
-  }
-
-  body_shapes shapes_info = ctx->data->shapes[ctx->body_index];
-  bnd_body_shape *shapes = shapes_get(ctx->world, shapes_info);
-  if (ctx->shape_index >= shapes_info.count) {
-    ctx->body_index += 1;
-    ctx->shape_index = 0;
-    return next_raycast(ctx, r, hit);
-  }
-
-  bnd_body_shape shape = shapes[ctx->shape_index++];
-  shape_context shape_ctx = { ctx->world, ctx->data, shape, ctx->body_index };
-
-  bool is_hit = raycasts[shape.type](r, &shape_ctx, hit);
-  if (is_hit) {
-    hit->body = make_body_handle(ctx->world, ctx->type, ctx->body_index);
+  if (acd_o && adb_o && abc_o) {
     return true;
+  } else if (!acd_o) {
+    s->points[1] = c;
+    s->points[2] = d;
+    s->size = 3;
+  } else if (!adb_o) {
+    s->points[2] = b;
+    s->points[1] = d;
+    s->size = 3;
+  } else if (!abc_o) {
+    s->size = 3;
   }
 
-  return next_raycast(ctx, r, hit);
+  return simplex_update_3(s, direction);
 }
 
-bool bnd_raycast_closest(const bnd_world *world, bnd_ray ray, bnd_raycast_hit *closest_hit) {
-  closest_hit->distance = FLT_MAX;
+static bool simplex_update(simplex *s, bnd_v3 *direction) {
+  switch (s->size) {
+    case 4:
+      return simplex_update_4(s, direction);
 
-  bnd_raycast_hit hit;
-  raycast_context ctxs[] = { begin_raycast(world, BND_BODY_DYNAMIC), begin_raycast(world, BND_BODY_STATIC) };
+    case 3:
+      return simplex_update_3(s, direction);
 
-  for (count_t i = 0; i < 2; ++i) {
-    while(next_raycast(&ctxs[i], ray, &hit)) {
-      if (hit.distance < closest_hit->distance) {
-        *closest_hit = hit;
-      }
-    }
+    case 2:
+      return simplex_update_2(s, direction);
   }
 
-  return closest_hit->distance < FLT_MAX;
+  return false;
 }
 
-count_t bnd_raycast_multiple(const bnd_world *world, bnd_ray ray, bnd_raycast_hit *hits, count_t max_hits) {
-  if (max_hits == 0) {
-    return 0;
-  }
+bool gjk_check_intersection(const bnd_world *world, const collision_detection_context *ctx, simplex *simplex) {
+  PROFILER_FUNCTION_START
 
-  count_t num_hits = 0;
-  raycast_context ctxs[] = { begin_raycast(world, BND_BODY_DYNAMIC), begin_raycast(world, BND_BODY_STATIC) };
+  bnd_v3 direction = (bnd_v3){ 1, 0, 0 };
 
-  for (count_t i = 0; i < 2; ++i) {
-    while(next_raycast(&ctxs[i], ray, &hits[num_hits])) {
-      num_hits += 1;
-      if (num_hits >= max_hits) {
-        return num_hits;
-      }
-    }
-  }
+  simplex->size = 0;
 
-  return num_hits;
-}
+  body_support support_point = support(ctx, direction);
+  simplex_add_point(simplex, support_point);
+  direction = bnd_v3_normalize(bnd_v3_negate(support_point.p));
 
-static count_t overlap_typed(const bnd_world *world, bnd_v3 origin, float radius, bnd_body_handle *overlaps, count_t max_overlaps, bnd_body_type type) {
-  const common_data *data = as_common_const(world, type);
+  count_t iterations = 0;
+  for (iterations = 0; iterations < world->config.advanced.max_gjk_iterations; ++iterations) {
+    support_point = support(ctx, direction);
 
-  count_t ephemeral_index = ephemeral_body_index(data);
-  data->positions[ephemeral_index] = origin;
-  data->aabbs[ephemeral_index] = (bnd_aabb){ origin, (bnd_v3){radius, radius, radius} };
-
-  bnd_body_shape ephemeral_shape = { BND_SPHERE, { .sphere = { radius } }, bnd_v3_zero(), bnd_quat_identity() };
-
-  count_t overlap_count = 0;
-  simplex s = { 0 };
-  for (count_t i = 0; i < data->count; ++i) {
-    if (!aabb_intersect(data, data, ephemeral_index, i)) {
-      continue;
+    if (bnd_v3_dot(support_point.p, direction) < 0) {
+      PROFILER_FUNCTION_END
+      return false;
     }
 
-    collision_detection_context ctx;
-    ctx.world = world;
-    ctx.data_a = data;
-    ctx.data_b = data;
-    ctx.body_a = ephemeral_index;
-    ctx.body_b = i;
-    ctx.shape_a = ephemeral_shape;
+    simplex_add_point(simplex, support_point);
 
-    body_shapes shape_info = data->shapes[i];
-    bnd_body_shape *shapes = shapes_get(world, shape_info);
-    for (count_t j = 0; j < shape_info.count; ++j) {
-      ctx.shape_b = shapes[j];
-
-      if (ctx.shape_b.type == BND_SPHERE) {
-        bnd_v3 sphere_center = data->positions[i];
-        float r = ctx.shape_b.value.sphere.radius + radius;
-
-        if (bnd_v3_distancesqr(sphere_center, origin) > r * r) {
-          continue;
-        }
-      } else if (ctx.shape_b.type == BND_PLANE) {
-        bnd_v3 plane_point = data->positions[i];
-        bnd_v3 plane_normal = ctx.shape_b.value.plane.normal;
-
-        if (bnd_v3_dot(plane_normal, bnd_v3_sub(origin, plane_point)) > radius) {
-          continue;
-        }
-      } else if (!gjk_check_intersection(world, &ctx, &s)) {
-        continue;
-      }
-
-      overlaps[overlap_count++] = make_body_handle(world, type, i);
-      if (overlap_count >= max_overlaps) {
-        return overlap_count;
-      }
+    if (simplex_update(simplex, &direction)) {
+      PROFILER_FUNCTION_END
+      return true;
     }
+
+    if (bnd_v3_lensqr(direction) < TOLERANCE) {
+      PROFILER_FUNCTION_END
+      return false;
+    }
+
+    direction = bnd_v3_normalize(direction);
   }
 
-  return overlap_count;
-}
+  PROFILER_FUNCTION_END
 
-count_t bnd_overlap(const bnd_world *world, bnd_v3 origin, float radius, bnd_body_handle *overlaps, count_t max_overlaps) {
-  if (max_overlaps == 0) {
-    return 0;
-  }
-
-  count_t overlap_count = overlap_typed(world, origin, radius, overlaps, max_overlaps, BND_BODY_DYNAMIC);
-  if (overlap_count == max_overlaps) {
-    return overlap_count;
-  }
-
-  max_overlaps -= overlap_count;
-  overlap_count += overlap_typed(world, origin, radius, overlaps + overlap_count, max_overlaps, BND_BODY_STATIC);
-
-  return overlap_count;
+  return false;
 }
 
 // ================
@@ -3575,1071 +2507,405 @@ static void move_body(bnd_world *world, count_t src_index, count_t dst_index) {
 }
 
 // ================
-//   joints.c
+//   mesh.c
 // ================
 
 
-static bnd_error resize_if_needed(bnd_allocator allocator, joints *joints) {
-  if (joints->count < joints->capacity) {
+static inline bnd_error mesh_validation_error(char *message) {
+  return (bnd_error) { BND_ERROR_INVALID_MESH, message };
+}
+
+static inline bnd_error realloc_error(void) {
+  return (bnd_error) { BND_ERROR_NO_SPACE_AVAILABLE, "Allocator.realloc failed to re-allocate mesh buffer" };
+}
+
+static bnd_error resize_buffer(bnd_allocator allocator, void **buffer, count_t alignment, count_t count, count_t *capacity, count_t element_size) {
+  count_t old_capacity = *capacity;
+  if (count <= old_capacity) {
     return OK;
   }
 
-  count_t old_capacity = joints->capacity;
-  while (joints->count >= joints->capacity) {
-    joints->capacity *= 2;
+  if (allocator.realloc == NULL) {
+    return (bnd_error) { BND_ERROR_NO_SPACE_AVAILABLE, "Mesh buffer is full and Allocator.realloc is NULL" };
   }
 
-  REALLOC_BUFFER4(joints->values, allocator , sizeof(bnd_joint), old_capacity, joints->capacity);
-  REALLOC_BUFFER4(joints->ids, allocator , sizeof(count_t), old_capacity, joints->capacity);
+  count_t new_capacity = old_capacity;
+  while (count > new_capacity) {
+    new_capacity *= 2;
+  }
+
+  void *new_buffer = allocator.realloc(*buffer, alignment, old_capacity * element_size, new_capacity * element_size);
+  if (new_buffer == NULL) {
+    return realloc_error();
+  }
+
+  *buffer = new_buffer;
+  *capacity = new_capacity;
 
   return OK;
 }
 
-bnd_result_u32 bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_v3 contact_offset_a, bnd_v3 contact_offset_b, float max_distance) {
-  PROPAGATE_RESULT(u32, bnd_handle_valid(world, body_a));
-  PROPAGATE_RESULT(u32, bnd_handle_valid(world, body_b));
-
-  if (body_a.type == BND_BODY_STATIC && body_b.type == BND_BODY_STATIC) {
-    return BND_RESULT_ERR(u32, BND_ERROR_INVALID_JOINT, "Two static bodies cannot be bound together");
+static bnd_error ensure_meshes_capacity(bnd_allocator allocator, mesh_storage *meshes) {
+  if (meshes->mesh_count + 1 < meshes->mesh_capacity) {
+    return OK;
   }
 
-  // Let body_a always be dynamic - same as with contacts.
-  if (body_a.type == BND_BODY_STATIC && body_b.type == BND_BODY_DYNAMIC) {
-    bnd_body_handle tmp_body = body_b;
-    body_b = body_a;
-    body_a = tmp_body;
-
-    bnd_v3 tmp_pos = contact_offset_b;
-    contact_offset_b = contact_offset_a;
-    contact_offset_a = tmp_pos;
+  if (allocator.realloc == NULL) {
+    return (bnd_error) { BND_ERROR_NO_SPACE_AVAILABLE, "Mesh buffer is full and Allocator.realloc is NULL" };
   }
 
-  joints *joints = &world->joints;
-
-  PROPAGATE_RESULT(u32, resize_if_needed(world->allocator, joints));
-
-  count_t last_index = joints->count++;
-  bool is_dynamic = body_b.type == BND_BODY_DYNAMIC;
-  count_t id = joints->next_id++;
-
-  count_t index;
-  if (is_dynamic) {
-    if (joints->dynamic_count < last_index) {
-      // Move first static joint to the end
-      joints->values[last_index] = joints->values[joints->dynamic_count];
-      joints->ids[last_index] = joints->ids[joints->dynamic_count];
-    }
-
-    index = joints->dynamic_count;
-    joints->dynamic_count += 1;
-  } else {
-    index = last_index;
+  count_t old_capacity = meshes->mesh_capacity;
+  while (meshes->mesh_count + 1 > meshes->mesh_capacity) {
+    meshes->mesh_capacity *= 2;
   }
 
-  joints->values[index] = (bnd_joint){
-    .bodies = {body_a, body_b},
-    .relative_contact_positions = {contact_offset_a, contact_offset_b},
-    .max_error = max_distance,
-  };
-  joints->ids[index] = id;
-
-  return BND_RESULT_OK(u32, id);
-}
-
-void bnd_remove_joint(bnd_world *world, count_t id) {
-  joints *joints = &world->joints;
-
-  count_t count = joints->count;
-  count_t dynamic_count = joints->dynamic_count;
-  for (count_t i = 0; i < count; ++i) {
-    if (joints->ids[i] != id) {
-      continue;
-    }
-
-    if (i < dynamic_count) {
-      joints->values[i] = joints->values[dynamic_count - 1];
-      joints->ids[i] = joints->ids[dynamic_count - 1];
-
-      joints->values[dynamic_count - 1] = joints->values[count - 1];
-      joints->ids[dynamic_count - 1] = joints->ids[count - 1];
-
-      joints->dynamic_count -= 1;
-    } else {
-      joints->values[i] = joints->values[count - 1];
-      joints->ids[i] = joints->ids[count - 1];
-    }
-
-    joints->count -= 1;
-
-    break;
-  }
-}
-
-static bool joint_is_stale(const bnd_joint *joint, bnd_body_handle removed_body) {
-  for (count_t i = 0; i < 2; ++i) {
-    bnd_body_handle body = joint->bodies[i];
-    if (body.type == removed_body.type && body.index == removed_body.index) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-void joints_remove_stale_if_needed(bnd_world *world, bnd_body_handle removed_body) {
-  joints *joints = &world->joints;
-
-  count_t old_dynamic_count = joints->dynamic_count;
-  count_t write = 0;
-
-  for (count_t read = 0; read < old_dynamic_count; ++read) {
-    if (joint_is_stale(&joints->values[read], removed_body)) {
-      continue;
-    }
-
-    if (write != read) {
-      joints->values[write] = joints->values[read];
-      joints->ids[write] = joints->ids[read];
-    }
-
-    write += 1;
-  }
-
-  count_t new_dynamic_count = write;
-
-  for (count_t read = old_dynamic_count; read < joints->count; ++read) {
-    if (joint_is_stale(&joints->values[read], removed_body)) {
-      continue;
-    }
-
-    if (write != read) {
-      joints->values[write] = joints->values[read];
-      joints->ids[write] = joints->ids[read];
-    }
-
-    write += 1;
-  }
-
-  joints->dynamic_count = new_dynamic_count;
-  joints->count = write;
-}
-
-count_t joints_generate_contacts(bnd_world *world, count_t contacts_offset, bnd_body_type type) {
-  const joints *joints = &world->joints;
-
-  const count_t start = type == BND_BODY_DYNAMIC ? 0 : joints->dynamic_count;
-  const count_t end = type == BND_BODY_DYNAMIC ? joints->dynamic_count : joints->count;
-  const count_t max_count = end - start;
-
-  if (IS_ERROR(contacts_ensure_capacity(world, contacts_offset, max_count))) {
-    return 0;
-  }
-
-  contact *contacts = world->contacts.values;
-
-  count_t spawned_count = 0;
-  for (count_t i = start; i < end; ++i) {
-    bnd_joint j = joints->values[i];
-
-    const common_data *data[2];
-    data[0] = as_common(world, BND_BODY_DYNAMIC);
-    data[1] = as_common(world, type);
-
-    bnd_v3 world_points[2];
-    count_t indices[2];
-    for (count_t k = 0; k < 2; ++k) {
-      count_t index = handle_to_inner_index(world, j.bodies[k]);
-      world_points[k] = bnd_v3_rotate(j.relative_contact_positions[k], data[k]->rotations[index]);
-      world_points[k] = bnd_v3_add(world_points[k], data[k]->positions[index]);
-      indices[k] = index;
-    }
-
-    bnd_v3 offset = bnd_v3_sub(world_points[1], world_points[0]);
-    float distance = bnd_v3_len(offset);
-    if (distance <= j.max_error) {
-      continue;
-    }
-
-    contact *contact = contacts + contacts_offset + spawned_count;
-    contact->index_a = indices[0];
-    contact->index_b = indices[1];
-    contact->point = bnd_v3_scale(bnd_v3_add(world_points[0], world_points[1]), 0.5);
-    contact->normal = bnd_v3_scale(offset, 1.0 / distance);
-    contact->depth = distance - j.max_error;
-    contact->friction = 1.0;
-    contact->restitution = 0;
-
-    spawned_count += 1;
-  }
-
-  return spawned_count;
-}
-
-bnd_error joints_init(bnd_world *world) {
-  bnd_allocator allocator = world->allocator;
-
-  ALLOC_BUFFER4(world->joints.values, world->config.memory.joints_capacity * sizeof(bnd_joint));
-  ALLOC_BUFFER4(world->joints.ids, world->config.memory.joints_capacity * sizeof(count_t));
-
-  world->joints.capacity = world->config.memory.joints_capacity;
-
-  joints_reset(world);
+  REALLOC_BUFFER4(meshes->meshes, allocator, sizeof(bnd_mesh), old_capacity, meshes->mesh_capacity);
+  REALLOC_BUFFER4(meshes->inertias, allocator, sizeof(bnd_m3), old_capacity, meshes->mesh_capacity);
+  REALLOC_BUFFER4(meshes->volumes, allocator, sizeof(float), old_capacity, meshes->mesh_capacity);
+  REALLOC_BUFFER4(meshes->aabbs, allocator, sizeof(bnd_aabb), old_capacity, meshes->mesh_capacity);
 
   return OK;
 }
 
-void joints_reset(bnd_world *world) {
-  world->joints.count = 0;
-  world->joints.next_id = 0;
-  world->joints.dynamic_count = 0;
+static bnd_v3 read_vertex(const bnd_mesh_buffer *buffer, count_t i) {
+  bnd_v3 vertex = bnd_v3_zero();
+  uint8_t *verticies = buffer->buffer;
+  uint32_t step = buffer->element_size + buffer->stride;
+
+  memcpy(&vertex, &verticies[i * step], buffer->element_size);
+
+  return vertex;
 }
 
-void joints_teardown(bnd_world *world) {
-  world->allocator.free(world->joints.values, world->joints.capacity * sizeof(bnd_joint));
-  world->allocator.free(world->joints.ids, world->joints.capacity * sizeof(count_t));
-}
+static uint32_t read_index(const bnd_mesh_buffer *buffer, count_t i) {
+  uint8_t *indices = buffer->buffer;
+  uint8_t *src = &indices[i * (buffer->element_size + buffer->stride)];
 
-// ================
-//   shapes.c
-// ================
+  switch (buffer->element_size) {
+    case 1:
+      return src[0];
 
-#define SHAPE_BRACKET_BLOCK_CAPACITY 64
-
-void shapes_get_bracket_properties(const bnd_config *config, count_t bracket_index, count_t *blocks, count_t *shapes, count_t *capacity) {
-  count_t blocks_count = config->advanced.shapes_brackets_capacity[bracket_index] / SHAPE_BRACKET_BLOCK_CAPACITY +
-                          ((config->advanced.shapes_brackets_capacity[bracket_index] & (SHAPE_BRACKET_BLOCK_CAPACITY - 1)) > 0);
-  count_t bracket_capacity = blocks_count * SHAPE_BRACKET_BLOCK_CAPACITY;
-
-  count_t bracket_dimension = 1 << bracket_index;
-  count_t shapes_count = bracket_capacity * bracket_dimension;
-
-  *blocks = blocks_count;
-  *shapes = shapes_count;
-  *capacity = bracket_capacity;
-}
-
-static count_t bracket_block_count(const bnd_world *world, shape_dimension_bracket bracket) {
-  return world->shape_brackets[bracket].capacity / SHAPE_BRACKET_BLOCK_CAPACITY;
-}
-
-bnd_error shapes_init(bnd_world *world) {
-  bnd_allocator allocator = world->allocator;
-
-  for (count_t i = 0; i < BRACKET_COUNT; ++i) {
-    count_t blocks_count, shapes_count, bracket_capacity;
-    shapes_get_bracket_properties(&world->config, i, &blocks_count, &shapes_count, &bracket_capacity);
-
-    shapes_bracket *bracket = &world->shape_brackets[i];
-    ALLOC_BUFFER8(bracket->slots, blocks_count * sizeof(uint64_t));
-    ALLOC_BUFFER4(bracket->shapes, shapes_count * sizeof(bnd_body_shape));
-
-    memset(bracket->slots, 0, blocks_count * sizeof(uint64_t));
-
-    bracket->capacity = bracket_capacity;
-  }
-
-  return OK;
-}
-
-void shapes_teardown(bnd_world *world) {
-  for (count_t i = 0; i < BRACKET_COUNT; ++i) {
-    shapes_bracket *bracket = &world->shape_brackets[i];
-    count_t block_count = bracket_block_count(world, i);
-    world->allocator.free(bracket->slots, block_count * sizeof(uint64_t));
-    world->allocator.free(bracket->shapes, (1 << i) * block_count * SHAPE_BRACKET_BLOCK_CAPACITY * sizeof(bnd_body_shape));
-  }
-}
-
-void shapes_reset(bnd_world *world) {
-  for (count_t i = 0; i < BRACKET_COUNT; ++i) {
-    shapes_bracket *bracket = &world->shape_brackets[i];
-    count_t blocks_count = bracket_block_count(world, i);
-
-    memset(bracket->slots, 0, blocks_count * sizeof(uint64_t));
-  }
-}
-
-bool shapes_any_slot_available(const bnd_world *world, shape_dimension_bracket bracket) {
-  count_t blocks_count = bracket_block_count(world, bracket);
-  uint64_t *slots = world->shape_brackets[bracket].slots;
-
-  for (count_t i = 0; i < blocks_count; ++i) {
-    if (slots[i] < (uint64_t)~0) {
-      return true;
+    case 2: {
+      uint16_t index;
+      memcpy(&index, src, sizeof(index));
+      return index;
     }
+
+    case 4: {
+      uint32_t index;
+      memcpy(&index, src, sizeof(index));
+      return index;
+    }
+
+    default:
+      return 0;
+  }
+}
+
+static bnd_error import_verticies(bnd_allocator allocator, const bnd_mesh_buffer *buffer, mesh_storage *meshes, bnd_v3 com) {
+  count_t new_count = buffer->elements_count + meshes->vertex_count;
+  bnd_error err = resize_buffer(allocator, (void **)&meshes->verticies, 4, new_count, &meshes->vertex_capacity, sizeof(bnd_v3));
+  if (err.type != BND_OK) {
+    return err;
   }
 
-  return false;
-}
+  bnd_v3 *dest = &meshes->verticies[meshes->vertex_count];
+  for (count_t i = 0; i < buffer->elements_count; ++i) {
+    bnd_v3 v = read_vertex(buffer, i);
+    dest[i] = bnd_v3_sub(v, com);
+  }
 
-bnd_error shapes_expand_bracket(bnd_world *world, shape_dimension_bracket bracket) {
-  count_t bracket_capacity = 1 << bracket;
-
-  shapes_bracket *current_bracket = &world->shape_brackets[bracket];
-  count_t current_capacity = current_bracket->capacity;
-  count_t current_block_count = bracket_block_count(world, bracket);
-
-  count_t new_capacity = current_capacity + SHAPE_BRACKET_BLOCK_CAPACITY;
-  count_t new_block_count = current_block_count + 1;
-  count_t shapes_count = bracket_capacity * new_block_count * SHAPE_BRACKET_BLOCK_CAPACITY;
-
-  REALLOC_BUFFER8(current_bracket->slots, world->allocator, sizeof(uint64_t), current_block_count, new_block_count);
-  REALLOC_BUFFER4(current_bracket->shapes, world->allocator, sizeof(bnd_body_shape), bracket_capacity * current_block_count * SHAPE_BRACKET_BLOCK_CAPACITY, shapes_count);
-
-  current_bracket->capacity = new_capacity;
+  meshes->vertex_count = new_count;
 
   return OK;
-
 }
 
-bool shapes_put_into_empty_slot(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes, count_t shapes_count, count_t *slot_number) {
-  count_t blocks_count = bracket_block_count(world, bracket);
-  uint64_t *slots = world->shape_brackets[bracket].slots;
-  bnd_body_shape *shapes_buffer = world->shape_brackets[bracket].shapes;
+static bnd_error import_indicies(bnd_allocator allocator, const bnd_mesh_buffer *buffer, mesh_storage *meshes) {
+  count_t new_count = meshes->index_count + buffer->elements_count;
+  bnd_error err = resize_buffer(allocator, (void **)&meshes->indicies, 4, new_count, &meshes->index_capacity, sizeof(uint32_t));
+  if (err.type != BND_OK) {
+    return err;
+  }
 
-  for (count_t i = 0; i < blocks_count; ++i) {
-    if (slots[i] == (uint64_t)~0)
-      continue;
+  uint32_t *dest = &meshes->indicies[meshes->index_count];
+  for (count_t i = 0; i < buffer->elements_count; ++i) {
+    uint32_t index = read_index(buffer, i);
+    dest[i] = index + meshes->index_count;
+  }
 
-    for (count_t k = 0; k < SHAPE_BRACKET_BLOCK_CAPACITY; ++k) {
-      uint64_t mask = (uint64_t)1 << k;
-      if ((slots[i] & mask) != 0)
+  meshes->index_count = new_count;
+  return OK;
+}
+
+static float tetr_inertia_moment(bnd_m3 m, count_t i) {
+  return m.m0[i] * m.m0[i] + m.m1[i] * m.m2[i] + m.m1[i] * m.m1[i] + m.m0[i] * m.m2[i] + m.m2[i] * m.m2[i] + m.m0[i] * m.m1[i];
+}
+
+static float tetr_inertia_product(bnd_m3 m, count_t i, count_t j) {
+  return 2.0 * m.m0[i] * m.m0[j] + m.m1[i] * m.m2[j] + m.m2[i] * m.m1[j] +
+    2.0 * m.m1[i] * m.m1[j] + m.m0[i] * m.m2[j] + m.m2[i] * m.m0[j] +
+    2.0 * m.m2[i] * m.m2[j] + m.m0[i] * m.m1[j] + m.m1[i] * m.m0[j];
+}
+
+static bool is_mesh_convex(const bnd_mesh_data *data) {
+  for (count_t i = 0; i + 2 < data->index_buffer.elements_count; i += 3) {
+    count_t i0 = read_index(&data->index_buffer, i + 0);
+    count_t i1 = read_index(&data->index_buffer, i + 1);
+    count_t i2 = read_index(&data->index_buffer, i + 2);
+
+    bnd_v3 v0 = read_vertex(&data->vertex_buffer, i0);
+    bnd_v3 v1 = read_vertex(&data->vertex_buffer, i1);
+    bnd_v3 v2 = read_vertex(&data->vertex_buffer, i2);
+
+    bnd_v3 n = bnd_v3_cross(bnd_v3_sub(v2, v0), bnd_v3_sub(v1, v0));
+    float d = -bnd_v3_dot(n, v2);
+
+    bool has_sign = false;
+    float s = 0;
+    for (count_t j = 0; j < data->vertex_buffer.elements_count; ++j) {
+      if (j == i0 || j == i1 || j == i2) {
         continue;
-
-      count_t bracket_capacity = 1 << bracket;
-      count_t shape_offset = (i * SHAPE_BRACKET_BLOCK_CAPACITY + k) * bracket_capacity;
-
-      bnd_body_shape *slot = shapes_buffer + shape_offset;
-      memcpy(slot, shapes, shapes_count * sizeof(bnd_body_shape));
-
-      slots[i] |= mask;
-      *slot_number = shape_offset;
-
-      return true;
-    }
-  }
-
-  return false;
-}
-
-void shapes_clear_slot(bnd_world *world, shape_dimension_bracket bracket, count_t slot) {
-  count_t block_count = bracket_block_count(world, bracket);
-  count_t bracket_capacity = 1 << bracket;
-
-  uint64_t *slots = world->shape_brackets[bracket].slots;
-  count_t block_index = slot / (SHAPE_BRACKET_BLOCK_CAPACITY * bracket_capacity);
-  count_t bit_index = slot % (SHAPE_BRACKET_BLOCK_CAPACITY * bracket_capacity) / bracket_capacity;
-  if (block_index < block_count) {
-    slots[block_index] &= ~((uint64_t)1 << bit_index);
-  }
-}
-
-body_shapes shapes_write(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes, count_t count) {
-  assert(count <= (1 << (BRACKET_COUNT - 1)));
-
-  if (!shapes_any_slot_available(world, bracket)) {
-    shapes_expand_bracket(world, bracket);
-  }
-
-  count_t shape_slot;
-  shapes_put_into_empty_slot(world, bracket, shapes, count, &shape_slot);
-
-  return (body_shapes){.bracket = bracket, .offset = shape_slot, .count = count};
-}
-
-bnd_body_shape *shapes_get(const bnd_world *world, body_shapes shapes) {
-  return world->shape_brackets[shapes.bracket].shapes + shapes.offset;
-}
-
-#ifdef BND_TESTS
-
-
-void test_shapes_write_primitive_bracket_uses_second_block(void) {
-  bnd_world world = {0};
-  world.allocator = bnd_default_allocator();
-  world.config.advanced.shapes_brackets_capacity[BRACKET_PRIMITIVE] = 65;
-
-  shapes_init(&world);
-
-  for (count_t i = 0; i < 65; ++i) {
-    bnd_body_shape shape = {0};
-    shape.type = BND_SPHERE;
-    shape.value.sphere.radius = (float)i + 0.5f;
-
-    body_shapes written = shapes_write(&world, BRACKET_PRIMITIVE, &shape, 1);
-    bnd_body_shape *stored = shapes_get(&world, written);
-
-    assert(written.bracket == BRACKET_PRIMITIVE);
-    assert(written.count == 1);
-    assert(written.offset == i);
-    assert(memcmp(stored, &shape, sizeof(bnd_body_shape)) == 0);
-  }
-
-  assert(world.shape_brackets[BRACKET_PRIMITIVE].capacity == 128);
-  assert(world.shape_brackets[BRACKET_PRIMITIVE].slots[0] == (uint64_t)~0);
-  assert(world.shape_brackets[BRACKET_PRIMITIVE].slots[1] == 1);
-  assert(shapes_any_slot_available(&world, BRACKET_PRIMITIVE));
-
-  shapes_teardown(&world);
-}
-
-void test_shapes_write_four_bracket_keeps_alignment_across_blocks(void) {
-  bnd_world world = {0};
-  world.allocator = bnd_default_allocator();
-  world.config.advanced.shapes_brackets_capacity[BRACKET_FOUR] = 65;
-
-  shapes_init(&world);
-
-  for (count_t i = 0; i < 65; ++i) {
-    bnd_body_shape shapes[4] = {0};
-    count_t count = (i & 1) == 0 ? 3 : 4;
-
-    for (count_t k = 0; k < count; ++k) {
-      shapes[k].type = BND_CAPSULE;
-      shapes[k].value.capsule.radius = (float)(i * 10 + k + 1);
-      shapes[k].value.capsule.height = (float)(100 + i * 10 + k);
-    }
-
-    body_shapes written = shapes_write(&world, BRACKET_FOUR, shapes, count);
-    bnd_body_shape *stored = shapes_get(&world, written);
-
-    assert(written.bracket == BRACKET_FOUR);
-    assert(written.count == count);
-    assert(written.offset == i * 4);
-    assert(memcmp(stored, shapes, count * sizeof(bnd_body_shape)) == 0);
-  }
-
-  assert(world.shape_brackets[BRACKET_FOUR].capacity == 128);
-  assert(world.shape_brackets[BRACKET_FOUR].slots[0] == (uint64_t)~0);
-  assert(world.shape_brackets[BRACKET_FOUR].slots[1] == 1);
-
-  shapes_teardown(&world);
-}
-
-void test_shapes_expand_bracket_preserves_existing_data_after_two_blocks(void) {
-  bnd_world world = {0};
-  world.allocator = bnd_default_allocator();
-  world.config.advanced.shapes_brackets_capacity[BRACKET_TWO] = 65;
-
-  shapes_init(&world);
-
-  for (count_t i = 0; i < 128; ++i) {
-    bnd_body_shape shapes[2] = {0};
-    shapes[0].type = BND_BOX;
-    shapes[0].value.box.size.x = (float)(i + 1);
-    shapes[1].type = BND_SPHERE;
-    shapes[1].value.sphere.radius = (float)(i + 200);
-
-    body_shapes written = shapes_write(&world, BRACKET_TWO, shapes, 2);
-    assert(written.offset == i * 2);
-  }
-
-  assert(world.shape_brackets[BRACKET_TWO].capacity == 128);
-  assert(world.shape_brackets[BRACKET_TWO].slots[0] == (uint64_t)~0);
-  assert(world.shape_brackets[BRACKET_TWO].slots[1] == (uint64_t)~0);
-  assert(!shapes_any_slot_available(&world, BRACKET_TWO));
-
-  bnd_body_shape extra_shapes[2] = {0};
-  extra_shapes[0].type = BND_CAPSULE;
-  extra_shapes[0].value.capsule.radius = 7.0f;
-  extra_shapes[0].value.capsule.height = 9.0f;
-  extra_shapes[1].type = BND_SPHERE;
-  extra_shapes[1].value.sphere.radius = 11.0f;
-
-  body_shapes extra = shapes_write(&world, BRACKET_TWO, extra_shapes, 2);
-  bnd_body_shape *first = world.shape_brackets[BRACKET_TWO].shapes;
-  bnd_body_shape *middle = world.shape_brackets[BRACKET_TWO].shapes + 64 * 2;
-  bnd_body_shape *stored_extra = shapes_get(&world, extra);
-
-  assert(world.shape_brackets[BRACKET_TWO].capacity == 192);
-  assert(extra.offset == 128 * 2);
-  assert(world.shape_brackets[BRACKET_TWO].slots[0] == (uint64_t)~0);
-  assert(world.shape_brackets[BRACKET_TWO].slots[1] == (uint64_t)~0);
-  assert(world.shape_brackets[BRACKET_TWO].slots[2] == 1);
-
-  assert(first[0].type == BND_BOX);
-  assert(first[0].value.box.size.x == 1.0f);
-  assert(first[1].type == BND_SPHERE);
-  assert(first[1].value.sphere.radius == 200.0f);
-
-  assert(middle[0].type == BND_BOX);
-  assert(middle[0].value.box.size.x == 65.0f);
-  assert(middle[1].type == BND_SPHERE);
-  assert(middle[1].value.sphere.radius == 264.0f);
-
-  assert(memcmp(stored_extra, extra_shapes, sizeof(extra_shapes)) == 0);
-
-  shapes_teardown(&world);
-}
-
-void test_shapes_clear_slot_reuses_second_block_slot_with_bracket_alignment(void) {
-  bnd_world world = {0};
-  world.allocator = bnd_default_allocator();
-  world.config.advanced.shapes_brackets_capacity[BRACKET_EIGHT] = 65;
-
-  shapes_init(&world);
-
-  body_shapes entries[66] = {0};
-  for (count_t i = 0; i < 66; ++i) {
-    bnd_body_shape shapes[8] = {0};
-
-    for (count_t k = 0; k < 6; ++k) {
-      shapes[k].type = BND_SPHERE;
-      shapes[k].value.sphere.radius = (float)(i * 10 + k + 1);
-    }
-
-    entries[i] = shapes_write(&world, BRACKET_EIGHT, shapes, 6);
-    assert(entries[i].offset == i * 8);
-    assert(entries[i].count == 6);
-  }
-
-  assert(entries[64].offset == 64 * 8);
-  assert(entries[65].offset == 65 * 8);
-  assert(world.shape_brackets[BRACKET_EIGHT].slots[0] == (uint64_t)~0);
-  assert(world.shape_brackets[BRACKET_EIGHT].slots[1] == 3);
-
-  shapes_clear_slot(&world, BRACKET_EIGHT, entries[65].offset);
-
-  bnd_body_shape replacement_shapes[8] = {0};
-  for (count_t i = 0; i < 5; ++i) {
-    replacement_shapes[i].type = BND_BOX;
-    replacement_shapes[i].value.box.size.x = (float)(300 + i);
-  }
-
-  body_shapes replacement = shapes_write(&world, BRACKET_EIGHT, replacement_shapes, 5);
-  bnd_body_shape *stored_replacement = shapes_get(&world, replacement);
-  bnd_body_shape *preserved_neighbor = world.shape_brackets[BRACKET_EIGHT].shapes + entries[64].offset;
-
-  assert(replacement.offset == entries[65].offset);
-  assert(replacement.count == 5);
-  assert(memcmp(stored_replacement, replacement_shapes, 5 * sizeof(bnd_body_shape)) == 0);
-  assert(preserved_neighbor[0].type == BND_SPHERE);
-  assert(preserved_neighbor[0].value.sphere.radius == 641.0f);
-
-  shapes_teardown(&world);
-}
-
-void shapes_tests() {
-  TESTS_BEGIN("Body shapes")
-
-  TEST(test_shapes_write_primitive_bracket_uses_second_block)
-  TEST(test_shapes_write_four_bracket_keeps_alignment_across_blocks)
-  TEST(test_shapes_expand_bracket_preserves_existing_data_after_two_blocks)
-  TEST(test_shapes_clear_slot_reuses_second_block_slot_with_bracket_alignment)
-
-  TESTS_END
-}
-#endif
-
-// ================
-//   gjk.c
-// ================
-
-
-#define TOLERANCE FLT_EPSILON
-
-inline static int sign(float x) {
-  if (fabsf(x) < TOLERANCE) {
-    return 0;
-  }
-
-  return x > 0 ? 1 : -1;
-}
-
-static inline bool is_zero(float x) {
-  return fabsf(x) < TOLERANCE;
-}
-
-static void simplex_add_point(simplex *s, body_support p) {
-  s->points[3] = s->points[2];
-  s->points[2] = s->points[1];
-  s->points[1] = s->points[0];
-  s->points[0] = p;
-
-  s->size += 1;
-}
-
-static bool simplex_update_2(simplex *s, bnd_v3 *direction) {
-  bnd_v3 a = s->points[0].p;
-  bnd_v3 b = s->points[1].p;
-  bnd_v3 ab = bnd_v3_sub(b, a);
-  bnd_v3 ao = bnd_v3_negate(a);
-
-  bnd_v3 cr = bnd_v3_cross(ab, ao);
-  float c = bnd_v3_dot(ab, ao);
-
-  if (bnd_v3_lensqr(cr) < TOLERANCE && c > 0) {
-    *direction = bnd_v3_zero();
-    return false;
-  }
-
-  if (is_zero(c) || c > 0) {
-    *direction = bnd_v3_cross(cr, ab);
-  } else {
-    s->size = 1;
-    *direction = ao;
-  }
-
-  return false;
-}
-
-static bool simplex_update_3(simplex *s, bnd_v3 *direction) {
-  body_support a = s->points[0];
-  body_support b = s->points[1];
-  body_support c = s->points[2];
-
-  if (bnd_v3_distancesqr(a.p, b.p) < TOLERANCE || bnd_v3_distancesqr(a.p, c.p) < TOLERANCE) {
-    *direction = bnd_v3_zero();
-    return false;
-  }
-
-  bnd_v3 ab = bnd_v3_sub(b.p, a.p);
-  bnd_v3 ac = bnd_v3_sub(c.p, a.p);
-  bnd_v3 ao = bnd_v3_negate(a.p);
-
-  bnd_v3 abc = bnd_v3_cross(ab, ac);
-
-  float d1 = bnd_v3_dot(bnd_v3_cross(abc, ac), ao);
-  if (is_zero(d1) || d1 > 0) {
-    float d2 = bnd_v3_dot(ac, ao);
-    if (is_zero(d2) || d2 > 0) {
-      s->points[1] = c;
-      s->size = 2;
-      *direction = bnd_v3_cross(bnd_v3_cross(ac, ao), ac);
-    } else {
-    do_simplex3_edge_ab:;
-      float d3 = bnd_v3_dot(ab, ao);
-      if (is_zero(d3) || d3 > 0) {
-        s->size = 2;
-        *direction = bnd_v3_cross(bnd_v3_cross(ab, ao), ab);
-      } else {
-        s->size = 1;
-        *direction = ao;
       }
-    }
-  } else {
-    float d4 = bnd_v3_dot(bnd_v3_cross(ab, abc), ao);
-    if (is_zero(d4) || d4 > 0) {
-      goto do_simplex3_edge_ab;
-    } else {
-      float d5 = bnd_v3_dot(abc, ao);
-      if (is_zero(d5) || d5 > 0) {
-        *direction = abc;
-      } else {
-        body_support tmp = s->points[1];
-        s->points[1] = s->points[2];
-        s->points[2] = tmp;
-        *direction = bnd_v3_negate(abc);
+
+      bnd_v3 v = read_vertex(&data->vertex_buffer, j);
+      float sv = bnd_v3_dot(n, v) + d;
+      if (fabsf(sv) < EPSILON) {
+        continue;
+      }
+
+      if (!has_sign) {
+        s = sv;
+        has_sign = true;
+      } else if ((sv < 0 && s > 0) || (sv > 0 && s < 0)) {
+        return false;
       }
     }
   }
 
-  return false;
+  return true;
 }
 
-static bool simplex_update_4(simplex *s, bnd_v3 *direction) {
-  body_support a = s->points[0];
-  body_support b = s->points[1];
-  body_support c = s->points[2];
-  body_support d = s->points[3];
-
-  bnd_v3 ab = bnd_v3_sub(b.p, a.p);
-  bnd_v3 ac = bnd_v3_sub(c.p, a.p);
-  bnd_v3 ad = bnd_v3_sub(d.p, a.p);
-  bnd_v3 ao = bnd_v3_negate(a.p);
-
-  bnd_v3 abc = bnd_v3_cross(ab, ac);
-  bnd_v3 acd = bnd_v3_cross(ac, ad);
-  bnd_v3 adb = bnd_v3_cross(ad, ab);
-
-  int b_acd = sign(bnd_v3_dot(ab, acd));
-  int c_adb = sign(bnd_v3_dot(ac, adb));
-  int d_abc = sign(bnd_v3_dot(ad, abc));
-
-  bool acd_o = sign(bnd_v3_dot(acd, ao)) == b_acd;
-  bool adb_o = sign(bnd_v3_dot(adb, ao)) == c_adb;
-  bool abc_o = sign(bnd_v3_dot(abc, ao)) == d_abc;
-
-  if (acd_o && adb_o && abc_o) {
-    return true;
-  } else if (!acd_o) {
-    s->points[1] = c;
-    s->points[2] = d;
-    s->size = 3;
-  } else if (!adb_o) {
-    s->points[2] = b;
-    s->points[1] = d;
-    s->size = 3;
-  } else if (!abc_o) {
-    s->size = 3;
+static bnd_error validate_mesh(const bnd_mesh_data *data) {
+  bnd_mesh_buffer index_buffer = data->index_buffer;
+  if (index_buffer.buffer == NULL) {
+    return mesh_validation_error("Mesh index buffer is NULL");
   }
 
-  return simplex_update_3(s, direction);
-}
-
-static bool simplex_update(simplex *s, bnd_v3 *direction) {
-  switch (s->size) {
-    case 4:
-      return simplex_update_4(s, direction);
-
-    case 3:
-      return simplex_update_3(s, direction);
-
-    case 2:
-      return simplex_update_2(s, direction);
+  if (index_buffer.element_size != 1 && index_buffer.element_size != 2 && index_buffer.element_size != 4) {
+    return mesh_validation_error("Unsupported index buffer element size. Supported sizes are 1, 2 or 4 bytes");
   }
 
-  return false;
-}
+  if (index_buffer.elements_count < 12) {
+    return mesh_validation_error("Mesh index buffer must contain at least 12 elements");
+  }
 
-bool gjk_check_intersection(const bnd_world *world, const collision_detection_context *ctx, simplex *simplex) {
-  PROFILER_FUNCTION_START
+  if (index_buffer.elements_count % 3 != 0) {
+    return mesh_validation_error("Mesh contains indicies count non-divisible by 3");
+  }
 
-  bnd_v3 direction = (bnd_v3){ 1, 0, 0 };
+  bnd_mesh_buffer vertex_buffer = data->vertex_buffer;
+  if (vertex_buffer.buffer == NULL) {
+    return mesh_validation_error("Mesh vertex buffer is NULL");
+  }
 
-  simplex->size = 0;
+  if (vertex_buffer.elements_count < 4) {
+    return mesh_validation_error("Mesh vertex buffer must contain at least 4 elements");
+  }
 
-  body_support support_point = support(ctx, direction);
-  simplex_add_point(simplex, support_point);
-  direction = bnd_v3_normalize(bnd_v3_negate(support_point.p));
+  if (vertex_buffer.element_size != 3 * sizeof(float)) {
+    return mesh_validation_error("Vertex buffer is required to have elements composed of 3 floats");
+  }
 
-  count_t iterations = 0;
-  for (iterations = 0; iterations < world->config.advanced.max_gjk_iterations; ++iterations) {
-    support_point = support(ctx, direction);
+  count_t vertex_count = vertex_buffer.elements_count;
+  for (count_t i = 0; i + 2 < index_buffer.elements_count; i += 3) {
+    count_t i0 = read_index(&index_buffer, i + 0);
+    count_t i1 = read_index(&index_buffer, i + 1);
+    count_t i2 = read_index(&index_buffer, i + 2);
 
-    if (bnd_v3_dot(support_point.p, direction) < 0) {
-      PROFILER_FUNCTION_END
-      return false;
+    if (i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count) {
+      return mesh_validation_error("One of mesh's indices is out of bounds");
     }
 
-    simplex_add_point(simplex, support_point);
-
-    if (simplex_update(simplex, &direction)) {
-      PROFILER_FUNCTION_END
-      return true;
-    }
-
-    if (bnd_v3_lensqr(direction) < TOLERANCE) {
-      PROFILER_FUNCTION_END
-      return false;
-    }
-
-    direction = bnd_v3_normalize(direction);
+    // TODO properly check for degenerate faces and perhaps fix them.
   }
-
-  PROFILER_FUNCTION_END
-
-  return false;
-}
-
-// ================
-//   core.c
-// ================
-
-
-
-#define MAX_MESSAGE_SIZE 512
-
-#define INVOKE(invocation) \
-  e = invocation; \
-  if (e.type != BND_OK) { \
-    bnd_teardown(world); \
-    return e; \
-  }
-
-#define ALLOC(buffer, size) \
-  buffer = allocator.malloc(4, size); \
-  if (buffer == NULL) { \
-    bnd_teardown(world); \
-    return (bnd_error){ BND_ERROR_OUT_OF_MEMORY, "Allocator.malloc  to allocate memory" }; \
-  }
-
-BND_RESULT_FUNC_DECL(world, bnd_world*)
-BND_RESULT_FUNC_DECL(v3, bnd_v3)
-BND_RESULT_FUNC_DECL(quat, bnd_quat)
-BND_RESULT_FUNC_DECL(aabb, bnd_aabb)
-BND_RESULT_FUNC_DECL(u32, uint32_t)
-BND_RESULT_FUNC_DECL(bool, bool)
-BND_RESULT_FUNC_DECL(handle, bnd_body_handle)
-
-const count_t max_body_index = (count_t)~0 >> 9;
-count_t next_world_id;
-
-static void *std_malloc(uint64_t alignment, uint64_t size) {
-  // malloc aligns its memory at 16-bytes boundary, which is sufficient for all allocations inside the engine.
-  (void) alignment;
-  return malloc(size);
-}
-
-static void *std_realloc(void *ptr, uint64_t alignment, uint64_t old_size, uint64_t new_size) {
-  (void) alignment;
-  (void) old_size;
-  return realloc(ptr, new_size);
-}
-
-static void std_free(void *ptr, uint64_t size) {
-  (void) size;
-  free(ptr);
-}
-
-bnd_allocator bnd_default_allocator(void) {
-  return (bnd_allocator){
-    .malloc = std_malloc,
-    .realloc = std_realloc,
-    .free = std_free,
-  };
-}
-
-count_t bnd_required_memory(const bnd_config *config) {
-  count_t size = sizeof(bnd_world);
-
-  count_t common_size = sizeof(bnd_v3)
-    + sizeof(bnd_quat)
-    + sizeof(body_shapes)
-    + sizeof(bnd_aabb)
-    + sizeof(bnd_event_type)
-    + sizeof(event_link)
-    + sizeof(uint8_t)
-    + sizeof(count_t)
-    + sizeof(outer_lookup_node)
-    + sizeof(count_t);
-
-  count_t dynamic_size = common_size
-    + 4 * sizeof(bnd_v3)
-    + sizeof(float)
-    + 2 * sizeof(bnd_v3)
-    + sizeof(bnd_m3)
-    + sizeof(bnd_v3)
-    + sizeof(bnd_m3)
-    + sizeof(float);
-
-  count_t contact_size = sizeof(contact);
-  count_t joint_size = sizeof(bnd_joint) + sizeof(count_t);
-  count_t mesh_size = sizeof(bnd_v3) * DEFAULT_VERTEX_PER_MESH
-    + sizeof(uint32_t) * DEFAULT_FACE_PER_MESH * 3
-    + sizeof(submesh)
-    + sizeof(bnd_mesh)
-    + sizeof(bnd_m3)
-    + sizeof(float)
-    + sizeof(bnd_aabb);
-
-  count_t event_size = sizeof(bnd_event) + sizeof(count_t);
-  count_t shapes_size = 0;
-  for (count_t i = 0; i < BRACKET_COUNT; ++i) {
-    count_t blocks_count, shapes_count, bracket_capacity;
-    shapes_get_bracket_properties(config, i, &blocks_count, &shapes_count, &bracket_capacity);
-
-    shapes_size += shapes_count * sizeof(bnd_body_shape)
-      + blocks_count * sizeof(uint64_t);
-  }
-
-  count_t polytope_size = polytope_memory_size(config->advanced.epa_max_nodes);
-
-  count_t cache_hash_table_capacity = 1;
-  while (cache_hash_table_capacity < config->advanced.contacts_cache.hash_table_capacity) {
-    cache_hash_table_capacity *= 2;
-  }
-
-  count_t contacts_cache_size = cache_hash_table_capacity * sizeof(uint32_t)
-    + config->advanced.contacts_cache.buffer_capacity * sizeof(cache_entry);
-
-  size += (config->memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT) * dynamic_size
-    + (config->memory.statics_capacity + EPHEMERAL_BODIES_COUNT) * common_size
-    + config->memory.contacts_capacity * contact_size
-    + config->memory.joints_capacity * joint_size
-    + config->memory.meshes_capacity * mesh_size
-    + config->memory.events_capacity * event_size
-    + shapes_size
-    + polytope_size
-    + contacts_cache_size;
-
-  // Alignment
-  size += 8 * 7; // 8-bytes for world, shapes slots, EPA polytope and the cache entries buffer
-  size += 45 * 3; // 4-bytes for the rest of the buffers
-
-  return size;
-}
-
-static bnd_error init_commons(common_data *data, count_t capacity, bnd_allocator allocator) {
-  data->capacity = capacity;
-  data->count = 0;
-  data->free_count = 0;
-  data->first_outer_node = max_body_index;
-
-  count_t total_capacity = capacity + EPHEMERAL_BODIES_COUNT;
-  ALLOC_BUFFER4(data->positions, sizeof(bnd_v3) * total_capacity);
-  ALLOC_BUFFER4(data->rotations, sizeof(bnd_quat) * total_capacity);
-  ALLOC_BUFFER4(data->shapes, sizeof(body_shapes) * total_capacity);
-  ALLOC_BUFFER4(data->aabbs, sizeof(bnd_aabb) * total_capacity);
-  ALLOC_BUFFER4(data->event_masks, sizeof(bnd_event_type) * total_capacity);
-  ALLOC_BUFFER4(data->event_links, sizeof(event_link) * total_capacity);
-  ALLOC_BUFFER4(data->free_list, sizeof(count_t) * total_capacity);
-  ALLOC_BUFFER1(data->generations, sizeof(uint8_t) * total_capacity);
-  ALLOC_BUFFER4(data->outer_lookup, sizeof(outer_lookup_node) * total_capacity);
-  ALLOC_BUFFER4(data->inner_lookup, sizeof(count_t) * total_capacity);
 
   return OK;
 }
 
-static void teardown_commons(common_data *data, bnd_allocator allocator) {
-  count_t total_capacity = data->capacity + EPHEMERAL_BODIES_COUNT;
+static void calculate_mass_properties(const bnd_mesh_data *data, bnd_m3 *inertia, bnd_v3 *com, float *volume) {
+  /**
+   * This function is a rewrite of SkComputeInertia3x3 from
+   *
+   * https://github.com/blackedout01/simkn
+   */
 
-  allocator.free(data->positions, total_capacity * sizeof(bnd_v3));
-  allocator.free(data->rotations, total_capacity * sizeof(bnd_quat));
-  allocator.free(data->shapes, total_capacity * sizeof(body_shapes));
-  allocator.free(data->aabbs, total_capacity * sizeof(bnd_aabb));
-  allocator.free(data->event_masks, total_capacity * sizeof(bnd_event_type));
-  allocator.free(data->event_links, total_capacity * sizeof(event_link));
-  allocator.free(data->free_list, total_capacity * sizeof(count_t));
-  allocator.free(data->generations, total_capacity * sizeof(uint8_t));
-  allocator.free(data->outer_lookup, total_capacity * sizeof(outer_lookup_node));
-  allocator.free(data->inner_lookup, total_capacity * sizeof(count_t));
+  float ia = 0, ib = 0, ic = 0, iap = 0, ibp = 0, icp = 0;
+
+  *volume = 0;
+  *com = bnd_v3_zero();
+  *inertia = (bnd_m3){ 0 };
+  for (count_t i = 0; i + 2 < data->index_buffer.elements_count; i += 3) {
+    bnd_v3 v0 = read_vertex(&data->vertex_buffer, read_index(&data->index_buffer, i + 0));
+    bnd_v3 v1 = read_vertex(&data->vertex_buffer, read_index(&data->index_buffer, i + 1));
+    bnd_v3 v2 = read_vertex(&data->vertex_buffer, read_index(&data->index_buffer, i + 2));
+
+    bnd_m3 m = { { v0.x, v0.y, v0.z }, { v1.x, v1.y, v1.z }, { v2.x, v2.y, v2.z } };
+
+    float det = bnd_v3_dot(v0, bnd_v3_cross(v1, v2));
+    float tetr_volume = det / 6.0;
+
+    bnd_v3 tetr_com = v0;
+    tetr_com = bnd_v3_add(tetr_com, v1);
+    tetr_com = bnd_v3_add(tetr_com, v2);
+    tetr_com = bnd_v3_scale(tetr_com, 0.25);
+
+    float v100 = tetr_inertia_moment(m, 0);
+    float v010 = tetr_inertia_moment(m, 1);
+    float v001 = tetr_inertia_moment(m, 2);
+
+    ia += det * (v010 + v001);
+    ib += det * (v100 + v001);
+    ic += det * (v100 + v010);
+    iap += det * tetr_inertia_product(m, 1, 2);
+    ibp += det * tetr_inertia_product(m, 0, 1);
+    icp += det * tetr_inertia_product(m, 0, 2);
+
+    tetr_com = bnd_v3_scale(tetr_com, tetr_volume);
+    *com = bnd_v3_add(*com, tetr_com);
+    *volume += tetr_volume;
+  }
+
+  *com = bnd_v3_scale(*com, 1.0 / *volume);
+  ia = ia / 60.0 - *volume * (com->y * com->y + com->z * com->z);
+  ib = ib / 60.0 - *volume * (com->x * com->x + com->z * com->z);
+  ic = ic / 60.0 - *volume * (com->x * com->x + com->y * com->y);
+  iap = iap / 120.0 - *volume * (com->y * com->z);
+  ibp = ibp / 120.0 - *volume * (com->x * com->y);
+  icp = icp / 120.0 - *volume * (com->x * com->z);
+
+  inertia->m0[0] = ia;
+  inertia->m1[1] = ib;
+  inertia->m2[2] = ic;
+  inertia->m0[1] = inertia->m1[0] = -ibp;
+  inertia->m0[2] = inertia->m2[0] = -icp;
+  inertia->m1[2] = inertia->m2[1] = -iap;
 }
 
-bnd_config bnd_default_config(void) {
-  return (bnd_config){
-    .simulation = {
-      .gravity = (bnd_v3){0, -9.81f, 0},
-      .linear_drag = 0.95,
-      .angular_drag = 0.8,
-      .bounciness = 0.2,
-      .friction = 0.9,
-      .sleep_base_bias = 0.5,
-      .sleep_threshold = 0.3,
-      .min_bounce_velocity = 0.25,
-    },
-    .memory = {
-      .dynamics_capacity = 32,
-      .statics_capacity = 8,
-      .contacts_capacity = 64,
-      .joints_capacity = 64,
-      .meshes_capacity = 32,
-      .events_capacity = 128,
-    },
-    .advanced = {
-      .max_gjk_iterations = 100,
-      .epa_tolerance = 0.01,
-      .epa_max_nodes = 512,
-      .resolution_attempts_factor = 15,
-      .penetration_epsilon = 0.01,
-      .velocity_epsilon = 0.01,
-      .shapes_brackets_capacity = {64, 1, 1, 1, 1},
-      .contacts_cache = {
-        .max_age = 3,
-        .hash_table_capacity = 256,
-        .buffer_capacity = 64,
-        .feature_distance_threshold = 0.02f,
-        .separation_threshold = 0.05f,
-      }
-    },
+static bnd_aabb mesh_calculate_aabb(const mesh_storage *meshes, submesh submesh) {
+  count_t vertex_start = submesh.vertex_offset;
+  count_t vertex_end = vertex_start + submesh.vertex_count;
+
+  bnd_v3 min = (bnd_v3){FLT_MAX, FLT_MAX, FLT_MAX};
+  bnd_v3 max = bnd_v3_negate(min);
+  for (count_t i = vertex_start; i < vertex_end; ++i) {
+    bnd_v3 v = meshes->verticies[i];
+
+    min = bnd_v3_min(min, v);
+    max = bnd_v3_max(max, v);
+  }
+
+  return (bnd_aabb) {
+    .center = bnd_v3_scale(bnd_v3_add(min, max), 0.5),
+    .half_extents = bnd_v3_scale(bnd_v3_sub(max, min), 0.5),
   };
 }
 
-static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allocator allocator) {
-  world->allocator = allocator;
-  world->config = config;
-  world->id = next_world_id++; // TODO: make this thread-safe.
+bnd_error meshes_init(bnd_world *world) {
+  mesh_storage *meshes = &world->meshes;
+  count_t num_meshes = world->config.memory.meshes_capacity;
+  bnd_allocator allocator = world->allocator;
 
-  bnd_error e;
-  INVOKE(init_commons((common_data *)&world->dynamics, config.memory.dynamics_capacity, allocator))
-  INVOKE(init_commons((common_data *)&world->statics, config.memory.statics_capacity, allocator))
+  ALLOC_BUFFER4(meshes->submeshes, num_meshes * sizeof(submesh));
+  meshes->submesh_capacity = num_meshes;
+  meshes->submesh_count = 0;
 
-  const count_t vectors = sizeof(bnd_v3) * (config.memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT);
-  const count_t floats = sizeof(float) * (config.memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT);
-  const count_t matrices = sizeof(bnd_m3) * (config.memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT);
+  ALLOC_BUFFER4(meshes->meshes, num_meshes * sizeof(bnd_mesh));
+  meshes->mesh_capacity = num_meshes;
+  meshes->mesh_count = 0;
 
-  world->statics.dirty = false;
+  ALLOC_BUFFER4(meshes->verticies, num_meshes * DEFAULT_VERTEX_PER_MESH * sizeof(bnd_v3));
+  meshes->vertex_capacity = num_meshes * DEFAULT_VERTEX_PER_MESH;
+  meshes->vertex_count = 0;
 
-  ALLOC(world->dynamics.forces, vectors);
-  ALLOC(world->dynamics.torques, vectors);
-  ALLOC(world->dynamics.impulses, vectors);
-  ALLOC(world->dynamics.angular_impulses, vectors);
-  ALLOC(world->dynamics.accelerations, vectors);
+  ALLOC_BUFFER4(meshes->indicies, num_meshes * DEFAULT_FACE_PER_MESH * 3 * sizeof(uint32_t));
+  meshes->index_capacity = num_meshes * DEFAULT_FACE_PER_MESH * 3;
+  meshes->index_count = 0;
 
-  ALLOC(world->dynamics.inv_masses, floats);
-  ALLOC(world->dynamics.velocities, vectors);
-  ALLOC(world->dynamics.angular_momenta, vectors);
-  ALLOC(world->dynamics.inv_inertia_tensors, matrices);
-  ALLOC(world->dynamics.inv_intertias, matrices);
-  ALLOC(world->dynamics.motion_avgs, floats);
-
-  world->dynamics.awake_count = 0;
-  world->generation = 0;
-  world->age = 0;
-
-  INVOKE(contacts_init(world))
-  INVOKE(joints_init(world))
-  INVOKE(shapes_init(world))
-  INVOKE(meshes_init(world))
-  INVOKE(events_init(world))
-  INVOKE(epa_init(world))
-
-  world->epa_debug = NULL;
+  ALLOC_BUFFER4(meshes->inertias, num_meshes * sizeof(bnd_m3));
+  ALLOC_BUFFER4(meshes->volumes, num_meshes * sizeof(float));
+  ALLOC_BUFFER4(meshes->aabbs, num_meshes * sizeof(bnd_aabb));
 
   return OK;
 }
 
-bnd_world *bnd_init(bnd_config config) {
-  bnd_allocator allocator = bnd_default_allocator();
-  bnd_world *world = allocator.malloc(8, sizeof(bnd_world));
+void meshes_teardown(bnd_world *world) {
+  mesh_storage meshes = world->meshes;
 
-  // The error is ignored here intentionally. With default allocator it *should not* fail, so we'd rather
-  // provide a cleaner API by betting on a happy path.
-  bnd_init_internal(world, config, allocator);
-  return world;
+  world->allocator.free(meshes.submeshes, meshes.submesh_capacity * sizeof(submesh));
+  world->allocator.free(meshes.meshes, meshes.mesh_capacity * sizeof(bnd_mesh));
+  world->allocator.free(meshes.verticies, meshes.vertex_capacity * sizeof(bnd_v3));
+  world->allocator.free(meshes.indicies, meshes.index_capacity * sizeof(uint32_t));
+  world->allocator.free(meshes.inertias, meshes.mesh_capacity * sizeof(bnd_m3));
+  world->allocator.free(meshes.volumes, meshes.mesh_capacity * sizeof(float));
+  world->allocator.free(meshes.aabbs, meshes.mesh_capacity * sizeof(bnd_aabb));
 }
 
-bnd_result_world bnd_init_with_allocator(bnd_config config, bnd_allocator allocator) {
-  if (allocator.malloc == NULL) {
-    return BND_RESULT_ERR(world, BND_ERROR_INVALID_ALLOCATOR, "Allocator must define a malloc function");
+bnd_error bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, bnd_mesh_handle *handle, bnd_v3 *center_of_mass) {
+  bnd_error e = validate_mesh(data);
+  if (e.type != BND_OK) {
+    return e;
   }
 
-  bnd_world *world = allocator.malloc(8, sizeof(bnd_world));
-  if (world == NULL) {
-    return BND_RESULT_ERR(world, OOM_ERROR.type, OOM_ERROR.message);
+  if (!is_mesh_convex(data)) {
+    e.type = BND_ERROR_MESH_IS_CONCAVE;
+    e.message = "Concave meshes are not properly supported at the moment";
+
+    return e;
   }
 
-  memset(world, 0, sizeof(bnd_world));
+  bnd_m3 inertia;
+  float volume;
+  calculate_mass_properties(data, &inertia, center_of_mass, &volume);
 
-  bnd_error e = bnd_init_internal(world, config, allocator);
-  return (bnd_result_world) { e, world };
-}
+  mesh_storage *meshes = &world->meshes;
 
-void bnd_teardown(bnd_world *world) {
-  if (world->allocator.free == NULL) {
-    return;
+  submesh sm;
+  sm.vertex_offset = meshes->vertex_count;
+  sm.index_offset = meshes->index_count;
+  sm.vertex_count = data->vertex_buffer.elements_count;
+  sm.index_count = data->index_buffer.elements_count;
+
+  bnd_allocator allocator = world->allocator;
+  e = import_verticies(allocator, &data->vertex_buffer, meshes, *center_of_mass);
+  if (e.type != BND_OK) {
+    return e;
   }
 
-  teardown_commons((common_data *)&world->dynamics, world->allocator);
-  teardown_commons((common_data *)&world->statics, world->allocator);
+  e = import_indicies(allocator, &data->index_buffer, meshes);
+  if (e.type != BND_OK) {
+    return e;
+  }
 
-  count_t dynamics_total_capacity = world->dynamics.capacity + EPHEMERAL_BODIES_COUNT;
+  e = resize_buffer(allocator, (void **)&meshes->submeshes, 4, meshes->submesh_count + 1, &meshes->submesh_capacity, sizeof(submesh));
+  if (e.type != BND_OK) {
+    return e;
+  }
 
-  world->allocator.free(world->dynamics.forces, dynamics_total_capacity * sizeof(bnd_v3));
-  world->allocator.free(world->dynamics.torques, dynamics_total_capacity * sizeof(bnd_v3));
-  world->allocator.free(world->dynamics.impulses, dynamics_total_capacity * sizeof(bnd_v3));
-  world->allocator.free(world->dynamics.angular_impulses, dynamics_total_capacity * sizeof(bnd_v3));
-  world->allocator.free(world->dynamics.accelerations, dynamics_total_capacity * sizeof(bnd_v3));
+  e = ensure_meshes_capacity(allocator, meshes);
+  if (e.type != BND_OK) {
+    return e;
+  }
 
-  world->allocator.free(world->dynamics.inv_masses, dynamics_total_capacity * sizeof(float));
-  world->allocator.free(world->dynamics.velocities, dynamics_total_capacity * sizeof(bnd_v3));
-  world->allocator.free(world->dynamics.angular_momenta, dynamics_total_capacity * sizeof(bnd_v3));
-  world->allocator.free(world->dynamics.inv_inertia_tensors, dynamics_total_capacity * sizeof(bnd_m3));
-  world->allocator.free(world->dynamics.inv_intertias, dynamics_total_capacity * sizeof(bnd_m3));
-  world->allocator.free(world->dynamics.motion_avgs, dynamics_total_capacity * sizeof(float));
+  count_t submesh_offset = meshes->submesh_count++;
+  meshes->submeshes[submesh_offset] = sm;
 
-  shapes_teardown(world);
-  joints_teardown(world);
-  contacts_teardown(world);
-  meshes_teardown(world);
-  events_teardown(world);
-  epa_teardown(world);
+  *handle = meshes->mesh_count++;
+  meshes->meshes[*handle] = (bnd_mesh){ submesh_offset, 1 };
+  meshes->inertias[*handle] = inertia;
+  meshes->volumes[*handle] = volume;
+  meshes->aabbs[*handle] = mesh_calculate_aabb(meshes, sm);
 
-  world->allocator.free(world, sizeof(bnd_world));
-}
-
-count_t ephemeral_body_index(const common_data *data) {
-  return data->capacity;
+  return OK;
 }
 
 // ================
@@ -4930,6 +3196,155 @@ void collision_tests_free(collision_test_suite *tests) {
   free(tests->pairs);
   free(tests->cases);
   free(tests);
+}
+
+// ================
+//   events.c
+// ================
+
+#define TRY_REALLOC(buffer, size, old_capacity, new_capacity) \
+  world->events.buffer = world->allocator.realloc(world->events.buffer, 4, size * old_capacity, size * new_capacity); \
+  if (world->events.buffer == NULL) { \
+    return BND_RESULT_ERR(u32, BND_ERROR_OUT_OF_MEMORY, "Allocator.realloc failed to re-allocate the events memory buffer"); \
+  }
+
+static bnd_result_u32 new_event_index(bnd_world *world) {
+  count_t new_count = world->events.count + 1;
+  if (new_count >= world->events.capacity) {
+    if (world->allocator.realloc == NULL) {
+      return BND_RESULT_ERR(u32, BND_ERROR_NO_SPACE_AVAILABLE, "Events memory buffer is full and Allocator.realloc is NULL");
+    }
+
+    count_t old_capacity = world->events.capacity;
+    while (new_count >= world->events.capacity)  {
+      world->events.capacity *= 2;
+    }
+
+    TRY_REALLOC(events, sizeof(bnd_event), old_capacity, world->events.capacity)
+    TRY_REALLOC(links, sizeof(count_t), old_capacity, world->events.capacity)
+  }
+
+  return BND_RESULT_OK(u32, world->events.count);
+}
+
+bnd_error bnd_event_subscribe(bnd_world *world, bnd_body_handle body, bnd_event_type type) {
+  common_data *data = as_common(world, body.type);
+  PROPAGATE_ERROR(bnd_handle_valid(world, body))
+
+  count_t index = handle_to_inner_index(world, body);
+  data->event_masks[index] |= type;
+
+  return OK;
+}
+
+bnd_error bnd_event_unsubscribe(bnd_world *world, bnd_body_handle body, bnd_event_type type) {
+  PROPAGATE_ERROR(bnd_handle_valid(world, body))
+
+  common_data *data = as_common(world, body.type);
+  count_t index = handle_to_inner_index(world, body);
+  data->event_masks[index] &= ~type;
+
+  return OK;
+}
+
+bnd_error bnd_event_unsubscribe_all(bnd_world *world, bnd_body_handle body) {
+  PROPAGATE_ERROR(bnd_handle_valid(world, body))
+
+  common_data *data = as_common(world, body.type);
+  count_t index = handle_to_inner_index(world, body);
+  data->event_masks[index] = 0;
+
+  return OK;
+}
+
+bnd_result_bool bnd_event_any(bnd_world *world, bnd_body_handle body) {
+  bnd_error e = bnd_handle_valid(world, body);
+  if (e.type != BND_OK) {
+    return BND_RESULT_ERR2(bool, e);
+  }
+
+  const common_data *data = as_common_const(world, body.type);
+  count_t index = handle_to_inner_index(world, body);
+  return BND_RESULT_OK(bool, data->event_links[index].count != 0);
+}
+
+bnd_result_bool bnd_event_enumerate(bnd_world *world, bnd_body_handle body, bnd_event_enumerator *enumerator) {
+  bnd_error e = bnd_handle_valid(world, body);
+  if (e.type != BND_OK) {
+    return BND_RESULT_ERR2(bool, e);
+  }
+
+  const common_data *data = as_common_const(world, body.type);
+  count_t index = handle_to_inner_index(world, body);
+  if (data->event_links[index].count == 0) {
+    enumerator->index = 0xFFFFFFFF;
+    return BND_RESULT_OK(bool, true);
+  }
+
+  enumerator->index = data->event_links[index].first;
+  return BND_RESULT_OK(bool, true);
+}
+
+bool bnd_event_next(bnd_world *world, bnd_event_enumerator *enumerator) {
+  if (enumerator->index == 0xFFFFFFFF) {
+    return false;
+  }
+
+  enumerator->e = world->events.events[enumerator->index];
+  enumerator->index = world->events.links[enumerator->index];
+
+  return true;
+}
+
+bnd_error events_init(bnd_world *world) {
+  bnd_allocator allocator = world->allocator;
+
+  ALLOC_BUFFER4(world->events.events, world->config.memory.events_capacity * sizeof(bnd_event));
+  ALLOC_BUFFER4(world->events.links, world->config.memory.events_capacity * sizeof(count_t));
+
+  world->events.capacity = world->config.memory.events_capacity;
+  world->events.count = 0;
+
+  return OK;
+}
+
+void events_teardown(bnd_world *world) {
+  world->allocator.free(world->events.events, world->events.capacity * sizeof(bnd_event));
+  world->allocator.free(world->events.links, world->events.capacity * sizeof(count_t));
+}
+
+void events_reset(bnd_world *world) {
+  world->events.count = 0;
+  memset(world->dynamics.event_links, 0, world->dynamics.count * sizeof(event_link));
+  memset(world->statics.event_links, 0, world->statics.count * sizeof(event_link));
+}
+
+bool events_subscribed(const common_data *data, count_t index, bnd_event_type event_type) {
+  return data->event_masks[index] & event_type;
+}
+
+bnd_error events_push(bnd_world *world, common_data *data, count_t index, bnd_event event) {
+  event_link *link = &data->event_links[index];
+
+  bnd_result_u32 event_index = new_event_index(world);
+  if (event_index.error.type != BND_OK) {
+    return event_index.error;
+  }
+
+  world->events.events[event_index.value] = event;
+  if (link->count > 0) {
+    world->events.links[link->last] = event_index.value;
+  }
+  world->events.links[event_index.value] = 0xFFFFFFFF;
+  world->events.count += 1;
+
+  if (link->count == 0) {
+    link->first = event_index.value;
+  }
+  link->last = event_index.value;
+  link->count += 1;
+
+  return OK;
 }
 
 // ================
@@ -5780,6 +4195,2591 @@ void collision_detection_init(void) {
 }
 
 // ================
+//   queries.c
+// ================
+
+
+typedef bool (*raycast_func)(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *hit);
+
+typedef struct {
+  const bnd_world *world;
+  const common_data *data;
+  bnd_body_type type;
+  count_t body_index;
+  count_t shape_index;
+} raycast_context;
+
+static bnd_ray ray_transform(bnd_ray r, bnd_v3 witness, bnd_quat rotation) {
+  bnd_quat inv_rotation = bnd_quat_invert(rotation);
+  r.origin = bnd_v3_rotate(bnd_v3_sub(r.origin, witness), inv_rotation);
+  r.direction = bnd_v3_rotate(r.direction, inv_rotation);
+
+  return r;
+}
+
+static bool check_ray_cylinder(bnd_ray local_ray, float half_height, float radius, bnd_raycast_hit *local_hit) {
+  const float epsilon = 1e-6f;
+
+  // --- infinite cylinder (XZ plane) ---
+  float a = local_ray.direction.x * local_ray.direction.x + local_ray.direction.z * local_ray.direction.z;
+  float b = 2.0f * (local_ray.origin.x * local_ray.direction.x + local_ray.origin.z * local_ray.direction.z);
+  float c = local_ray.origin.x * local_ray.origin.x + local_ray.origin.z * local_ray.origin.z - radius * radius;
+
+  float t_body_enter = -FLT_MAX;
+  float t_body_exit = FLT_MAX;
+  bool body_hit = false;
+
+  if (fabsf(a) > epsilon) {
+    float disc = b * b - 4.0f * a * c;
+    if (disc < 0.0f)
+      return false;
+    float sq = sqrtf(disc);
+    float inv2a = 1.0f / (2.0f * a);
+    t_body_enter = (-b - sq) * inv2a;
+    t_body_exit = (-b + sq) * inv2a;
+    body_hit = true;
+  } else {
+    // ray parallel to axis — must be inside the infinite cylinder
+    if (c > 0.0f)
+      return false;
+  }
+
+  // --- end caps (Y axis slab) ---
+  float t_cap_enter, t_cap_exit;
+  bnd_v3 normal_cap_enter, normal_cap_exit;
+
+  if (fabsf(local_ray.direction.y) > epsilon) {
+    float inv_dy = 1.0f / local_ray.direction.y;
+    float t1 = (-half_height - local_ray.origin.y) * inv_dy;
+    float t2 = (half_height - local_ray.origin.y) * inv_dy;
+    if (t1 < t2) {
+      t_cap_enter = t1;
+      normal_cap_enter = (bnd_v3){0, -1, 0};
+      t_cap_exit = t2;
+      normal_cap_exit = (bnd_v3){0, 1, 0};
+    } else {
+      t_cap_enter = t2;
+      normal_cap_enter = (bnd_v3){0, 1, 0};
+      t_cap_exit = t1;
+      normal_cap_exit = (bnd_v3){0, -1, 0};
+    }
+  } else {
+    // ray parallel to caps — must be between them
+    if (local_ray.origin.y < -half_height || local_ray.origin.y > half_height)
+      return false;
+    t_cap_enter = -FLT_MAX;
+    normal_cap_enter = (bnd_v3){0, -1, 0};
+    t_cap_exit = FLT_MAX;
+
+    normal_cap_enter = (bnd_v3){0, -1, 0};
+    t_cap_exit = FLT_MAX;
+    normal_cap_exit = (bnd_v3){0, 1, 0};
+  }
+
+  // --- intersect intervals ---
+  float t_enter = (body_hit && t_body_enter > t_cap_enter) ? t_body_enter : t_cap_enter;
+  float t_exit = (body_hit && t_body_exit < t_cap_exit) ? t_body_exit : t_cap_exit;
+
+  if (t_enter > t_exit)
+    return false;
+
+  float t = t_enter;
+  if (t < 0.0f)
+    t = t_exit;
+  if (t < 0.0f || t > local_ray.max_distance)
+    return false;
+
+  // --- normal in local space ---
+  bnd_v3 local_normal;
+  if (t == t_body_enter || (t_enter < 0.0f && t == t_body_exit)) {
+    bnd_v3 p = bnd_v3_add(local_ray.origin, bnd_v3_scale(local_ray.direction, t));
+    bnd_v3 radial = (bnd_v3){p.x, 0, p.z};
+    local_normal = bnd_v3_normalize(radial);
+  } else {
+    local_normal = (t == t_cap_enter) ? normal_cap_enter : normal_cap_exit;
+  }
+
+  local_hit->distance = t;
+  local_hit->point = bnd_v3_add(local_ray.origin, bnd_v3_scale(local_ray.direction, t));
+  local_hit->normal = local_normal;
+
+  return true;
+}
+
+static bool check_ray_sphere(bnd_ray ray, bnd_v3 center, float radius, bnd_raycast_hit *hit) {
+  bnd_v3 offset = bnd_v3_sub(center, ray.origin);
+  float o = bnd_v3_lensqr(offset);
+  float rr = radius * radius;
+
+  float tc = bnd_v3_dot(offset, ray.direction);
+  if (tc < 0.0f && o > rr)
+    return false;
+
+  float d2 = o - tc * tc;
+  if (d2 > rr)
+    return false;
+
+  float delta = sqrtf(rr - d2);
+  float t = (o > rr) ? tc - delta : tc + delta;
+
+  if (t < 0.0f || t > ray.max_distance)
+    return false;
+
+  hit->distance = t;
+  hit->point = bnd_v3_add(ray.origin, bnd_v3_scale(ray.direction, t));
+  hit->normal = bnd_v3_normalize(bnd_v3_sub(hit->point, center));
+
+  return true;
+}
+
+static bool raycast_sphere(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *hit) {
+  bnd_v3 position = body_center(ctx);
+
+  return check_ray_sphere(r, position, ctx->shape.value.sphere.radius, hit);
+}
+
+static bool raycast_box(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *hit) {
+  bnd_v3 half = bnd_v3_scale(ctx->shape.value.box.size, 0.5f);
+  bnd_v3 position = body_center(ctx);
+  bnd_quat rotation = body_rotation(ctx);
+
+  bnd_ray local_ray = ray_transform(r, position, rotation);
+
+  float tmin = -FLT_MAX;
+  float tmax = FLT_MAX;
+  bnd_v3 near_normal = bnd_v3_zero();
+  bnd_v3 far_normal = bnd_v3_zero();
+
+  const float epsilon = 1e-6f;
+
+  for (count_t axis = 0; axis < 3; ++axis) {
+    float o = ((float *)&local_ray.origin)[axis];
+    float d = ((float *)&local_ray.direction)[axis];
+    float h = ((float *)&half)[axis];
+
+    if (fabsf(d) < epsilon) {
+      if (o < -h || o > h) {
+        return false;
+      }
+      continue;
+    }
+
+    float t1 = (-h - o) / d;
+    float t2 = (h - o) / d;
+
+    bnd_v3 n1 = bnd_v3_zero();
+    bnd_v3 n2 = bnd_v3_zero();
+    ((float *)&n1)[axis] = -1.0f;
+    ((float *)&n2)[axis] = 1.0f;
+
+    if (t1 > t2) {
+      float temp = t1;
+      t1 = t2;
+      t2 = temp;
+
+      bnd_v3 ntemp = n1;
+      n1 = n2;
+      n2 = ntemp;
+    }
+
+    if (t1 > tmin) {
+      tmin = t1;
+      near_normal = n1;
+    }
+
+    if (t2 < tmax) {
+      tmax = t2;
+      far_normal = n2;
+    }
+
+    if (tmin > tmax) {
+      return false;
+    }
+  }
+
+  float distance = tmin;
+  bnd_v3 local_normal = near_normal;
+
+  if (distance < 0.0f) {
+    distance = tmax;
+    local_normal = far_normal;
+  }
+
+  if (distance < 0.0f || distance > r.max_distance) {
+    return false;
+  }
+
+  hit->distance = distance;
+  hit->point = bnd_v3_add(r.origin, bnd_v3_scale(r.direction, distance));
+  hit->normal = bnd_v3_rotate(local_normal, rotation);
+
+  return true;
+}
+
+static bool raycast_capsule(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *hit) {
+  bnd_v3 center = body_center(ctx);
+  bnd_quat rotation = body_rotation(ctx);
+
+  bnd_ray local_ray = ray_transform(r, center, rotation);
+
+  float height = ctx->shape.value.capsule.height;
+  float radius = ctx->shape.value.capsule.radius;
+
+  bnd_v3 local_cap_top =    (bnd_v3) { 0,  0.5 * height, 0 };
+  bnd_v3 local_cap_bottom = (bnd_v3) { 0, -0.5 * height, 0 };
+
+  bnd_raycast_hit proxy_hit = { 0 };
+  if (check_ray_sphere(local_ray, local_cap_top, radius, &proxy_hit) && proxy_hit.point.y > local_cap_top.y) {
+    goto hit;
+  }
+
+  if (check_ray_sphere(local_ray, local_cap_bottom, radius, &proxy_hit) && proxy_hit.point.y < local_cap_bottom.y) {
+    goto hit;
+  }
+
+  if (check_ray_cylinder(local_ray, 0.5 * height, radius, &proxy_hit)) {
+    goto hit;
+  }
+
+  return false;
+
+  hit:
+  hit->point = bnd_v3_add(center, bnd_v3_rotate(proxy_hit.point, rotation));
+  hit->normal = bnd_v3_rotate(proxy_hit.normal, rotation);
+  hit->distance = proxy_hit.distance;
+  return true;
+}
+
+static bool raycast_plane(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *hit) {
+  float dod = bnd_v3_dot(bnd_v3_sub(ctx->data->positions[ctx->index], r.origin), ctx->shape.value.plane.normal);
+  float dd = bnd_v3_dot(r.direction, ctx->shape.value.plane.normal);
+
+  if (dd >= 0)
+    return false;
+
+  float distance = dod / dd;
+
+  if (distance > r.max_distance)
+    return false;
+
+  hit->distance = distance;
+  hit->point = bnd_v3_add(r.origin, bnd_v3_scale(r.direction, distance));
+  hit->normal = ctx->shape.value.plane.normal;
+
+  return true;
+}
+
+static bool raycast_mesh(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *hit) {
+  bnd_v3 position = body_center(ctx);
+  bnd_quat rotation = body_rotation(ctx);
+
+  bnd_ray local_ray = ray_transform(r, position, rotation);
+
+  bool has_hit = false;
+  float closest_distance = r.max_distance;
+  bnd_v3 closest_point, normal;
+
+  const mesh_storage *meshes = &ctx->world->meshes;
+  bnd_mesh m = meshes->meshes[ctx->shape.value.mesh];
+
+  count_t submeshes_start = m.submesh_offset;
+  count_t submeshes_end = submeshes_start + m.submesh_count;
+
+  for (count_t i = submeshes_start; i < submeshes_end; ++i) {
+    submesh sm = meshes->submeshes[i];
+
+    count_t index_start = sm.index_offset;
+    count_t index_end = index_start + sm.index_count;
+
+    for (count_t j = index_start; j + 2 < index_end; j += 3) {
+      bnd_v3 v0 = meshes->verticies[meshes->indicies[j + 0]];
+      bnd_v3 v1 = meshes->verticies[meshes->indicies[j + 1]];
+      bnd_v3 v2 = meshes->verticies[meshes->indicies[j + 2]];
+
+      bnd_v3 n = bnd_v3_cross(bnd_v3_sub(v1, v0), bnd_v3_sub(v2, v0));
+      float d = bnd_v3_dot(n, local_ray.direction);
+      if (d >= -EPSILON) {
+        continue;
+      }
+
+      float t = (bnd_v3_dot(n, v0) - bnd_v3_dot(n, local_ray.origin)) / d;
+      if (t < 0 || t > closest_distance) {
+        continue;
+      }
+
+      bnd_v3 p = bnd_v3_add(local_ray.origin, bnd_v3_scale(local_ray.direction, t));
+      bnd_v3 bary = bnd_v3_barycentric(p, v0, v1, v2);
+
+      if (bary.x < -EPSILON || bary.y < -EPSILON || bary.z < -EPSILON) {
+        continue;
+      }
+
+      has_hit = true;
+      closest_distance = t;
+      closest_point = p;
+      normal = n;
+    }
+  }
+
+  if (!has_hit) {
+    return false;
+  }
+
+  hit->point = bnd_v3_add(position, bnd_v3_rotate(closest_point, rotation));
+  hit->normal = bnd_v3_normalize(bnd_v3_rotate(normal, rotation));
+  hit->distance = closest_distance;
+
+  return true;
+}
+
+static raycast_func raycasts[] = {
+  raycast_box,
+  raycast_sphere,
+  raycast_capsule,
+  raycast_mesh,
+  raycast_plane,
+};
+
+static raycast_context begin_raycast(const bnd_world *world, bnd_body_type type) {
+  const common_data *data = as_common_const(world, type);
+
+  return (raycast_context) {
+    .world = world,
+    .data = data,
+    .type = type,
+    .body_index = 0,
+    .shape_index = 0,
+  };
+}
+
+static bool next_raycast(raycast_context *ctx, bnd_ray r, bnd_raycast_hit *hit) {
+  if (ctx->body_index >= ctx->data->count) {
+    return false;
+  }
+
+  body_shapes shapes_info = ctx->data->shapes[ctx->body_index];
+  bnd_body_shape *shapes = shapes_get(ctx->world, shapes_info);
+  if (ctx->shape_index >= shapes_info.count) {
+    ctx->body_index += 1;
+    ctx->shape_index = 0;
+    return next_raycast(ctx, r, hit);
+  }
+
+  bnd_body_shape shape = shapes[ctx->shape_index++];
+  shape_context shape_ctx = { ctx->world, ctx->data, shape, ctx->body_index };
+
+  bool is_hit = raycasts[shape.type](r, &shape_ctx, hit);
+  if (is_hit) {
+    hit->body = make_body_handle(ctx->world, ctx->type, ctx->body_index);
+    return true;
+  }
+
+  return next_raycast(ctx, r, hit);
+}
+
+bool bnd_raycast_closest(const bnd_world *world, bnd_ray ray, bnd_raycast_hit *closest_hit) {
+  closest_hit->distance = FLT_MAX;
+
+  bnd_raycast_hit hit;
+  raycast_context ctxs[] = { begin_raycast(world, BND_BODY_DYNAMIC), begin_raycast(world, BND_BODY_STATIC) };
+
+  for (count_t i = 0; i < 2; ++i) {
+    while(next_raycast(&ctxs[i], ray, &hit)) {
+      if (hit.distance < closest_hit->distance) {
+        *closest_hit = hit;
+      }
+    }
+  }
+
+  return closest_hit->distance < FLT_MAX;
+}
+
+count_t bnd_raycast_multiple(const bnd_world *world, bnd_ray ray, bnd_raycast_hit *hits, count_t max_hits) {
+  if (max_hits == 0) {
+    return 0;
+  }
+
+  count_t num_hits = 0;
+  raycast_context ctxs[] = { begin_raycast(world, BND_BODY_DYNAMIC), begin_raycast(world, BND_BODY_STATIC) };
+
+  for (count_t i = 0; i < 2; ++i) {
+    while(next_raycast(&ctxs[i], ray, &hits[num_hits])) {
+      num_hits += 1;
+      if (num_hits >= max_hits) {
+        return num_hits;
+      }
+    }
+  }
+
+  return num_hits;
+}
+
+static count_t overlap_typed(const bnd_world *world, bnd_v3 origin, float radius, bnd_body_handle *overlaps, count_t max_overlaps, bnd_body_type type) {
+  const common_data *data = as_common_const(world, type);
+
+  count_t ephemeral_index = ephemeral_body_index(data);
+  data->positions[ephemeral_index] = origin;
+  data->aabbs[ephemeral_index] = (bnd_aabb){ origin, (bnd_v3){radius, radius, radius} };
+
+  bnd_body_shape ephemeral_shape = { BND_SPHERE, { .sphere = { radius } }, bnd_v3_zero(), bnd_quat_identity() };
+
+  count_t overlap_count = 0;
+  simplex s = { 0 };
+  for (count_t i = 0; i < data->count; ++i) {
+    if (!aabb_intersect(data, data, ephemeral_index, i)) {
+      continue;
+    }
+
+    collision_detection_context ctx;
+    ctx.world = world;
+    ctx.data_a = data;
+    ctx.data_b = data;
+    ctx.body_a = ephemeral_index;
+    ctx.body_b = i;
+    ctx.shape_a = ephemeral_shape;
+
+    body_shapes shape_info = data->shapes[i];
+    bnd_body_shape *shapes = shapes_get(world, shape_info);
+    for (count_t j = 0; j < shape_info.count; ++j) {
+      ctx.shape_b = shapes[j];
+
+      if (ctx.shape_b.type == BND_SPHERE) {
+        bnd_v3 sphere_center = data->positions[i];
+        float r = ctx.shape_b.value.sphere.radius + radius;
+
+        if (bnd_v3_distancesqr(sphere_center, origin) > r * r) {
+          continue;
+        }
+      } else if (ctx.shape_b.type == BND_PLANE) {
+        bnd_v3 plane_point = data->positions[i];
+        bnd_v3 plane_normal = ctx.shape_b.value.plane.normal;
+
+        if (bnd_v3_dot(plane_normal, bnd_v3_sub(origin, plane_point)) > radius) {
+          continue;
+        }
+      } else if (!gjk_check_intersection(world, &ctx, &s)) {
+        continue;
+      }
+
+      overlaps[overlap_count++] = make_body_handle(world, type, i);
+      if (overlap_count >= max_overlaps) {
+        return overlap_count;
+      }
+    }
+  }
+
+  return overlap_count;
+}
+
+count_t bnd_overlap(const bnd_world *world, bnd_v3 origin, float radius, bnd_body_handle *overlaps, count_t max_overlaps) {
+  if (max_overlaps == 0) {
+    return 0;
+  }
+
+  count_t overlap_count = overlap_typed(world, origin, radius, overlaps, max_overlaps, BND_BODY_DYNAMIC);
+  if (overlap_count == max_overlaps) {
+    return overlap_count;
+  }
+
+  max_overlaps -= overlap_count;
+  overlap_count += overlap_typed(world, origin, radius, overlaps + overlap_count, max_overlaps, BND_BODY_STATIC);
+
+  return overlap_count;
+}
+
+// ================
+//   math.c
+// ================
+
+bnd_m3 bnd_m3_identity(void) {
+  return (bnd_m3){ { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } };
+}
+
+bnd_v3 bnd_m3_rotate(bnd_v3 v, bnd_m3 m) {
+  return (bnd_v3){ bnd_v3_dot(*(bnd_v3 *)m.m0, v), bnd_v3_dot(*(bnd_v3 *)m.m1, v), bnd_v3_dot(*(bnd_v3 *)m.m2, v) };
+}
+
+bnd_m3 bnd_m3_transpose(bnd_m3 m) {
+  return (bnd_m3){ { m.m0[0], m.m1[0], m.m2[0] }, { m.m0[1], m.m1[1], m.m2[1] }, { m.m0[2], m.m1[2], m.m2[2] } };
+}
+
+bnd_m3 bnd_m3_multiply(bnd_m3 a, bnd_m3 b) {
+  bnd_m3 result;
+
+  result.m0[0] = a.m0[0] * b.m0[0] + a.m0[1] * b.m1[0] + a.m0[2] * b.m2[0];
+  result.m0[1] = a.m0[0] * b.m0[1] + a.m0[1] * b.m1[1] + a.m0[2] * b.m2[1];
+  result.m0[2] = a.m0[0] * b.m0[2] + a.m0[1] * b.m1[2] + a.m0[2] * b.m2[2];
+
+  result.m1[0] = a.m1[0] * b.m0[0] + a.m1[1] * b.m1[0] + a.m1[2] * b.m2[0];
+  result.m1[1] = a.m1[0] * b.m0[1] + a.m1[1] * b.m1[1] + a.m1[2] * b.m2[1];
+  result.m1[2] = a.m1[0] * b.m0[2] + a.m1[1] * b.m1[2] + a.m1[2] * b.m2[2];
+
+  result.m2[0] = a.m2[0] * b.m0[0] + a.m2[1] * b.m1[0] + a.m2[2] * b.m2[0];
+  result.m2[1] = a.m2[0] * b.m0[1] + a.m2[1] * b.m1[1] + a.m2[2] * b.m2[1];
+  result.m2[2] = a.m2[0] * b.m0[2] + a.m2[1] * b.m1[2] + a.m2[2] * b.m2[2];
+
+  return result;
+}
+
+bnd_v3 bnd_m3_rotate_inverse(bnd_v3 v, bnd_m3 m) {
+  return bnd_m3_rotate(v, bnd_m3_transpose(m));
+}
+
+bnd_m3 bnd_m3_from_basis(bnd_v3 x, bnd_v3 y, bnd_v3 z) {
+  return (bnd_m3){ { x.x, y.x, z.x }, { x.y, y.y, z.y }, { x.z, y.z, z.z } };
+}
+
+bnd_m3 bnd_m3_negate(bnd_m3 m) {
+  return (bnd_m3){ { -m.m0[0], -m.m0[1], -m.m0[2] }, { -m.m1[0], -m.m1[1], -m.m1[2] }, { -m.m2[0], -m.m2[1], -m.m2[2] } };
+}
+
+bnd_m3 bnd_m3_inverse(bnd_m3 m) {
+  float t4 = m.m0[0] * m.m1[1];
+  float t6 = m.m0[0] * m.m1[2];
+  float t8 = m.m0[1] * m.m1[0];
+  float t10 = m.m0[2] * m.m1[0];
+  float t12 = m.m0[1] * m.m2[0];
+  float t14 = m.m0[2] * m.m2[0];
+
+  // Calculate the determinant
+  float t16 = (t4 * m.m2[2] - t6 * m.m2[1] - t8 * m.m2[2] + t10 * m.m2[1] + t12 * m.m1[2] - t14 * m.m1[1]);
+
+  // Make sure the determinant is non-zero.
+  if (t16 == (float)0.0f) {
+    return m;
+  }
+
+  float t17 = 1 / t16;
+
+  bnd_m3 result;
+  result.m0[0] = (m.m1[1] * m.m2[2] - m.m1[2] * m.m2[1]) * t17;
+  result.m0[1] = -(m.m0[1] * m.m2[2] - m.m0[2] * m.m2[1]) * t17;
+  result.m0[2] = (m.m0[1] * m.m1[2] - m.m0[2] * m.m1[1]) * t17;
+  result.m1[0] = -(m.m1[0] * m.m2[2] - m.m1[2] * m.m2[0]) * t17;
+  result.m1[1] = (m.m0[0] * m.m2[2] - t14) * t17;
+  result.m1[2] = -(t6 - t10) * t17;
+  result.m2[0] = (m.m1[0] * m.m2[1] - m.m1[1] * m.m2[0]) * t17;
+  result.m2[1] = -(m.m0[0] * m.m2[1] - t12) * t17;
+  result.m2[2] = (t4 - t8) * t17;
+
+  return result;
+}
+
+bnd_m3 bnd_m3_skew_symmetric(bnd_v3 v) {
+  return (bnd_m3){ { 0, -v.z, v.y }, { v.z, 0, -v.x }, { -v.y, v.x, 0 } };
+}
+
+bnd_m3 bnd_m3_add(bnd_m3 a, bnd_m3 b) {
+  return (bnd_m3){
+    { a.m0[0] + b.m0[0], a.m0[1] + b.m0[1], a.m0[2] + b.m0[2] },
+    { a.m1[0] + b.m1[0], a.m1[1] + b.m1[1], a.m1[2] + b.m1[2] },
+    { a.m2[0] + b.m2[0], a.m2[1] + b.m2[1], a.m2[2] + b.m2[2] }
+  };
+}
+
+bnd_m3 bnd_m3_scale(bnd_m3 m, float s) {
+  return (bnd_m3){
+    { m.m0[0] * s, m.m0[1] * s, m.m0[2] * s },
+    { m.m1[0] * s, m.m1[1] * s, m.m1[2] * s },
+    { m.m2[0] * s, m.m2[1] * s, m.m2[2] * s },
+  };
+}
+
+bnd_m3 matrix_sub(bnd_m3 a, bnd_m3 b) {
+  return (bnd_m3){
+    { a.m0[0] - b.m0[0], a.m0[1] - b.m0[1], a.m0[2] - b.m0[2] },
+    { a.m1[0] - b.m1[0], a.m1[1] - b.m1[1], a.m1[2] - b.m1[2] },
+    { a.m2[0] - b.m2[0], a.m2[1] - b.m2[1], a.m2[2] - b.m2[2] }
+  };
+}
+
+bnd_m3 bnd_m3_initial_inertia(bnd_v3 inertia) {
+  return (bnd_m3){ { inertia.x, 0, 0 }, { 0, inertia.y, 0 }, { 0, 0, inertia.z } };
+}
+
+bnd_m3 bnd_m3_inertia(bnd_m3 initial_inertia, bnd_quat q) {
+  float a2 = q.x * q.x;
+  float b2 = q.y * q.y;
+  float c2 = q.z * q.z;
+  float ac = q.x * q.z;
+  float ab = q.x * q.y;
+  float bc = q.y * q.z;
+  float ad = q.w * q.x;
+  float bd = q.w * q.y;
+  float cd = q.w * q.z;
+
+  bnd_m3 rotation;
+
+  rotation.m0[0] = 1 - 2 * (b2 + c2);
+  rotation.m0[1] = 2 * (ab - cd);
+  rotation.m0[2] = 2 * (ac + bd);
+
+  rotation.m1[0] = 2 * (ab + cd);
+  rotation.m1[1] = 1 - 2 * (a2 + c2);
+  rotation.m1[2] = 2 * (bc - ad);
+
+  rotation.m2[0] = 2 * (ac - bd);
+  rotation.m2[1] = 2 * (bc + ad);
+  rotation.m2[2] = 1 - 2 * (a2 + b2);
+
+  return bnd_m3_multiply(bnd_m3_multiply(rotation, initial_inertia), bnd_m3_transpose(rotation));
+}
+
+bnd_m3 bnd_m3_displacement_inertia(bnd_m3 i0, bnd_v3 offset, float mass) {
+  float r = bnd_v3_dot(offset, offset);
+
+  bnd_m3 a = { 0 };
+  a.m0[0] = r;
+  a.m1[1] = r;
+  a.m2[2] = r;
+
+  bnd_m3 b;
+  b.m0[0] = offset.x * offset.x;
+  b.m0[1] = offset.x * offset.y;
+  b.m0[2] = offset.x * offset.z;
+
+  b.m1[0] = b.m0[1];
+  b.m1[1] = offset.y * offset.y;
+  b.m1[2] = offset.y * offset.z;
+
+  b.m2[0] = b.m0[2];
+  b.m2[1] = b.m1[2];
+  b.m2[2] = offset.z * offset.z;
+
+  return bnd_m3_add(i0, bnd_m3_scale(matrix_sub(a, b), mass));
+}
+
+bnd_quat integrate_rotation_midpoint(bnd_quat rotation, bnd_v3 angular_momentum, bnd_m3 base_inv_inertia, float dt) {
+  bnd_m3 inv_inertia = bnd_m3_inertia(base_inv_inertia, rotation);
+  bnd_v3 omega = bnd_m3_rotate(angular_momentum, inv_inertia);
+
+  const float qdt = 0.25f * dt;
+  const float hdt = 0.5f * dt;
+
+  float half_angle = bnd_v3_len(omega) * qdt;
+  bnd_quat half_step;
+  if (half_angle < 1e-6f) {
+    half_step = (bnd_quat){ omega.x * qdt, omega.y * qdt, omega.z * qdt, 1.0f };
+    half_step = bnd_quat_normalize(half_step);
+  } else {
+    float scale_factor = sinf(half_angle) / bnd_v3_len(omega);
+    half_step = (bnd_quat){ omega.x * scale_factor, omega.y * scale_factor, omega.z * scale_factor, cosf(half_angle) };
+  }
+
+  bnd_quat mid_rotation = bnd_quat_normalize(bnd_quat_mul(half_step, rotation));
+
+  inv_inertia = bnd_m3_inertia(base_inv_inertia, mid_rotation);
+  omega = bnd_m3_rotate(angular_momentum, inv_inertia);
+
+  float angle = bnd_v3_len(omega) * hdt;
+  if (angle < 1e-6f) {
+    bnd_quat step = (bnd_quat){ omega.x * hdt, omega.y * hdt, omega.z * hdt, 1.0f };
+    step = bnd_quat_normalize(step);
+    return bnd_quat_normalize(bnd_quat_mul(step, rotation));
+  }
+
+  float scale_factor = sinf(angle) / bnd_v3_len(omega);
+  bnd_quat step = (bnd_quat){ omega.x * scale_factor, omega.y * scale_factor, omega.z * scale_factor, cosf(angle) };
+
+  return bnd_quat_normalize(bnd_quat_mul(step, rotation));
+}
+
+float sqr_distance_to_line_segment(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 *closest) {
+  bnd_v3 d = bnd_v3_sub(b, a);
+  bnd_v3 ao = bnd_v3_sub(a, from);
+
+  float t = -1.0 * bnd_v3_dot(ao, d);
+  t /= bnd_v3_lensqr(d);
+
+  if (t <= 0) {
+    *closest = a;
+    return bnd_v3_distancesqr(a, from);
+  } else if (t >= 1) {
+    *closest = b;
+    return bnd_v3_distancesqr(b, from);
+  } else {
+    *closest = bnd_v3_add(a, bnd_v3_scale(d, t));
+
+    return bnd_v3_distancesqr(*closest, from);
+  }
+}
+
+float sqr_distance_to_triangle(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_v3 *closest) {
+  bnd_v3 d1 = bnd_v3_sub(b, a);
+  bnd_v3 d2 = bnd_v3_sub(c, a);
+  bnd_v3 ao = bnd_v3_sub(a, from);
+
+  float v = bnd_v3_dot(d1, d1);
+  float w = bnd_v3_dot(d2, d2);
+  float p = bnd_v3_dot(ao, d1);
+  float q = bnd_v3_dot(ao, d2);
+  float r = bnd_v3_dot(d1, d2);
+
+  float s, t;
+  float distance = 0;
+  float d = w * v - r * r;
+  if (fabsf(d) < FLT_EPSILON) {
+    s = t = -1;
+  } else {
+    s = (q * r - w * p) / d;
+    t = (-s * r - q) / w;
+  }
+
+  if (s >= 0 && s <= 1 && t >= 0 && t <= 1 && t + s <= 1) {
+    d1 = bnd_v3_scale(d1, s);
+    d2 = bnd_v3_scale(d2, t);
+
+    *closest = bnd_v3_add(a, bnd_v3_add(d1, d2));
+    distance = bnd_v3_distancesqr(*closest, from);
+  } else {
+    distance = sqr_distance_to_line_segment(from, a, b, closest);
+
+    bnd_v3 closest_2;
+    float distance2 = sqr_distance_to_line_segment(from, a, c, &closest_2);
+    if (distance2 < distance) {
+      distance = distance2;
+      *closest = closest_2;
+    }
+
+    distance2 = sqr_distance_to_line_segment(from, b, c, &closest_2);
+    if (distance2 < distance) {
+      distance = distance2;
+      *closest = closest_2;
+    }
+  }
+
+  return distance;
+}
+
+
+bnd_m3 quat_as_matrix(bnd_quat q) {
+  bnd_m3 result;
+
+  float a2 = q.x*q.x;
+  float b2 = q.y*q.y;
+  float c2 = q.z*q.z;
+  float ac = q.x*q.z;
+  float ab = q.x*q.y;
+  float bc = q.y*q.z;
+  float ad = q.w*q.x;
+  float bd = q.w*q.y;
+  float cd = q.w*q.z;
+
+  result.m0[0] = 1 - 2*(b2 + c2);
+  result.m1[0] = 2*(ab + cd);
+  result.m2[0] = 2*(ac - bd);
+
+  result.m0[1] = 2*(ab - cd);
+  result.m1[1] = 1 - 2*(a2 + c2);
+  result.m2[1] = 2*(bc + ad);
+
+  result.m0[2] = 2*(ac + bd);
+  result.m1[2] = 2*(bc - ad);
+  result.m2[2] = 1 - 2*(a2 + b2);
+
+  return result;
+}
+
+// ================
+//   contacts_resolution.c
+// ================
+
+static void update_desired_velocity_delta(bnd_world *world, count_t contact_index, float dt) {
+  count_t awake_count = world->dynamics.awake_count;
+  contact *contact = &world->contacts.values[contact_index];
+  count_t body_count = contact_index < world->contacts.dynamic_count ? 2 : 1;
+  count_t body_ids[2] = {contact->index_a, contact->index_b};
+
+  bnd_v3 accelerations[2] = {0};
+  for (count_t k = 0; k < body_count; k++) {
+    if (body_ids[k] < awake_count) {
+      accelerations[k] = world->dynamics.accelerations[body_ids[k]];
+    }
+  }
+
+  float acceleration_velocity = bnd_v3_dot(bnd_v3_sub(accelerations[0], accelerations[1]), contact->normal) * dt;
+  float restitution = fabsf(contact->local_velocity.y) >= world->config.simulation.min_bounce_velocity ? contact->restitution : 0.0f;
+  float desired_delta = -contact->local_velocity.y - restitution * (contact->local_velocity.y - acceleration_velocity);
+
+  contact->desired_delta_velocity = desired_delta;
+}
+
+static bnd_m3 contact_space_transform(const contact *contact) {
+  bnd_v3 y_axis = contact->normal;
+  bnd_v3 x_axis, z_axis;
+
+  if (fabsf(y_axis.z) > fabsf(y_axis.x)) {
+    // Take (1, 0, 0) as initial guess
+    const float s = 1.0 / sqrtf(y_axis.y * y_axis.y + y_axis.z * y_axis.z);
+
+    z_axis.x = 0;
+    z_axis.y = s * y_axis.z;
+    z_axis.z = -s * y_axis.y;
+
+    x_axis.x = z_axis.y * y_axis.z - y_axis.y * z_axis.z;
+    x_axis.y = y_axis.x * z_axis.z;
+    x_axis.z = y_axis.x * z_axis.y;
+  } else {
+    // Take (0, 0, 1) as initial guess
+    const float s = 1.0 / sqrtf(y_axis.x * y_axis.x + y_axis.y * y_axis.y);
+
+    x_axis.x = -s * y_axis.y;
+    x_axis.y = s * y_axis.x;
+    x_axis.z = 0;
+
+    z_axis.x = -y_axis.z * x_axis.y;
+    z_axis.y = x_axis.x * y_axis.z;
+    z_axis.z = y_axis.x * x_axis.y - x_axis.x * y_axis.y;
+  }
+
+  return bnd_m3_from_basis(x_axis, y_axis, z_axis);
+}
+
+static void prepare_contacts(bnd_world *world, float dt) {
+  PROFILER_FUNCTION_START
+
+  dynamic_bodies *dynamics = &world->dynamics;
+
+  for (count_t i = 0; i < world->contacts.count; ++i) {
+    contact *contact = &world->contacts.values[i];
+    count_t body_ids[] = {contact->index_a, contact->index_b};
+    count_t body_count = i < world->contacts.dynamic_count ? 2 : 1;
+    bnd_v3 angular_velocity[2];
+
+    for (count_t k = 0; k < body_count; ++k) {
+      bnd_m3 inv_inertia = bnd_m3_inertia(dynamics->inv_inertia_tensors[body_ids[k]], dynamics->rotations[body_ids[k]]);
+      angular_velocity[k] = bnd_m3_rotate(dynamics->angular_momenta[body_ids[k]], inv_inertia);
+
+      dynamics->inv_intertias[body_ids[k]] = inv_inertia;
+    }
+
+    contact->basis = contact_space_transform(contact);
+    bnd_m3 world_to_contact = bnd_m3_transpose(contact->basis);
+
+    for (count_t k = 0; k < body_count; ++k) {
+      contact->relative_position[k] = bnd_v3_sub(contact->point, dynamics->positions[body_ids[k]]);
+    }
+
+    bnd_v3 local_velocity[2] = {0};
+    for (count_t k = 0; k < body_count; ++k) {
+      bnd_v3 acceleration_velocity = bnd_v3_scale(dynamics->accelerations[body_ids[k]], dt);
+      acceleration_velocity = bnd_m3_rotate(acceleration_velocity, world_to_contact);
+      acceleration_velocity.y = 0;
+
+      bnd_v3 vel = bnd_v3_add(dynamics->velocities[body_ids[k]], bnd_v3_cross(angular_velocity[k], contact->relative_position[k]));
+      vel = bnd_m3_rotate(vel, world_to_contact);
+      local_velocity[k] = bnd_v3_add(vel, acceleration_velocity);
+    }
+
+    contact->local_velocity = bnd_v3_sub(local_velocity[0], local_velocity[1]);
+
+    update_desired_velocity_delta(world, i, dt);
+  }
+
+  PROFILER_FUNCTION_END
+}
+
+static void resolve_interpenetration_contact(bnd_world *world, count_t contact_index, bnd_v3 *deltas) {
+  PROFILER_FUNCTION_START
+
+  contact *contact = &world->contacts.values[contact_index];
+  count_t body_count = contact_index < world->contacts.dynamic_count ? 2 : 1;
+  count_t body_ids[] = {contact->index_a, contact->index_b};
+
+  float total_inertia = 0;
+  float linear_inertia[2];
+  float angular_inertia_contact[2];
+  bnd_v3 torque_per_impulse[2];
+  bnd_v3 position[2];
+  bnd_m3 inv_inertia_tensor[2];
+  bnd_quat rotation[2];
+  for (count_t k = 0; k < body_count; ++k) {
+    count_t body_index = body_ids[k];
+
+    position[k] = world->dynamics.positions[body_index];
+    inv_inertia_tensor[k] = world->dynamics.inv_intertias[body_index];
+    rotation[k] = world->dynamics.rotations[body_index];
+    float inv_mass = world->dynamics.inv_masses[body_index];
+
+    torque_per_impulse[k] = bnd_v3_cross(contact->relative_position[k], contact->normal);
+
+    bnd_v3 angular_inertia_world = torque_per_impulse[k];
+    angular_inertia_world = bnd_m3_rotate(angular_inertia_world, inv_inertia_tensor[k]);
+    angular_inertia_world = bnd_v3_cross(angular_inertia_world, contact->relative_position[k]);
+
+    angular_inertia_contact[k] = bnd_v3_dot(angular_inertia_world, contact->normal);
+    linear_inertia[k] = inv_mass;
+    total_inertia += linear_inertia[k] + angular_inertia_contact[k];
+  }
+
+  const float angular_limit = 0.2f;
+  float inv_inertia = 1 / total_inertia;
+  for (count_t k = 0; k < body_count; ++k) {
+    count_t body_index = body_ids[k];
+    float sign = k ? -1 : 1;
+    float linear_move = sign * contact->depth * linear_inertia[k] * inv_inertia;
+    float angular_move = sign * contact->depth * angular_inertia_contact[k] * inv_inertia;
+
+    float projection_len = -bnd_v3_dot(contact->normal, contact->relative_position[k]);
+    bnd_v3 projection = contact->relative_position[k];
+    projection = bnd_v3_add(projection, bnd_v3_scale(contact->normal, projection_len));
+
+    float max_magnitude = angular_limit * bnd_v3_len(projection);
+    if (angular_move < -max_magnitude) {
+      float total_move = angular_move + linear_move;
+      angular_move = -max_magnitude;
+      linear_move = total_move - angular_move;
+    } else if (angular_move > max_magnitude) {
+      float total_move = angular_move + linear_move;
+      angular_move = max_magnitude;
+      linear_move = total_move - angular_move;
+    }
+
+    if (fabsf(angular_move) < 0.001) {
+      deltas[2 * k + 1] = bnd_v3_zero();
+    } else {
+      bnd_v3 target_angular_direction = bnd_m3_rotate(torque_per_impulse[k], inv_inertia_tensor[k]);
+      deltas[2 * k + 1] = bnd_v3_scale(target_angular_direction, angular_move / angular_inertia_contact[k]);
+    }
+
+    bnd_v3 linear_delta = bnd_v3_scale(contact->normal, linear_move);
+    deltas[2 * k] = linear_delta;
+    world->dynamics.positions[body_index] = bnd_v3_add(position[k], linear_delta);
+
+    bnd_v3 rotation_delta = deltas[2 * k + 1];
+    bnd_quat q_omega = {rotation_delta.x, rotation_delta.y, rotation_delta.z, 0};
+    bnd_quat dq = bnd_quat_scale(bnd_quat_mul(q_omega, rotation[k]), 0.5);
+    world->dynamics.rotations[body_index] = bnd_quat_normalize(bnd_quat_add(rotation[k], dq));
+
+    world->dynamics.inv_intertias[body_index] = bnd_m3_inertia(world->dynamics.inv_inertia_tensors[body_index], world->dynamics.rotations[body_index]);
+  }
+
+  for (count_t k = 0; k < body_count; ++k) {
+    contact->relative_position[k] = bnd_v3_sub(contact->point, world->dynamics.positions[body_ids[k]]);
+  }
+
+  PROFILER_FUNCTION_END
+}
+
+static void update_penetration_depths(bnd_world *world, count_t contact_index, const bnd_v3 *deltas) {
+  contact *worst_contact = &world->contacts.values[contact_index];
+
+  count_t worst_body_ids[] = {worst_contact->index_a, worst_contact->index_b};
+  count_t worst_body_count = contact_index < world->contacts.dynamic_count ? 2 : 1;
+
+  count_t count = world->contacts.count;
+  for (count_t i = 0; i < count; ++i) {
+    contact *contact = &world->contacts.values[i];
+    count_t body_count = i < world->contacts.dynamic_count ? 2 : 1;
+    count_t body_ids[] = {contact->index_a, contact->index_b};
+
+    for (count_t k = 0; k < body_count; ++k) {
+      count_t body_index = body_ids[k];
+
+      for (count_t m = 0; m < worst_body_count; ++m) {
+        count_t worst_body_index = worst_body_ids[m];
+
+        if (body_index == worst_body_index) {
+          bnd_v3 delta_position = bnd_v3_add(deltas[2 * m], bnd_v3_cross(deltas[2 * m + 1], contact->relative_position[k]));
+          contact->depth += (k ? 1 : -1) * bnd_v3_dot(delta_position, contact->normal);
+        }
+      }
+    }
+  }
+}
+
+static void resolve_velocity_contact(bnd_world *world, count_t contact_index, bnd_v3 *deltas) {
+  PROFILER_FUNCTION_START
+
+  contact *contact = &world->contacts.values[contact_index];
+  count_t body_count = contact_index < world->contacts.dynamic_count ? 2 : 1;
+  count_t body_ids[] = {contact->index_a, contact->index_b};
+
+  bnd_m3 contact_to_world = contact->basis;
+  bnd_m3 world_to_contact = bnd_m3_transpose(contact_to_world);
+
+  bnd_m3 delta_velocity = {0};
+  float inv_mass = 0;
+  for (count_t k = 0; k < body_count; ++k) {
+    count_t body_index = body_ids[k];
+    bnd_m3 r_cross = bnd_m3_skew_symmetric(contact->relative_position[k]);
+
+    bnd_m3 delta_velocity_world = bnd_m3_multiply(r_cross, world->dynamics.inv_intertias[body_index]);
+    delta_velocity_world = bnd_m3_multiply(delta_velocity_world, r_cross);
+    delta_velocity_world = bnd_m3_negate(delta_velocity_world);
+
+    inv_mass += world->dynamics.inv_masses[body_index];
+    delta_velocity = bnd_m3_add(delta_velocity, delta_velocity_world);
+  }
+
+  delta_velocity = bnd_m3_multiply(world_to_contact, delta_velocity);
+  delta_velocity = bnd_m3_multiply(delta_velocity, contact_to_world);
+  delta_velocity.m0[0] += inv_mass;
+  delta_velocity.m1[1] += inv_mass;
+  delta_velocity.m2[2] += inv_mass;
+
+  bnd_m3 impulse_matrix = bnd_m3_inverse(delta_velocity);
+  bnd_v3 velocity_to_kill = {-contact->local_velocity.x, contact->desired_delta_velocity, -contact->local_velocity.z};
+  bnd_v3 contact_space_impulse = bnd_m3_rotate(velocity_to_kill, impulse_matrix);
+  float planar_impulse = sqrtf(contact_space_impulse.x * contact_space_impulse.x + contact_space_impulse.z * contact_space_impulse.z);
+
+  if (planar_impulse > contact_space_impulse.y * contact->friction) {
+    contact_space_impulse.x /= planar_impulse;
+    contact_space_impulse.z /= planar_impulse;
+
+    float desired_delta_velocity = contact->desired_delta_velocity;
+    contact_space_impulse.y = delta_velocity.m1[0] * contact->friction * contact_space_impulse.x +
+                              delta_velocity.m1[1] + delta_velocity.m1[2] * contact->friction * contact_space_impulse.z;
+    contact_space_impulse.y = desired_delta_velocity / contact_space_impulse.y;
+    contact_space_impulse.x *= contact->friction * contact_space_impulse.y;
+    contact_space_impulse.z *= contact->friction * contact_space_impulse.y;
+  }
+
+  bnd_v3 world_space_impulse = bnd_m3_rotate(contact_space_impulse, contact->basis);
+
+  for (count_t k = 0; k < body_count; ++k) {
+    count_t body_index = body_ids[k];
+    inv_mass = world->dynamics.inv_masses[body_index];
+
+    bnd_v3 linear_impulse_delta = bnd_v3_scale(world_space_impulse, inv_mass);
+    bnd_v3 angular_impulse_delta = bnd_v3_cross(contact->relative_position[k], world_space_impulse);
+
+    bnd_v3 *velocity = &world->dynamics.velocities[body_index];
+    bnd_v3 *angular_momentum = &world->dynamics.angular_momenta[body_index];
+
+    *velocity = bnd_v3_add(*velocity, linear_impulse_delta);
+    *angular_momentum = bnd_v3_add(*angular_momentum, angular_impulse_delta);
+
+    deltas[2 * k] = linear_impulse_delta;
+    deltas[2 * k + 1] = angular_impulse_delta;
+
+    world_space_impulse = bnd_v3_scale(world_space_impulse, -1);
+  }
+
+  PROFILER_FUNCTION_END
+}
+
+// Find the worst penetration contact. Returns false if none above threshold.
+static bool find_worst_penetration(bnd_world *world, count_t *out_contact_index) {
+  float max_penetration = world->config.advanced.penetration_epsilon;
+  count_t best_contact = (count_t)-1;
+
+  for (count_t i = 0; i < world->contacts.count; ++i) {
+    contact *contact = &world->contacts.values[i];
+
+    if (contact->depth > max_penetration) {
+      max_penetration = contact->depth;
+      best_contact = i;
+    }
+  }
+
+  if (best_contact == (count_t)-1)
+    return false;
+
+  *out_contact_index = best_contact;
+  return true;
+}
+
+// Find the worst velocity contact. Returns false if none above threshold.
+static bool find_worst_velocity(bnd_world *world, count_t *out_contact_index) {
+  float max_velocity = world->config.advanced.velocity_epsilon;
+  count_t best_contact = (count_t)-1;
+
+  for (count_t i = 0; i < world->contacts.count; ++i) {
+    contact *contact = &world->contacts.values[i];
+
+    if (contact->desired_delta_velocity > max_velocity) {
+      max_velocity = contact->desired_delta_velocity;
+      best_contact = i;
+    }
+  }
+
+  if (best_contact == (count_t)-1) {
+    return false;
+  }
+
+  *out_contact_index = best_contact;
+  return true;
+}
+
+static void update_awake_status_for_collision(bnd_world *world, count_t contact_index) {
+  if (contact_index >= world->contacts.dynamic_count) {
+    return;
+  }
+
+  contact *contact = &world->contacts.values[contact_index];
+
+  bool body_a_awake = contact->index_a < world->dynamics.awake_count;
+  bool body_b_awake = contact->index_b < world->dynamics.awake_count;
+  if (body_a_awake == body_b_awake) {
+    return;
+  }
+
+  const float sleep_threshold = world->config.simulation.sleep_threshold;
+  if (!body_a_awake) {
+    world->dynamics.motion_avgs[contact->index_a] = 2.0 * sleep_threshold;
+  }
+
+  if (!body_b_awake) {
+    world->dynamics.motion_avgs[contact->index_b] = 2.0 * sleep_threshold;
+  }
+}
+
+static void resolve_interpenetrations(bnd_world *world) {
+  PROFILER_FUNCTION_START
+
+  const count_t count = world->contacts.count;
+  const count_t max_iterations = count * world->config.advanced.resolution_attempts_factor;
+
+  if (count == 0) {
+    PROFILER_FUNCTION_END
+    return;
+  }
+
+  count_t iterations = 0;
+  count_t max_penetration_index = -1;
+  while (iterations < max_iterations) {
+    if (!find_worst_penetration(world, &max_penetration_index)) {
+      break;
+    }
+
+    update_awake_status_for_collision(world, max_penetration_index);
+
+    bnd_v3 deltas[4];
+    resolve_interpenetration_contact(world, max_penetration_index, deltas);
+    update_penetration_depths(world, max_penetration_index, deltas);
+
+    iterations += 1;
+  }
+
+  world->stats.incomplete_resolutions += iterations >= max_iterations;
+
+  PROFILER_FUNCTION_END
+}
+
+static void update_velocity_deltas(bnd_world *world, count_t contact_index, const bnd_v3 *deltas, float dt) {
+  contact *worst_contact = &world->contacts.values[contact_index];
+  count_t worst_body_ids[] = {worst_contact->index_a, worst_contact->index_b};
+  count_t worst_body_count = contact_index < world->contacts.dynamic_count ? 2 : 1;
+
+  count_t count = world->contacts.count;
+  for (count_t i = 0; i < count; ++i) {
+    contact *contact = &world->contacts.values[i];
+    count_t body_ids[] = {contact->index_a, contact->index_b};
+    count_t body_count = i < world->contacts.dynamic_count ? 2 : 1;
+
+    for (count_t k = 0; k < body_count; ++k) {
+      count_t body_index = body_ids[k];
+
+      for (count_t m = 0; m < worst_body_count; ++m) {
+        count_t worst_body_index = worst_body_ids[m];
+
+        if (body_index == worst_body_index) {
+          bnd_v3 angular_velocity_delta = bnd_m3_rotate(deltas[2 * m + 1], world->dynamics.inv_intertias[worst_body_index]);
+          bnd_v3 delta_velocity = bnd_v3_add(deltas[2 * m], bnd_v3_cross(angular_velocity_delta, contact->relative_position[k]));
+          delta_velocity = bnd_m3_rotate_inverse(delta_velocity, contact->basis);
+
+          contact->local_velocity = bnd_v3_add(contact->local_velocity, bnd_v3_scale(delta_velocity, (k ? -1 : 1)));
+
+          update_desired_velocity_delta(world, i, dt);
+        }
+      }
+    }
+  }
+}
+
+static void resolve_velocities(bnd_world *world, float dt) {
+  PROFILER_FUNCTION_START
+
+  const count_t count = world->contacts.count;
+  const count_t max_iterations = count * world->config.advanced.resolution_attempts_factor;
+  if (count == 0) {
+    PROFILER_FUNCTION_END
+    return;
+  }
+
+  count_t iterations = 0;
+  count_t worst_contact_index = -1;
+  while (iterations < max_iterations) {
+    if (!find_worst_velocity(world, &worst_contact_index)) {
+      break;
+    }
+
+    update_awake_status_for_collision(world, worst_contact_index);
+
+    bnd_v3 deltas[4];
+    resolve_velocity_contact(world, worst_contact_index, deltas);
+    update_velocity_deltas(world, worst_contact_index, deltas, dt);
+
+    iterations += 1;
+  }
+
+  world->stats.incomplete_resolutions += iterations >= max_iterations;
+
+  PROFILER_FUNCTION_END
+}
+
+void contacts_resolve(bnd_world *world, float dt) {
+  PROFILER_FUNCTION_START
+
+  prepare_contacts(world, dt);
+  resolve_interpenetrations(world);
+  resolve_velocities(world, dt);
+
+  PROFILER_FUNCTION_END
+}
+
+// ================
+//   contacts.c
+// ================
+
+
+#define HASH_TABLE_TOMBSTONE UINT32_MAX
+#define HASH_TABLE_EMPTY 0
+
+typedef enum {
+  SLOT_EMPTY      = 1,
+  SLOT_SAME_KEY   = 2,
+
+  SLOT_ANY        = SLOT_EMPTY | SLOT_SAME_KEY,
+} hash_table_slot_flags;
+
+static bnd_event make_collision_event(const bnd_world *world, bnd_body_type type, const contact *c) {
+  return (bnd_event) { .type = BND_EVENT_COLLISION, .collision =  (bnd_contact) {
+    .point = c->point,
+    .normal = c->normal,
+    .depth = c->depth,
+    .body_a = make_body_handle(world, BND_BODY_DYNAMIC, c->index_a),
+    .body_b = make_body_handle(world, type, c->index_b),
+  }};
+}
+
+static void emit_collision_events(bnd_world *world, const contact *contacts, count_t count, bnd_body_type type) {
+  for (count_t i = 0; i < count; ++i) {
+    const contact *c = &contacts[i];
+    common_data *data_a = as_common(world, BND_BODY_DYNAMIC);
+    common_data *data_b = as_common(world, type);
+
+    if (events_subscribed(data_a, c->index_a, BND_EVENT_COLLISION)) {
+      events_push(world, data_a, c->index_a, make_collision_event(world, type, c));
+    }
+
+    if (events_subscribed(data_b, c->index_b, BND_EVENT_COLLISION)) {
+      events_push(world, data_b, c->index_b, make_collision_event(world, type, c));
+    }
+  }
+}
+
+static inline uint64_t cache_key_hash(uint64_t key) {
+  key ^= key >> 30; key *= 0xbf58476d1ce4e5b9ULL;
+  key ^= key >> 27; key *= 0x94d049bb133111ebULL;
+  key ^= key >> 31;
+
+  return key;
+}
+
+static bnd_result_u32 cache_table_find_slot(bnd_world *world, uint64_t key, hash_table_slot_flags flags) {
+  contacts_cache *cache = &world->contacts_cache;
+
+  uint64_t hash = cache_key_hash(key);
+  count_t hash_table_index = hash & (cache->hash_table_capacity - 1);
+
+  bool search_empty = flags & SLOT_EMPTY;
+  bool search_same_key = flags & SLOT_SAME_KEY;
+  int32_t first_tombstone = -1;
+
+  count_t i = hash_table_index;
+  do {
+    count_t index = cache->hash_table[i];
+
+    if (index == HASH_TABLE_EMPTY) {
+      if (search_same_key && search_empty && first_tombstone >= 0) {
+        return BND_RESULT_OK(u32, first_tombstone);
+      }
+
+      if (search_empty) {
+        return BND_RESULT_OK(u32, i);
+      }
+
+      return BND_RESULT_ERR(u32, BND_ERROR_NOT_FOUND, "");
+    }
+
+    if (index == HASH_TABLE_TOMBSTONE) {
+      if (search_empty && search_same_key) {
+        if (first_tombstone < 0) {
+          first_tombstone = i;
+        }
+      } else if (search_empty) {
+        return BND_RESULT_OK(u32, i);
+      }
+
+      goto next;
+    }
+
+    cache_entry *entry = &cache->entries[index];
+    if ((flags & SLOT_SAME_KEY) && entry->key == key) {
+      return BND_RESULT_OK(u32, i);
+    }
+
+    next:
+    i = (i + 1) & (cache->hash_table_capacity - 1);
+  } while(i != hash_table_index);
+
+  if (search_same_key && search_empty && first_tombstone >= 0) {
+    return BND_RESULT_OK(u32, first_tombstone);
+  }
+
+  return BND_RESULT_ERR(u32, BND_ERROR_OUT_OF_MEMORY, "Hash table is full");
+}
+
+static bnd_error cache_table_realloc_if_needed(bnd_world *world) {
+  contacts_cache *cache = &world->contacts_cache;
+
+  if (cache->hash_table_capacity * 0.75f < cache->entry_count) {
+    count_t new_capacity = cache->hash_table_capacity * 2;
+    REALLOC_BUFFER4(cache->hash_table, world->allocator, sizeof(count_t), cache->hash_table_capacity, new_capacity)
+    memset(cache->hash_table, 0, new_capacity * sizeof(count_t));
+
+    cache->hash_table_capacity = new_capacity;
+
+    for (count_t i = 1; i <= cache->entry_count; ++i) {
+      uint64_t key = cache->entries[i].key;
+      bnd_result_u32 index = cache_table_find_slot(world, key, SLOT_ANY);
+      if (index.error.type != BND_OK) {
+        return index.error;
+      }
+
+      cache->hash_table[index.value] = i;
+    }
+  }
+
+  if (cache->entry_count + 1 >= cache->buffer_capacity) {
+    count_t new_capacity = cache->buffer_capacity * 2;
+
+    REALLOC_BUFFER8(cache->entries, world->allocator, sizeof(cache_entry), cache->buffer_capacity, new_capacity);
+    memset(cache->entries + cache->buffer_capacity, 0, cache->buffer_capacity * sizeof(cache_entry));
+
+    cache->buffer_capacity = new_capacity;
+  }
+
+  return OK;
+}
+
+static bnd_result_u32 cache_table_insert(bnd_world *world, uint64_t key) {
+  contacts_cache *cache = &world->contacts_cache;
+
+  PROPAGATE_RESULT(u32, cache_table_realloc_if_needed(world));
+
+  bnd_result_u32 hash_table_slot = cache_table_find_slot(world, key, SLOT_ANY);
+  if (hash_table_slot.error.type != BND_OK) {
+    return hash_table_slot;
+  }
+
+  cache_entry *entry;
+  count_t entry_index = cache->hash_table[hash_table_slot.value];
+  if (entry_index == HASH_TABLE_EMPTY || entry_index == HASH_TABLE_TOMBSTONE) {
+    entry_index = ++cache->entry_count; // Prefix-increment because we want to skip 0 index
+
+    entry = &cache->entries[entry_index];
+    entry->key = key;
+    entry->access_time = world->age;
+    entry->feature_count = 0;
+
+    cache->hash_table[hash_table_slot.value] = entry_index;
+  } else if (cache->entries[entry_index].key == key) {
+    entry = &cache->entries[entry_index];
+    entry->access_time = world->age;
+  }
+
+  return BND_RESULT_OK(u32, entry_index);
+}
+
+void contacts_cache_reset(bnd_world *world) {
+  contacts_cache *cache = &world->contacts_cache;
+  cache->entry_count = 0;
+  memset(cache->hash_table, 0, cache->hash_table_capacity * sizeof(uint32_t));
+}
+
+void contacts_generate(bnd_world *world) {
+  PROFILER_FUNCTION_START
+
+  count_t dynamic_count = collisions_detect(world, 0, BND_BODY_DYNAMIC);
+  emit_collision_events(world, world->contacts.values, dynamic_count, BND_BODY_DYNAMIC);
+
+  dynamic_count += joints_generate_contacts(world, dynamic_count, BND_BODY_DYNAMIC);
+
+  const count_t static_offset = dynamic_count;
+  count_t static_count = collisions_detect(world, static_offset, BND_BODY_STATIC);
+  emit_collision_events(world, world->contacts.values + static_offset, static_count, BND_BODY_STATIC);
+
+  static_count += joints_generate_contacts(world, static_offset + static_count, BND_BODY_STATIC);
+
+  world->contacts.count = dynamic_count + static_count;
+  world->contacts.dynamic_count = dynamic_count;
+  world->stats.contacts_count = world->contacts.count;
+
+  PROFILER_FUNCTION_END
+}
+
+void contacts_reset(bnd_world *world) {
+  world->contacts.count = 0;
+  world->contacts.dynamic_count = 0;
+}
+
+bnd_error contacts_init(bnd_world *world) {
+  contacts *contacts = &world->contacts;
+  bnd_allocator allocator = world->allocator;
+
+  ALLOC_BUFFER4(contacts->values, world->config.memory.contacts_capacity * sizeof(contact));
+
+  contacts->capacity = world->config.memory.contacts_capacity;
+  contacts->count = 0;
+  contacts->dynamic_count = 0;
+
+  collision_detection_init();
+  PROPAGATE_ERROR(contacts_cache_init(world));
+
+  return OK;
+}
+
+void contacts_teardown(bnd_world *world) {
+  world->allocator.free(world->contacts.values, world->contacts.capacity * sizeof(contact));
+
+  contacts_cache *cache = &world->contacts_cache;
+  world->allocator.free(cache->hash_table, cache->hash_table_capacity * sizeof(count_t));
+  world->allocator.free(cache->entries, cache->buffer_capacity * sizeof(cache_entry));
+}
+
+bnd_error contacts_ensure_capacity(bnd_world *world, count_t contacts_offset, count_t additional_count) {
+  count_t desired_count = contacts_offset + additional_count;
+  if (desired_count <= world->contacts.capacity) {
+    return OK;
+  }
+
+  if (world->allocator.realloc == NULL) {
+    return (bnd_error) { BND_ERROR_NO_SPACE_AVAILABLE, "Contacts buffer is full and Allocator.realloc is NULL" };
+  }
+
+  count_t old_capacity = world->contacts.capacity;
+  while (desired_count > world->contacts.capacity) {
+    world->contacts.capacity <<= 1;
+
+    if (world->contacts.capacity >= desired_count) {
+      REALLOC_BUFFER4(world->contacts.values, world->allocator, sizeof(contact), old_capacity, world->contacts.capacity);
+      break;
+    }
+  }
+
+  return OK;
+}
+
+bnd_error contacts_cache_init(bnd_world *world) {
+  bnd_allocator allocator = world->allocator;
+  contacts_cache *cache = &world->contacts_cache;
+
+  cache->entry_count = 0;
+  cache->buffer_capacity = world->config.advanced.contacts_cache.buffer_capacity;
+
+  count_t desired_capacity = world->config.advanced.contacts_cache.hash_table_capacity;
+  cache->hash_table_capacity = 1;
+  while (cache->hash_table_capacity < desired_capacity) {
+    cache->hash_table_capacity *= 2;
+  }
+
+  ALLOC_BUFFER4(cache->hash_table, cache->hash_table_capacity * sizeof(uint32_t));
+  ALLOC_BUFFER8(cache->entries, cache->buffer_capacity * sizeof(cache_entry));
+
+  memset(cache->hash_table, 0, cache->hash_table_capacity * sizeof(uint32_t));
+  memset(cache->entries, 0, cache->buffer_capacity * sizeof(cache_entry));
+
+  return OK;
+}
+
+cache_entry *contacts_cache_query(bnd_world *world, contact *contact, bnd_body_type type) {
+  const common_data *data_a = as_common_const(world, BND_BODY_DYNAMIC);
+  const common_data *data_b = as_common_const(world, type);
+
+  uint64_t index_a = data_a->inner_lookup[contact->index_a];
+  uint64_t index_b = data_b->inner_lookup[contact->index_b];
+  uint64_t gen_a = data_a->generations[index_a];
+  uint64_t gen_b = data_b->generations[index_b];
+
+  // Features are stored in A and B's local spaces, so the cache key must retain their order.
+  const uint64_t mask_23bit = 0x7FFFFF;
+
+  uint64_t key = (uint64_t)type << 62;
+  key |= gen_a << 53;
+  key |= (index_a & mask_23bit) << 31;
+  key |= gen_b << 23;
+  key |= index_b & mask_23bit;
+
+  bnd_result_u32 index = cache_table_insert(world, key);
+  if (index.error.type != BND_OK) {
+    return NULL;
+  }
+
+  return &world->contacts_cache.entries[index.value];
+}
+
+void contacts_cache_prune(bnd_world *world) {
+  PROFILER_FUNCTION_START
+
+  contacts_cache *cache = &world->contacts_cache;
+  cache_entry *entries = cache->entries;
+  int32_t entry_count = (int32_t) cache->entry_count;
+
+  for (int32_t i = entry_count; i > 0; --i) {
+    count_t age = world->age - entries[i].access_time;
+
+    if (age < world->config.advanced.contacts_cache.max_age) {
+      continue;
+    }
+
+    bnd_result_u32 current_slot_index = cache_table_find_slot(world, entries[i].key, SLOT_SAME_KEY);
+    if (current_slot_index.error.type == BND_OK) {
+      cache->hash_table[current_slot_index.value] = HASH_TABLE_TOMBSTONE;
+    }
+
+    bnd_result_u32 replacement_slot_index = cache_table_find_slot(world, entries[entry_count].key, SLOT_SAME_KEY);
+    if (replacement_slot_index.error.type == BND_OK) {
+      cache->hash_table[replacement_slot_index.value] = i;
+    }
+
+    entries[i] = entries[entry_count--];
+  }
+
+  world->contacts_cache.entry_count = entry_count;
+
+  PROFILER_FUNCTION_END
+}
+
+static float cross_2d(bnd_v3 a, bnd_v3 b, bnd_v3 c) {
+  bnd_v3 ab = { b.x - a.x, b.y - a.y, 0 };
+  bnd_v3 ac = { c.x - a.x, c.y - a.y, 0 };
+  return ab.x * ac.y - ab.y * ac.x;
+}
+
+static void sort_points(bnd_v3 *points) {
+  for (count_t i = 1; i < MAX_CONTACTS_PER_PAIR; ++i) {
+    bnd_v3 value = points[i];
+    count_t j = i;
+    while (j > 0) {
+      bnd_v3 previous = points[j - 1];
+      if (previous.x < value.x || (previous.x == value.x && previous.y <= value.y)) {
+        break;
+      }
+
+      points[j] = previous;
+      --j;
+    }
+    points[j] = value;
+  }
+}
+
+static float contact_set_area(contact *contacts, const count_t *indices, bnd_v3 origin, bnd_v3 tangent_x, bnd_v3 tangent_y) {
+  bnd_v3 points[MAX_CONTACTS_PER_PAIR];
+  for (count_t i = 0; i < MAX_CONTACTS_PER_PAIR; ++i) {
+    bnd_v3 offset = bnd_v3_sub(contacts[indices[i]].point, origin);
+    points[i] = (bnd_v3){
+      .x = bnd_v3_dot(offset, tangent_x),
+      .y = bnd_v3_dot(offset, tangent_y),
+    };
+  }
+
+  sort_points(points);
+
+  bnd_v3 hull[MAX_CONTACTS_PER_PAIR * 2];
+  count_t hull_count = 0;
+
+  for (count_t i = 0; i < MAX_CONTACTS_PER_PAIR; ++i) {
+    while (hull_count >= 2 && cross_2d(hull[hull_count - 2], hull[hull_count - 1], points[i]) <= EPSILON) {
+      --hull_count;
+    }
+    hull[hull_count++] = points[i];
+  }
+
+  count_t lower_count = hull_count;
+  for (count_t i = MAX_CONTACTS_PER_PAIR - 1; i < MAX_CONTACTS_PER_PAIR; --i) {
+    while (hull_count > lower_count && cross_2d(hull[hull_count - 2], hull[hull_count - 1], points[i]) <= EPSILON) {
+      --hull_count;
+    }
+    hull[hull_count++] = points[i];
+  }
+
+  if (hull_count <= 3) {
+    return 0;
+  }
+
+  --hull_count;
+
+  float area = 0;
+  for (count_t i = 0; i < hull_count; ++i) {
+    bnd_v3 a = hull[i];
+    bnd_v3 b = hull[(i + 1) % hull_count];
+    area += a.x * b.y - a.y * b.x;
+  }
+
+  return fabsf(area) * 0.5f;
+}
+
+static float contact_set_depth(contact *contacts, const count_t *indices) {
+  float depth = 0;
+  for (count_t i = 0; i < MAX_CONTACTS_PER_PAIR; ++i) {
+    depth += contacts[indices[i]].depth;
+  }
+
+  return depth;
+}
+
+static bool better_contact_set(float area, float depth, float best_area, float best_depth) {
+  if (area > best_area + EPSILON) {
+    return true;
+  }
+
+  if (fabsf(area - best_area) <= EPSILON && depth > best_depth + EPSILON) {
+    return true;
+  }
+
+  return false;
+}
+
+static void sort_indices(count_t *indices) {
+  for (count_t i = 1; i < MAX_CONTACTS_PER_PAIR; ++i) {
+    count_t value = indices[i];
+    count_t j = i;
+    while (j > 0 && indices[j - 1] > value) {
+      indices[j] = indices[j - 1];
+      --j;
+    }
+    indices[j] = value;
+  }
+}
+
+void contacts_filter_largest_surface_area(contact *contacts, count_t contact_count, count_t *selected_indices) {
+  count_t deepest = 0;
+  for (count_t i = 1; i < contact_count; ++i) {
+    if (contacts[i].depth > contacts[deepest].depth) {
+      deepest = i;
+    }
+  }
+
+  bnd_v3 normal = contacts[deepest].normal;
+  bnd_v3 tangent_seed = fabsf(normal.y) < 0.70710678f ? bnd_v3_up() : bnd_v3_right();
+  bnd_v3 tangent_x = bnd_v3_cross(tangent_seed, normal);
+  if (bnd_v3_lensqr(tangent_x) <= EPSILON * EPSILON) {
+    tangent_x = bnd_v3_cross(bnd_v3_forward(), normal);
+  }
+  tangent_x = bnd_v3_normalize(tangent_x);
+  bnd_v3 tangent_y = bnd_v3_normalize(bnd_v3_cross(normal, tangent_x));
+  bnd_v3 origin = contacts[deepest].point;
+
+  float best_area = -FLT_MAX;
+  float best_depth = -FLT_MAX;
+
+  for (count_t i = 0; i < contact_count; ++i) {
+    if (i == deepest) {
+      continue;
+    }
+
+    for (count_t j = i + 1; j < contact_count; ++j) {
+      if (j == deepest) {
+        continue;
+      }
+
+      for (count_t k = j + 1; k < contact_count; ++k) {
+        if (k == deepest) {
+          continue;
+        }
+
+        count_t indices[MAX_CONTACTS_PER_PAIR] = { deepest, i, j, k };
+        float area = contact_set_area(contacts, indices, origin, tangent_x, tangent_y);
+        float depth = contact_set_depth(contacts, indices);
+
+        if (better_contact_set(area, depth, best_area, best_depth)) {
+          memcpy(selected_indices, indices, sizeof(indices));
+          best_area = area;
+          best_depth = depth;
+        }
+      }
+    }
+  }
+
+  // Since will move the elements within the same buffer, having the indices in ascending order will prevent data corruption.
+  sort_indices(selected_indices);
+
+  for (count_t i = 0; i < MAX_CONTACTS_PER_PAIR; ++i) {
+    contacts[i] = contacts[selected_indices[i]];
+  }
+}
+
+// ================
+//   joints.c
+// ================
+
+
+static bnd_error resize_if_needed(bnd_allocator allocator, joints *joints) {
+  if (joints->count < joints->capacity) {
+    return OK;
+  }
+
+  count_t old_capacity = joints->capacity;
+  while (joints->count >= joints->capacity) {
+    joints->capacity *= 2;
+  }
+
+  REALLOC_BUFFER4(joints->values, allocator , sizeof(bnd_joint), old_capacity, joints->capacity);
+  REALLOC_BUFFER4(joints->ids, allocator , sizeof(count_t), old_capacity, joints->capacity);
+
+  return OK;
+}
+
+bnd_result_u32 bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_v3 contact_offset_a, bnd_v3 contact_offset_b, float max_distance) {
+  PROPAGATE_RESULT(u32, bnd_handle_valid(world, body_a));
+  PROPAGATE_RESULT(u32, bnd_handle_valid(world, body_b));
+
+  if (body_a.type == BND_BODY_STATIC && body_b.type == BND_BODY_STATIC) {
+    return BND_RESULT_ERR(u32, BND_ERROR_INVALID_JOINT, "Two static bodies cannot be bound together");
+  }
+
+  // Let body_a always be dynamic - same as with contacts.
+  if (body_a.type == BND_BODY_STATIC && body_b.type == BND_BODY_DYNAMIC) {
+    bnd_body_handle tmp_body = body_b;
+    body_b = body_a;
+    body_a = tmp_body;
+
+    bnd_v3 tmp_pos = contact_offset_b;
+    contact_offset_b = contact_offset_a;
+    contact_offset_a = tmp_pos;
+  }
+
+  joints *joints = &world->joints;
+
+  PROPAGATE_RESULT(u32, resize_if_needed(world->allocator, joints));
+
+  count_t last_index = joints->count++;
+  bool is_dynamic = body_b.type == BND_BODY_DYNAMIC;
+  count_t id = joints->next_id++;
+
+  count_t index;
+  if (is_dynamic) {
+    if (joints->dynamic_count < last_index) {
+      // Move first static joint to the end
+      joints->values[last_index] = joints->values[joints->dynamic_count];
+      joints->ids[last_index] = joints->ids[joints->dynamic_count];
+    }
+
+    index = joints->dynamic_count;
+    joints->dynamic_count += 1;
+  } else {
+    index = last_index;
+  }
+
+  joints->values[index] = (bnd_joint){
+    .bodies = {body_a, body_b},
+    .relative_contact_positions = {contact_offset_a, contact_offset_b},
+    .max_error = max_distance,
+  };
+  joints->ids[index] = id;
+
+  return BND_RESULT_OK(u32, id);
+}
+
+void bnd_remove_joint(bnd_world *world, count_t id) {
+  joints *joints = &world->joints;
+
+  count_t count = joints->count;
+  count_t dynamic_count = joints->dynamic_count;
+  for (count_t i = 0; i < count; ++i) {
+    if (joints->ids[i] != id) {
+      continue;
+    }
+
+    if (i < dynamic_count) {
+      joints->values[i] = joints->values[dynamic_count - 1];
+      joints->ids[i] = joints->ids[dynamic_count - 1];
+
+      joints->values[dynamic_count - 1] = joints->values[count - 1];
+      joints->ids[dynamic_count - 1] = joints->ids[count - 1];
+
+      joints->dynamic_count -= 1;
+    } else {
+      joints->values[i] = joints->values[count - 1];
+      joints->ids[i] = joints->ids[count - 1];
+    }
+
+    joints->count -= 1;
+
+    break;
+  }
+}
+
+static bool joint_is_stale(const bnd_joint *joint, bnd_body_handle removed_body) {
+  for (count_t i = 0; i < 2; ++i) {
+    bnd_body_handle body = joint->bodies[i];
+    if (body.type == removed_body.type && body.index == removed_body.index) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+void joints_remove_stale_if_needed(bnd_world *world, bnd_body_handle removed_body) {
+  joints *joints = &world->joints;
+
+  count_t old_dynamic_count = joints->dynamic_count;
+  count_t write = 0;
+
+  for (count_t read = 0; read < old_dynamic_count; ++read) {
+    if (joint_is_stale(&joints->values[read], removed_body)) {
+      continue;
+    }
+
+    if (write != read) {
+      joints->values[write] = joints->values[read];
+      joints->ids[write] = joints->ids[read];
+    }
+
+    write += 1;
+  }
+
+  count_t new_dynamic_count = write;
+
+  for (count_t read = old_dynamic_count; read < joints->count; ++read) {
+    if (joint_is_stale(&joints->values[read], removed_body)) {
+      continue;
+    }
+
+    if (write != read) {
+      joints->values[write] = joints->values[read];
+      joints->ids[write] = joints->ids[read];
+    }
+
+    write += 1;
+  }
+
+  joints->dynamic_count = new_dynamic_count;
+  joints->count = write;
+}
+
+count_t joints_generate_contacts(bnd_world *world, count_t contacts_offset, bnd_body_type type) {
+  const joints *joints = &world->joints;
+
+  const count_t start = type == BND_BODY_DYNAMIC ? 0 : joints->dynamic_count;
+  const count_t end = type == BND_BODY_DYNAMIC ? joints->dynamic_count : joints->count;
+  const count_t max_count = end - start;
+
+  if (IS_ERROR(contacts_ensure_capacity(world, contacts_offset, max_count))) {
+    return 0;
+  }
+
+  contact *contacts = world->contacts.values;
+
+  count_t spawned_count = 0;
+  for (count_t i = start; i < end; ++i) {
+    bnd_joint j = joints->values[i];
+
+    const common_data *data[2];
+    data[0] = as_common(world, BND_BODY_DYNAMIC);
+    data[1] = as_common(world, type);
+
+    bnd_v3 world_points[2];
+    count_t indices[2];
+    for (count_t k = 0; k < 2; ++k) {
+      count_t index = handle_to_inner_index(world, j.bodies[k]);
+      world_points[k] = bnd_v3_rotate(j.relative_contact_positions[k], data[k]->rotations[index]);
+      world_points[k] = bnd_v3_add(world_points[k], data[k]->positions[index]);
+      indices[k] = index;
+    }
+
+    bnd_v3 offset = bnd_v3_sub(world_points[1], world_points[0]);
+    float distance = bnd_v3_len(offset);
+    if (distance <= j.max_error) {
+      continue;
+    }
+
+    contact *contact = contacts + contacts_offset + spawned_count;
+    contact->index_a = indices[0];
+    contact->index_b = indices[1];
+    contact->point = bnd_v3_scale(bnd_v3_add(world_points[0], world_points[1]), 0.5);
+    contact->normal = bnd_v3_scale(offset, 1.0 / distance);
+    contact->depth = distance - j.max_error;
+    contact->friction = 1.0;
+    contact->restitution = 0;
+
+    spawned_count += 1;
+  }
+
+  return spawned_count;
+}
+
+bnd_error joints_init(bnd_world *world) {
+  bnd_allocator allocator = world->allocator;
+
+  ALLOC_BUFFER4(world->joints.values, world->config.memory.joints_capacity * sizeof(bnd_joint));
+  ALLOC_BUFFER4(world->joints.ids, world->config.memory.joints_capacity * sizeof(count_t));
+
+  world->joints.capacity = world->config.memory.joints_capacity;
+
+  joints_reset(world);
+
+  return OK;
+}
+
+void joints_reset(bnd_world *world) {
+  world->joints.count = 0;
+  world->joints.next_id = 0;
+  world->joints.dynamic_count = 0;
+}
+
+void joints_teardown(bnd_world *world) {
+  world->allocator.free(world->joints.values, world->joints.capacity * sizeof(bnd_joint));
+  world->allocator.free(world->joints.ids, world->joints.capacity * sizeof(count_t));
+}
+
+// ================
+//   shapes.c
+// ================
+
+#define SHAPE_BRACKET_BLOCK_CAPACITY 64
+
+void shapes_get_bracket_properties(const bnd_config *config, count_t bracket_index, count_t *blocks, count_t *shapes, count_t *capacity) {
+  count_t blocks_count = config->advanced.shapes_brackets_capacity[bracket_index] / SHAPE_BRACKET_BLOCK_CAPACITY +
+                          ((config->advanced.shapes_brackets_capacity[bracket_index] & (SHAPE_BRACKET_BLOCK_CAPACITY - 1)) > 0);
+  count_t bracket_capacity = blocks_count * SHAPE_BRACKET_BLOCK_CAPACITY;
+
+  count_t bracket_dimension = 1 << bracket_index;
+  count_t shapes_count = bracket_capacity * bracket_dimension;
+
+  *blocks = blocks_count;
+  *shapes = shapes_count;
+  *capacity = bracket_capacity;
+}
+
+static count_t bracket_block_count(const bnd_world *world, shape_dimension_bracket bracket) {
+  return world->shape_brackets[bracket].capacity / SHAPE_BRACKET_BLOCK_CAPACITY;
+}
+
+bnd_error shapes_init(bnd_world *world) {
+  bnd_allocator allocator = world->allocator;
+
+  for (count_t i = 0; i < BRACKET_COUNT; ++i) {
+    count_t blocks_count, shapes_count, bracket_capacity;
+    shapes_get_bracket_properties(&world->config, i, &blocks_count, &shapes_count, &bracket_capacity);
+
+    shapes_bracket *bracket = &world->shape_brackets[i];
+    ALLOC_BUFFER8(bracket->slots, blocks_count * sizeof(uint64_t));
+    ALLOC_BUFFER4(bracket->shapes, shapes_count * sizeof(bnd_body_shape));
+
+    memset(bracket->slots, 0, blocks_count * sizeof(uint64_t));
+
+    bracket->capacity = bracket_capacity;
+  }
+
+  return OK;
+}
+
+void shapes_teardown(bnd_world *world) {
+  for (count_t i = 0; i < BRACKET_COUNT; ++i) {
+    shapes_bracket *bracket = &world->shape_brackets[i];
+    count_t block_count = bracket_block_count(world, i);
+    world->allocator.free(bracket->slots, block_count * sizeof(uint64_t));
+    world->allocator.free(bracket->shapes, (1 << i) * block_count * SHAPE_BRACKET_BLOCK_CAPACITY * sizeof(bnd_body_shape));
+  }
+}
+
+void shapes_reset(bnd_world *world) {
+  for (count_t i = 0; i < BRACKET_COUNT; ++i) {
+    shapes_bracket *bracket = &world->shape_brackets[i];
+    count_t blocks_count = bracket_block_count(world, i);
+
+    memset(bracket->slots, 0, blocks_count * sizeof(uint64_t));
+  }
+}
+
+bool shapes_any_slot_available(const bnd_world *world, shape_dimension_bracket bracket) {
+  count_t blocks_count = bracket_block_count(world, bracket);
+  uint64_t *slots = world->shape_brackets[bracket].slots;
+
+  for (count_t i = 0; i < blocks_count; ++i) {
+    if (slots[i] < (uint64_t)~0) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bnd_error shapes_expand_bracket(bnd_world *world, shape_dimension_bracket bracket) {
+  count_t bracket_capacity = 1 << bracket;
+
+  shapes_bracket *current_bracket = &world->shape_brackets[bracket];
+  count_t current_capacity = current_bracket->capacity;
+  count_t current_block_count = bracket_block_count(world, bracket);
+
+  count_t new_capacity = current_capacity + SHAPE_BRACKET_BLOCK_CAPACITY;
+  count_t new_block_count = current_block_count + 1;
+  count_t shapes_count = bracket_capacity * new_block_count * SHAPE_BRACKET_BLOCK_CAPACITY;
+
+  REALLOC_BUFFER8(current_bracket->slots, world->allocator, sizeof(uint64_t), current_block_count, new_block_count);
+  REALLOC_BUFFER4(current_bracket->shapes, world->allocator, sizeof(bnd_body_shape), bracket_capacity * current_block_count * SHAPE_BRACKET_BLOCK_CAPACITY, shapes_count);
+
+  current_bracket->capacity = new_capacity;
+
+  return OK;
+
+}
+
+bool shapes_put_into_empty_slot(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes, count_t shapes_count, count_t *slot_number) {
+  count_t blocks_count = bracket_block_count(world, bracket);
+  uint64_t *slots = world->shape_brackets[bracket].slots;
+  bnd_body_shape *shapes_buffer = world->shape_brackets[bracket].shapes;
+
+  for (count_t i = 0; i < blocks_count; ++i) {
+    if (slots[i] == (uint64_t)~0)
+      continue;
+
+    for (count_t k = 0; k < SHAPE_BRACKET_BLOCK_CAPACITY; ++k) {
+      uint64_t mask = (uint64_t)1 << k;
+      if ((slots[i] & mask) != 0)
+        continue;
+
+      count_t bracket_capacity = 1 << bracket;
+      count_t shape_offset = (i * SHAPE_BRACKET_BLOCK_CAPACITY + k) * bracket_capacity;
+
+      bnd_body_shape *slot = shapes_buffer + shape_offset;
+      memcpy(slot, shapes, shapes_count * sizeof(bnd_body_shape));
+
+      slots[i] |= mask;
+      *slot_number = shape_offset;
+
+      return true;
+    }
+  }
+
+  return false;
+}
+
+void shapes_clear_slot(bnd_world *world, shape_dimension_bracket bracket, count_t slot) {
+  count_t block_count = bracket_block_count(world, bracket);
+  count_t bracket_capacity = 1 << bracket;
+
+  uint64_t *slots = world->shape_brackets[bracket].slots;
+  count_t block_index = slot / (SHAPE_BRACKET_BLOCK_CAPACITY * bracket_capacity);
+  count_t bit_index = slot % (SHAPE_BRACKET_BLOCK_CAPACITY * bracket_capacity) / bracket_capacity;
+  if (block_index < block_count) {
+    slots[block_index] &= ~((uint64_t)1 << bit_index);
+  }
+}
+
+body_shapes shapes_write(bnd_world *world, shape_dimension_bracket bracket, bnd_body_shape *shapes, count_t count) {
+  assert(count <= (1 << (BRACKET_COUNT - 1)));
+
+  if (!shapes_any_slot_available(world, bracket)) {
+    shapes_expand_bracket(world, bracket);
+  }
+
+  count_t shape_slot;
+  shapes_put_into_empty_slot(world, bracket, shapes, count, &shape_slot);
+
+  return (body_shapes){.bracket = bracket, .offset = shape_slot, .count = count};
+}
+
+bnd_body_shape *shapes_get(const bnd_world *world, body_shapes shapes) {
+  return world->shape_brackets[shapes.bracket].shapes + shapes.offset;
+}
+
+#ifdef BND_TESTS
+
+
+void test_shapes_write_primitive_bracket_uses_second_block(void) {
+  bnd_world world = {0};
+  world.allocator = bnd_default_allocator();
+  world.config.advanced.shapes_brackets_capacity[BRACKET_PRIMITIVE] = 65;
+
+  shapes_init(&world);
+
+  for (count_t i = 0; i < 65; ++i) {
+    bnd_body_shape shape = {0};
+    shape.type = BND_SPHERE;
+    shape.value.sphere.radius = (float)i + 0.5f;
+
+    body_shapes written = shapes_write(&world, BRACKET_PRIMITIVE, &shape, 1);
+    bnd_body_shape *stored = shapes_get(&world, written);
+
+    assert(written.bracket == BRACKET_PRIMITIVE);
+    assert(written.count == 1);
+    assert(written.offset == i);
+    assert(memcmp(stored, &shape, sizeof(bnd_body_shape)) == 0);
+  }
+
+  assert(world.shape_brackets[BRACKET_PRIMITIVE].capacity == 128);
+  assert(world.shape_brackets[BRACKET_PRIMITIVE].slots[0] == (uint64_t)~0);
+  assert(world.shape_brackets[BRACKET_PRIMITIVE].slots[1] == 1);
+  assert(shapes_any_slot_available(&world, BRACKET_PRIMITIVE));
+
+  shapes_teardown(&world);
+}
+
+void test_shapes_write_four_bracket_keeps_alignment_across_blocks(void) {
+  bnd_world world = {0};
+  world.allocator = bnd_default_allocator();
+  world.config.advanced.shapes_brackets_capacity[BRACKET_FOUR] = 65;
+
+  shapes_init(&world);
+
+  for (count_t i = 0; i < 65; ++i) {
+    bnd_body_shape shapes[4] = {0};
+    count_t count = (i & 1) == 0 ? 3 : 4;
+
+    for (count_t k = 0; k < count; ++k) {
+      shapes[k].type = BND_CAPSULE;
+      shapes[k].value.capsule.radius = (float)(i * 10 + k + 1);
+      shapes[k].value.capsule.height = (float)(100 + i * 10 + k);
+    }
+
+    body_shapes written = shapes_write(&world, BRACKET_FOUR, shapes, count);
+    bnd_body_shape *stored = shapes_get(&world, written);
+
+    assert(written.bracket == BRACKET_FOUR);
+    assert(written.count == count);
+    assert(written.offset == i * 4);
+    assert(memcmp(stored, shapes, count * sizeof(bnd_body_shape)) == 0);
+  }
+
+  assert(world.shape_brackets[BRACKET_FOUR].capacity == 128);
+  assert(world.shape_brackets[BRACKET_FOUR].slots[0] == (uint64_t)~0);
+  assert(world.shape_brackets[BRACKET_FOUR].slots[1] == 1);
+
+  shapes_teardown(&world);
+}
+
+void test_shapes_expand_bracket_preserves_existing_data_after_two_blocks(void) {
+  bnd_world world = {0};
+  world.allocator = bnd_default_allocator();
+  world.config.advanced.shapes_brackets_capacity[BRACKET_TWO] = 65;
+
+  shapes_init(&world);
+
+  for (count_t i = 0; i < 128; ++i) {
+    bnd_body_shape shapes[2] = {0};
+    shapes[0].type = BND_BOX;
+    shapes[0].value.box.size.x = (float)(i + 1);
+    shapes[1].type = BND_SPHERE;
+    shapes[1].value.sphere.radius = (float)(i + 200);
+
+    body_shapes written = shapes_write(&world, BRACKET_TWO, shapes, 2);
+    assert(written.offset == i * 2);
+  }
+
+  assert(world.shape_brackets[BRACKET_TWO].capacity == 128);
+  assert(world.shape_brackets[BRACKET_TWO].slots[0] == (uint64_t)~0);
+  assert(world.shape_brackets[BRACKET_TWO].slots[1] == (uint64_t)~0);
+  assert(!shapes_any_slot_available(&world, BRACKET_TWO));
+
+  bnd_body_shape extra_shapes[2] = {0};
+  extra_shapes[0].type = BND_CAPSULE;
+  extra_shapes[0].value.capsule.radius = 7.0f;
+  extra_shapes[0].value.capsule.height = 9.0f;
+  extra_shapes[1].type = BND_SPHERE;
+  extra_shapes[1].value.sphere.radius = 11.0f;
+
+  body_shapes extra = shapes_write(&world, BRACKET_TWO, extra_shapes, 2);
+  bnd_body_shape *first = world.shape_brackets[BRACKET_TWO].shapes;
+  bnd_body_shape *middle = world.shape_brackets[BRACKET_TWO].shapes + 64 * 2;
+  bnd_body_shape *stored_extra = shapes_get(&world, extra);
+
+  assert(world.shape_brackets[BRACKET_TWO].capacity == 192);
+  assert(extra.offset == 128 * 2);
+  assert(world.shape_brackets[BRACKET_TWO].slots[0] == (uint64_t)~0);
+  assert(world.shape_brackets[BRACKET_TWO].slots[1] == (uint64_t)~0);
+  assert(world.shape_brackets[BRACKET_TWO].slots[2] == 1);
+
+  assert(first[0].type == BND_BOX);
+  assert(first[0].value.box.size.x == 1.0f);
+  assert(first[1].type == BND_SPHERE);
+  assert(first[1].value.sphere.radius == 200.0f);
+
+  assert(middle[0].type == BND_BOX);
+  assert(middle[0].value.box.size.x == 65.0f);
+  assert(middle[1].type == BND_SPHERE);
+  assert(middle[1].value.sphere.radius == 264.0f);
+
+  assert(memcmp(stored_extra, extra_shapes, sizeof(extra_shapes)) == 0);
+
+  shapes_teardown(&world);
+}
+
+void test_shapes_clear_slot_reuses_second_block_slot_with_bracket_alignment(void) {
+  bnd_world world = {0};
+  world.allocator = bnd_default_allocator();
+  world.config.advanced.shapes_brackets_capacity[BRACKET_EIGHT] = 65;
+
+  shapes_init(&world);
+
+  body_shapes entries[66] = {0};
+  for (count_t i = 0; i < 66; ++i) {
+    bnd_body_shape shapes[8] = {0};
+
+    for (count_t k = 0; k < 6; ++k) {
+      shapes[k].type = BND_SPHERE;
+      shapes[k].value.sphere.radius = (float)(i * 10 + k + 1);
+    }
+
+    entries[i] = shapes_write(&world, BRACKET_EIGHT, shapes, 6);
+    assert(entries[i].offset == i * 8);
+    assert(entries[i].count == 6);
+  }
+
+  assert(entries[64].offset == 64 * 8);
+  assert(entries[65].offset == 65 * 8);
+  assert(world.shape_brackets[BRACKET_EIGHT].slots[0] == (uint64_t)~0);
+  assert(world.shape_brackets[BRACKET_EIGHT].slots[1] == 3);
+
+  shapes_clear_slot(&world, BRACKET_EIGHT, entries[65].offset);
+
+  bnd_body_shape replacement_shapes[8] = {0};
+  for (count_t i = 0; i < 5; ++i) {
+    replacement_shapes[i].type = BND_BOX;
+    replacement_shapes[i].value.box.size.x = (float)(300 + i);
+  }
+
+  body_shapes replacement = shapes_write(&world, BRACKET_EIGHT, replacement_shapes, 5);
+  bnd_body_shape *stored_replacement = shapes_get(&world, replacement);
+  bnd_body_shape *preserved_neighbor = world.shape_brackets[BRACKET_EIGHT].shapes + entries[64].offset;
+
+  assert(replacement.offset == entries[65].offset);
+  assert(replacement.count == 5);
+  assert(memcmp(stored_replacement, replacement_shapes, 5 * sizeof(bnd_body_shape)) == 0);
+  assert(preserved_neighbor[0].type == BND_SPHERE);
+  assert(preserved_neighbor[0].value.sphere.radius == 641.0f);
+
+  shapes_teardown(&world);
+}
+
+void shapes_tests() {
+  TESTS_BEGIN("Body shapes")
+
+  TEST(test_shapes_write_primitive_bracket_uses_second_block)
+  TEST(test_shapes_write_four_bracket_keeps_alignment_across_blocks)
+  TEST(test_shapes_expand_bracket_preserves_existing_data_after_two_blocks)
+  TEST(test_shapes_clear_slot_reuses_second_block_slot_with_bracket_alignment)
+
+  TESTS_END
+}
+#endif
+
+// ================
+//   core.c
+// ================
+
+
+
+#define MAX_MESSAGE_SIZE 512
+
+#define INVOKE(invocation) \
+  e = invocation; \
+  if (e.type != BND_OK) { \
+    bnd_teardown(world); \
+    return e; \
+  }
+
+#define ALLOC(buffer, size) \
+  buffer = allocator.malloc(4, size); \
+  if (buffer == NULL) { \
+    bnd_teardown(world); \
+    return (bnd_error){ BND_ERROR_OUT_OF_MEMORY, "Allocator.malloc  to allocate memory" }; \
+  }
+
+BND_RESULT_FUNC_DECL(world, bnd_world*)
+BND_RESULT_FUNC_DECL(v3, bnd_v3)
+BND_RESULT_FUNC_DECL(quat, bnd_quat)
+BND_RESULT_FUNC_DECL(aabb, bnd_aabb)
+BND_RESULT_FUNC_DECL(u32, uint32_t)
+BND_RESULT_FUNC_DECL(bool, bool)
+BND_RESULT_FUNC_DECL(handle, bnd_body_handle)
+
+const count_t max_body_index = (count_t)~0 >> 9;
+count_t next_world_id;
+
+static void *std_malloc(uint64_t alignment, uint64_t size) {
+  // malloc aligns its memory at 16-bytes boundary, which is sufficient for all allocations inside the engine.
+  (void) alignment;
+  return malloc(size);
+}
+
+static void *std_realloc(void *ptr, uint64_t alignment, uint64_t old_size, uint64_t new_size) {
+  (void) alignment;
+  (void) old_size;
+  return realloc(ptr, new_size);
+}
+
+static void std_free(void *ptr, uint64_t size) {
+  (void) size;
+  free(ptr);
+}
+
+bnd_allocator bnd_default_allocator(void) {
+  return (bnd_allocator){
+    .malloc = std_malloc,
+    .realloc = std_realloc,
+    .free = std_free,
+  };
+}
+
+count_t bnd_required_memory(const bnd_config *config) {
+  count_t size = sizeof(bnd_world);
+
+  count_t common_size = sizeof(bnd_v3)
+    + sizeof(bnd_quat)
+    + sizeof(body_shapes)
+    + sizeof(bnd_aabb)
+    + sizeof(bnd_event_type)
+    + sizeof(event_link)
+    + sizeof(uint8_t)
+    + sizeof(count_t)
+    + sizeof(outer_lookup_node)
+    + sizeof(count_t);
+
+  count_t dynamic_size = common_size
+    + 4 * sizeof(bnd_v3)
+    + sizeof(float)
+    + 2 * sizeof(bnd_v3)
+    + sizeof(bnd_m3)
+    + sizeof(bnd_v3)
+    + sizeof(bnd_m3)
+    + sizeof(float);
+
+  count_t contact_size = sizeof(contact);
+  count_t joint_size = sizeof(bnd_joint) + sizeof(count_t);
+  count_t mesh_size = sizeof(bnd_v3) * DEFAULT_VERTEX_PER_MESH
+    + sizeof(uint32_t) * DEFAULT_FACE_PER_MESH * 3
+    + sizeof(submesh)
+    + sizeof(bnd_mesh)
+    + sizeof(bnd_m3)
+    + sizeof(float)
+    + sizeof(bnd_aabb);
+
+  count_t event_size = sizeof(bnd_event) + sizeof(count_t);
+  count_t shapes_size = 0;
+  for (count_t i = 0; i < BRACKET_COUNT; ++i) {
+    count_t blocks_count, shapes_count, bracket_capacity;
+    shapes_get_bracket_properties(config, i, &blocks_count, &shapes_count, &bracket_capacity);
+
+    shapes_size += shapes_count * sizeof(bnd_body_shape)
+      + blocks_count * sizeof(uint64_t);
+  }
+
+  count_t polytope_size = polytope_memory_size(config->advanced.epa_max_nodes);
+
+  count_t cache_hash_table_capacity = 1;
+  while (cache_hash_table_capacity < config->advanced.contacts_cache.hash_table_capacity) {
+    cache_hash_table_capacity *= 2;
+  }
+
+  count_t contacts_cache_size = cache_hash_table_capacity * sizeof(uint32_t)
+    + config->advanced.contacts_cache.buffer_capacity * sizeof(cache_entry);
+
+  size += (config->memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT) * dynamic_size
+    + (config->memory.statics_capacity + EPHEMERAL_BODIES_COUNT) * common_size
+    + config->memory.contacts_capacity * contact_size
+    + config->memory.joints_capacity * joint_size
+    + config->memory.meshes_capacity * mesh_size
+    + config->memory.events_capacity * event_size
+    + shapes_size
+    + polytope_size
+    + contacts_cache_size;
+
+  // Alignment
+  size += 8 * 7; // 8-bytes for world, shapes slots, EPA polytope and the cache entries buffer
+  size += 45 * 3; // 4-bytes for the rest of the buffers
+
+  return size;
+}
+
+static bnd_error init_commons(common_data *data, count_t capacity, bnd_allocator allocator) {
+  data->capacity = capacity;
+  data->count = 0;
+  data->free_count = 0;
+  data->first_outer_node = max_body_index;
+
+  count_t total_capacity = capacity + EPHEMERAL_BODIES_COUNT;
+  ALLOC_BUFFER4(data->positions, sizeof(bnd_v3) * total_capacity);
+  ALLOC_BUFFER4(data->rotations, sizeof(bnd_quat) * total_capacity);
+  ALLOC_BUFFER4(data->shapes, sizeof(body_shapes) * total_capacity);
+  ALLOC_BUFFER4(data->aabbs, sizeof(bnd_aabb) * total_capacity);
+  ALLOC_BUFFER4(data->event_masks, sizeof(bnd_event_type) * total_capacity);
+  ALLOC_BUFFER4(data->event_links, sizeof(event_link) * total_capacity);
+  ALLOC_BUFFER4(data->free_list, sizeof(count_t) * total_capacity);
+  ALLOC_BUFFER1(data->generations, sizeof(uint8_t) * total_capacity);
+  ALLOC_BUFFER4(data->outer_lookup, sizeof(outer_lookup_node) * total_capacity);
+  ALLOC_BUFFER4(data->inner_lookup, sizeof(count_t) * total_capacity);
+
+  return OK;
+}
+
+static void teardown_commons(common_data *data, bnd_allocator allocator) {
+  count_t total_capacity = data->capacity + EPHEMERAL_BODIES_COUNT;
+
+  allocator.free(data->positions, total_capacity * sizeof(bnd_v3));
+  allocator.free(data->rotations, total_capacity * sizeof(bnd_quat));
+  allocator.free(data->shapes, total_capacity * sizeof(body_shapes));
+  allocator.free(data->aabbs, total_capacity * sizeof(bnd_aabb));
+  allocator.free(data->event_masks, total_capacity * sizeof(bnd_event_type));
+  allocator.free(data->event_links, total_capacity * sizeof(event_link));
+  allocator.free(data->free_list, total_capacity * sizeof(count_t));
+  allocator.free(data->generations, total_capacity * sizeof(uint8_t));
+  allocator.free(data->outer_lookup, total_capacity * sizeof(outer_lookup_node));
+  allocator.free(data->inner_lookup, total_capacity * sizeof(count_t));
+}
+
+bnd_config bnd_default_config(void) {
+  return (bnd_config){
+    .simulation = {
+      .gravity = (bnd_v3){0, -9.81f, 0},
+      .linear_drag = 0.95,
+      .angular_drag = 0.8,
+      .bounciness = 0.2,
+      .friction = 0.9,
+      .sleep_base_bias = 0.5,
+      .sleep_threshold = 0.3,
+      .min_bounce_velocity = 0.25,
+    },
+    .memory = {
+      .dynamics_capacity = 32,
+      .statics_capacity = 8,
+      .contacts_capacity = 64,
+      .joints_capacity = 64,
+      .meshes_capacity = 32,
+      .events_capacity = 128,
+    },
+    .advanced = {
+      .max_gjk_iterations = 100,
+      .epa_tolerance = 0.01,
+      .epa_max_nodes = 512,
+      .resolution_attempts_factor = 15,
+      .penetration_epsilon = 0.01,
+      .velocity_epsilon = 0.01,
+      .shapes_brackets_capacity = {64, 1, 1, 1, 1},
+      .contacts_cache = {
+        .max_age = 3,
+        .hash_table_capacity = 256,
+        .buffer_capacity = 64,
+        .feature_distance_threshold = 0.02f,
+        .separation_threshold = 0.05f,
+      }
+    },
+  };
+}
+
+static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allocator allocator) {
+  world->allocator = allocator;
+  world->config = config;
+  world->id = next_world_id++; // TODO: make this thread-safe.
+
+  bnd_error e;
+  INVOKE(init_commons((common_data *)&world->dynamics, config.memory.dynamics_capacity, allocator))
+  INVOKE(init_commons((common_data *)&world->statics, config.memory.statics_capacity, allocator))
+
+  const count_t vectors = sizeof(bnd_v3) * (config.memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT);
+  const count_t floats = sizeof(float) * (config.memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT);
+  const count_t matrices = sizeof(bnd_m3) * (config.memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT);
+
+  world->statics.dirty = false;
+
+  ALLOC(world->dynamics.forces, vectors);
+  ALLOC(world->dynamics.torques, vectors);
+  ALLOC(world->dynamics.impulses, vectors);
+  ALLOC(world->dynamics.angular_impulses, vectors);
+  ALLOC(world->dynamics.accelerations, vectors);
+
+  ALLOC(world->dynamics.inv_masses, floats);
+  ALLOC(world->dynamics.velocities, vectors);
+  ALLOC(world->dynamics.angular_momenta, vectors);
+  ALLOC(world->dynamics.inv_inertia_tensors, matrices);
+  ALLOC(world->dynamics.inv_intertias, matrices);
+  ALLOC(world->dynamics.motion_avgs, floats);
+
+  world->dynamics.awake_count = 0;
+  world->generation = 0;
+  world->age = 0;
+
+  INVOKE(contacts_init(world))
+  INVOKE(joints_init(world))
+  INVOKE(shapes_init(world))
+  INVOKE(meshes_init(world))
+  INVOKE(events_init(world))
+  INVOKE(epa_init(world))
+
+  world->epa_debug = NULL;
+
+  return OK;
+}
+
+bnd_world *bnd_init(bnd_config config) {
+  bnd_allocator allocator = bnd_default_allocator();
+  bnd_world *world = allocator.malloc(8, sizeof(bnd_world));
+
+  // The error is ignored here intentionally. With default allocator it *should not* fail, so we'd rather
+  // provide a cleaner API by betting on a happy path.
+  bnd_init_internal(world, config, allocator);
+  return world;
+}
+
+bnd_result_world bnd_init_with_allocator(bnd_config config, bnd_allocator allocator) {
+  if (allocator.malloc == NULL) {
+    return BND_RESULT_ERR(world, BND_ERROR_INVALID_ALLOCATOR, "Allocator must define a malloc function");
+  }
+
+  bnd_world *world = allocator.malloc(8, sizeof(bnd_world));
+  if (world == NULL) {
+    return BND_RESULT_ERR(world, OOM_ERROR.type, OOM_ERROR.message);
+  }
+
+  memset(world, 0, sizeof(bnd_world));
+
+  bnd_error e = bnd_init_internal(world, config, allocator);
+  return (bnd_result_world) { e, world };
+}
+
+void bnd_teardown(bnd_world *world) {
+  if (world->allocator.free == NULL) {
+    return;
+  }
+
+  teardown_commons((common_data *)&world->dynamics, world->allocator);
+  teardown_commons((common_data *)&world->statics, world->allocator);
+
+  count_t dynamics_total_capacity = world->dynamics.capacity + EPHEMERAL_BODIES_COUNT;
+
+  world->allocator.free(world->dynamics.forces, dynamics_total_capacity * sizeof(bnd_v3));
+  world->allocator.free(world->dynamics.torques, dynamics_total_capacity * sizeof(bnd_v3));
+  world->allocator.free(world->dynamics.impulses, dynamics_total_capacity * sizeof(bnd_v3));
+  world->allocator.free(world->dynamics.angular_impulses, dynamics_total_capacity * sizeof(bnd_v3));
+  world->allocator.free(world->dynamics.accelerations, dynamics_total_capacity * sizeof(bnd_v3));
+
+  world->allocator.free(world->dynamics.inv_masses, dynamics_total_capacity * sizeof(float));
+  world->allocator.free(world->dynamics.velocities, dynamics_total_capacity * sizeof(bnd_v3));
+  world->allocator.free(world->dynamics.angular_momenta, dynamics_total_capacity * sizeof(bnd_v3));
+  world->allocator.free(world->dynamics.inv_inertia_tensors, dynamics_total_capacity * sizeof(bnd_m3));
+  world->allocator.free(world->dynamics.inv_intertias, dynamics_total_capacity * sizeof(bnd_m3));
+  world->allocator.free(world->dynamics.motion_avgs, dynamics_total_capacity * sizeof(float));
+
+  shapes_teardown(world);
+  joints_teardown(world);
+  contacts_teardown(world);
+  meshes_teardown(world);
+  events_teardown(world);
+  epa_teardown(world);
+
+  world->allocator.free(world, sizeof(bnd_world));
+}
+
+count_t ephemeral_body_index(const common_data *data) {
+  return data->capacity;
+}
+
+// ================
 //   epa.c
 // ================
 
@@ -6546,1003 +7546,3 @@ bool epa_debug_draw(bnd_world *world, const epa_debug_status *debug_status, bnd_
 }
 
 #endif
-
-// ================
-//   events.c
-// ================
-
-#define TRY_REALLOC(buffer, size, old_capacity, new_capacity) \
-  world->events.buffer = world->allocator.realloc(world->events.buffer, 4, size * old_capacity, size * new_capacity); \
-  if (world->events.buffer == NULL) { \
-    return BND_RESULT_ERR(u32, BND_ERROR_OUT_OF_MEMORY, "Allocator.realloc failed to re-allocate the events memory buffer"); \
-  }
-
-static bnd_result_u32 new_event_index(bnd_world *world) {
-  count_t new_count = world->events.count + 1;
-  if (new_count >= world->events.capacity) {
-    if (world->allocator.realloc == NULL) {
-      return BND_RESULT_ERR(u32, BND_ERROR_NO_SPACE_AVAILABLE, "Events memory buffer is full and Allocator.realloc is NULL");
-    }
-
-    count_t old_capacity = world->events.capacity;
-    while (new_count >= world->events.capacity)  {
-      world->events.capacity *= 2;
-    }
-
-    TRY_REALLOC(events, sizeof(bnd_event), old_capacity, world->events.capacity)
-    TRY_REALLOC(links, sizeof(count_t), old_capacity, world->events.capacity)
-  }
-
-  return BND_RESULT_OK(u32, world->events.count);
-}
-
-bnd_error bnd_event_subscribe(bnd_world *world, bnd_body_handle body, bnd_event_type type) {
-  common_data *data = as_common(world, body.type);
-  PROPAGATE_ERROR(bnd_handle_valid(world, body))
-
-  count_t index = handle_to_inner_index(world, body);
-  data->event_masks[index] |= type;
-
-  return OK;
-}
-
-bnd_error bnd_event_unsubscribe(bnd_world *world, bnd_body_handle body, bnd_event_type type) {
-  PROPAGATE_ERROR(bnd_handle_valid(world, body))
-
-  common_data *data = as_common(world, body.type);
-  count_t index = handle_to_inner_index(world, body);
-  data->event_masks[index] &= ~type;
-
-  return OK;
-}
-
-bnd_error bnd_event_unsubscribe_all(bnd_world *world, bnd_body_handle body) {
-  PROPAGATE_ERROR(bnd_handle_valid(world, body))
-
-  common_data *data = as_common(world, body.type);
-  count_t index = handle_to_inner_index(world, body);
-  data->event_masks[index] = 0;
-
-  return OK;
-}
-
-bnd_result_bool bnd_event_any(bnd_world *world, bnd_body_handle body) {
-  bnd_error e = bnd_handle_valid(world, body);
-  if (e.type != BND_OK) {
-    return BND_RESULT_ERR2(bool, e);
-  }
-
-  const common_data *data = as_common_const(world, body.type);
-  count_t index = handle_to_inner_index(world, body);
-  return BND_RESULT_OK(bool, data->event_links[index].count != 0);
-}
-
-bnd_result_bool bnd_event_enumerate(bnd_world *world, bnd_body_handle body, bnd_event_enumerator *enumerator) {
-  bnd_error e = bnd_handle_valid(world, body);
-  if (e.type != BND_OK) {
-    return BND_RESULT_ERR2(bool, e);
-  }
-
-  const common_data *data = as_common_const(world, body.type);
-  count_t index = handle_to_inner_index(world, body);
-  if (data->event_links[index].count == 0) {
-    enumerator->index = 0xFFFFFFFF;
-    return BND_RESULT_OK(bool, true);
-  }
-
-  enumerator->index = data->event_links[index].first;
-  return BND_RESULT_OK(bool, true);
-}
-
-bool bnd_event_next(bnd_world *world, bnd_event_enumerator *enumerator) {
-  if (enumerator->index == 0xFFFFFFFF) {
-    return false;
-  }
-
-  enumerator->e = world->events.events[enumerator->index];
-  enumerator->index = world->events.links[enumerator->index];
-
-  return true;
-}
-
-bnd_error events_init(bnd_world *world) {
-  bnd_allocator allocator = world->allocator;
-
-  ALLOC_BUFFER4(world->events.events, world->config.memory.events_capacity * sizeof(bnd_event));
-  ALLOC_BUFFER4(world->events.links, world->config.memory.events_capacity * sizeof(count_t));
-
-  world->events.capacity = world->config.memory.events_capacity;
-  world->events.count = 0;
-
-  return OK;
-}
-
-void events_teardown(bnd_world *world) {
-  world->allocator.free(world->events.events, world->events.capacity * sizeof(bnd_event));
-  world->allocator.free(world->events.links, world->events.capacity * sizeof(count_t));
-}
-
-void events_reset(bnd_world *world) {
-  world->events.count = 0;
-  memset(world->dynamics.event_links, 0, world->dynamics.count * sizeof(event_link));
-  memset(world->statics.event_links, 0, world->statics.count * sizeof(event_link));
-}
-
-bool events_subscribed(const common_data *data, count_t index, bnd_event_type event_type) {
-  return data->event_masks[index] & event_type;
-}
-
-bnd_error events_push(bnd_world *world, common_data *data, count_t index, bnd_event event) {
-  event_link *link = &data->event_links[index];
-
-  bnd_result_u32 event_index = new_event_index(world);
-  if (event_index.error.type != BND_OK) {
-    return event_index.error;
-  }
-
-  world->events.events[event_index.value] = event;
-  if (link->count > 0) {
-    world->events.links[link->last] = event_index.value;
-  }
-  world->events.links[event_index.value] = 0xFFFFFFFF;
-  world->events.count += 1;
-
-  if (link->count == 0) {
-    link->first = event_index.value;
-  }
-  link->last = event_index.value;
-  link->count += 1;
-
-  return OK;
-}
-
-// ================
-//   contacts_resolution.c
-// ================
-
-static void update_desired_velocity_delta(bnd_world *world, count_t contact_index, float dt) {
-  count_t awake_count = world->dynamics.awake_count;
-  contact *contact = &world->contacts.values[contact_index];
-  count_t body_count = contact_index < world->contacts.dynamic_count ? 2 : 1;
-  count_t body_ids[2] = {contact->index_a, contact->index_b};
-
-  bnd_v3 accelerations[2] = {0};
-  for (count_t k = 0; k < body_count; k++) {
-    if (body_ids[k] < awake_count) {
-      accelerations[k] = world->dynamics.accelerations[body_ids[k]];
-    }
-  }
-
-  float acceleration_velocity = bnd_v3_dot(bnd_v3_sub(accelerations[0], accelerations[1]), contact->normal) * dt;
-  float restitution = fabsf(contact->local_velocity.y) >= world->config.simulation.min_bounce_velocity ? contact->restitution : 0.0f;
-  float desired_delta = -contact->local_velocity.y - restitution * (contact->local_velocity.y - acceleration_velocity);
-
-  contact->desired_delta_velocity = desired_delta;
-}
-
-static bnd_m3 contact_space_transform(const contact *contact) {
-  bnd_v3 y_axis = contact->normal;
-  bnd_v3 x_axis, z_axis;
-
-  if (fabsf(y_axis.z) > fabsf(y_axis.x)) {
-    // Take (1, 0, 0) as initial guess
-    const float s = 1.0 / sqrtf(y_axis.y * y_axis.y + y_axis.z * y_axis.z);
-
-    z_axis.x = 0;
-    z_axis.y = s * y_axis.z;
-    z_axis.z = -s * y_axis.y;
-
-    x_axis.x = z_axis.y * y_axis.z - y_axis.y * z_axis.z;
-    x_axis.y = y_axis.x * z_axis.z;
-    x_axis.z = y_axis.x * z_axis.y;
-  } else {
-    // Take (0, 0, 1) as initial guess
-    const float s = 1.0 / sqrtf(y_axis.x * y_axis.x + y_axis.y * y_axis.y);
-
-    x_axis.x = -s * y_axis.y;
-    x_axis.y = s * y_axis.x;
-    x_axis.z = 0;
-
-    z_axis.x = -y_axis.z * x_axis.y;
-    z_axis.y = x_axis.x * y_axis.z;
-    z_axis.z = y_axis.x * x_axis.y - x_axis.x * y_axis.y;
-  }
-
-  return bnd_m3_from_basis(x_axis, y_axis, z_axis);
-}
-
-static void prepare_contacts(bnd_world *world, float dt) {
-  PROFILER_FUNCTION_START
-
-  dynamic_bodies *dynamics = &world->dynamics;
-
-  for (count_t i = 0; i < world->contacts.count; ++i) {
-    contact *contact = &world->contacts.values[i];
-    count_t body_ids[] = {contact->index_a, contact->index_b};
-    count_t body_count = i < world->contacts.dynamic_count ? 2 : 1;
-    bnd_v3 angular_velocity[2];
-
-    for (count_t k = 0; k < body_count; ++k) {
-      bnd_m3 inv_inertia = bnd_m3_inertia(dynamics->inv_inertia_tensors[body_ids[k]], dynamics->rotations[body_ids[k]]);
-      angular_velocity[k] = bnd_m3_rotate(dynamics->angular_momenta[body_ids[k]], inv_inertia);
-
-      dynamics->inv_intertias[body_ids[k]] = inv_inertia;
-    }
-
-    contact->basis = contact_space_transform(contact);
-    bnd_m3 world_to_contact = bnd_m3_transpose(contact->basis);
-
-    for (count_t k = 0; k < body_count; ++k) {
-      contact->relative_position[k] = bnd_v3_sub(contact->point, dynamics->positions[body_ids[k]]);
-    }
-
-    bnd_v3 local_velocity[2] = {0};
-    for (count_t k = 0; k < body_count; ++k) {
-      bnd_v3 acceleration_velocity = bnd_v3_scale(dynamics->accelerations[body_ids[k]], dt);
-      acceleration_velocity = bnd_m3_rotate(acceleration_velocity, world_to_contact);
-      acceleration_velocity.y = 0;
-
-      bnd_v3 vel = bnd_v3_add(dynamics->velocities[body_ids[k]], bnd_v3_cross(angular_velocity[k], contact->relative_position[k]));
-      vel = bnd_m3_rotate(vel, world_to_contact);
-      local_velocity[k] = bnd_v3_add(vel, acceleration_velocity);
-    }
-
-    contact->local_velocity = bnd_v3_sub(local_velocity[0], local_velocity[1]);
-
-    update_desired_velocity_delta(world, i, dt);
-  }
-
-  PROFILER_FUNCTION_END
-}
-
-static void resolve_interpenetration_contact(bnd_world *world, count_t contact_index, bnd_v3 *deltas) {
-  PROFILER_FUNCTION_START
-
-  contact *contact = &world->contacts.values[contact_index];
-  count_t body_count = contact_index < world->contacts.dynamic_count ? 2 : 1;
-  count_t body_ids[] = {contact->index_a, contact->index_b};
-
-  float total_inertia = 0;
-  float linear_inertia[2];
-  float angular_inertia_contact[2];
-  bnd_v3 torque_per_impulse[2];
-  bnd_v3 position[2];
-  bnd_m3 inv_inertia_tensor[2];
-  bnd_quat rotation[2];
-  for (count_t k = 0; k < body_count; ++k) {
-    count_t body_index = body_ids[k];
-
-    position[k] = world->dynamics.positions[body_index];
-    inv_inertia_tensor[k] = world->dynamics.inv_intertias[body_index];
-    rotation[k] = world->dynamics.rotations[body_index];
-    float inv_mass = world->dynamics.inv_masses[body_index];
-
-    torque_per_impulse[k] = bnd_v3_cross(contact->relative_position[k], contact->normal);
-
-    bnd_v3 angular_inertia_world = torque_per_impulse[k];
-    angular_inertia_world = bnd_m3_rotate(angular_inertia_world, inv_inertia_tensor[k]);
-    angular_inertia_world = bnd_v3_cross(angular_inertia_world, contact->relative_position[k]);
-
-    angular_inertia_contact[k] = bnd_v3_dot(angular_inertia_world, contact->normal);
-    linear_inertia[k] = inv_mass;
-    total_inertia += linear_inertia[k] + angular_inertia_contact[k];
-  }
-
-  const float angular_limit = 0.2f;
-  float inv_inertia = 1 / total_inertia;
-  for (count_t k = 0; k < body_count; ++k) {
-    count_t body_index = body_ids[k];
-    float sign = k ? -1 : 1;
-    float linear_move = sign * contact->depth * linear_inertia[k] * inv_inertia;
-    float angular_move = sign * contact->depth * angular_inertia_contact[k] * inv_inertia;
-
-    float projection_len = -bnd_v3_dot(contact->normal, contact->relative_position[k]);
-    bnd_v3 projection = contact->relative_position[k];
-    projection = bnd_v3_add(projection, bnd_v3_scale(contact->normal, projection_len));
-
-    float max_magnitude = angular_limit * bnd_v3_len(projection);
-    if (angular_move < -max_magnitude) {
-      float total_move = angular_move + linear_move;
-      angular_move = -max_magnitude;
-      linear_move = total_move - angular_move;
-    } else if (angular_move > max_magnitude) {
-      float total_move = angular_move + linear_move;
-      angular_move = max_magnitude;
-      linear_move = total_move - angular_move;
-    }
-
-    if (fabsf(angular_move) < 0.001) {
-      deltas[2 * k + 1] = bnd_v3_zero();
-    } else {
-      bnd_v3 target_angular_direction = bnd_m3_rotate(torque_per_impulse[k], inv_inertia_tensor[k]);
-      deltas[2 * k + 1] = bnd_v3_scale(target_angular_direction, angular_move / angular_inertia_contact[k]);
-    }
-
-    bnd_v3 linear_delta = bnd_v3_scale(contact->normal, linear_move);
-    deltas[2 * k] = linear_delta;
-    world->dynamics.positions[body_index] = bnd_v3_add(position[k], linear_delta);
-
-    bnd_v3 rotation_delta = deltas[2 * k + 1];
-    bnd_quat q_omega = {rotation_delta.x, rotation_delta.y, rotation_delta.z, 0};
-    bnd_quat dq = bnd_quat_scale(bnd_quat_mul(q_omega, rotation[k]), 0.5);
-    world->dynamics.rotations[body_index] = bnd_quat_normalize(bnd_quat_add(rotation[k], dq));
-
-    world->dynamics.inv_intertias[body_index] = bnd_m3_inertia(world->dynamics.inv_inertia_tensors[body_index], world->dynamics.rotations[body_index]);
-  }
-
-  for (count_t k = 0; k < body_count; ++k) {
-    contact->relative_position[k] = bnd_v3_sub(contact->point, world->dynamics.positions[body_ids[k]]);
-  }
-
-  PROFILER_FUNCTION_END
-}
-
-static void update_penetration_depths(bnd_world *world, count_t contact_index, const bnd_v3 *deltas) {
-  contact *worst_contact = &world->contacts.values[contact_index];
-
-  count_t worst_body_ids[] = {worst_contact->index_a, worst_contact->index_b};
-  count_t worst_body_count = contact_index < world->contacts.dynamic_count ? 2 : 1;
-
-  count_t count = world->contacts.count;
-  for (count_t i = 0; i < count; ++i) {
-    contact *contact = &world->contacts.values[i];
-    count_t body_count = i < world->contacts.dynamic_count ? 2 : 1;
-    count_t body_ids[] = {contact->index_a, contact->index_b};
-
-    for (count_t k = 0; k < body_count; ++k) {
-      count_t body_index = body_ids[k];
-
-      for (count_t m = 0; m < worst_body_count; ++m) {
-        count_t worst_body_index = worst_body_ids[m];
-
-        if (body_index == worst_body_index) {
-          bnd_v3 delta_position = bnd_v3_add(deltas[2 * m], bnd_v3_cross(deltas[2 * m + 1], contact->relative_position[k]));
-          contact->depth += (k ? 1 : -1) * bnd_v3_dot(delta_position, contact->normal);
-        }
-      }
-    }
-  }
-}
-
-static void resolve_velocity_contact(bnd_world *world, count_t contact_index, bnd_v3 *deltas) {
-  PROFILER_FUNCTION_START
-
-  contact *contact = &world->contacts.values[contact_index];
-  count_t body_count = contact_index < world->contacts.dynamic_count ? 2 : 1;
-  count_t body_ids[] = {contact->index_a, contact->index_b};
-
-  bnd_m3 contact_to_world = contact->basis;
-  bnd_m3 world_to_contact = bnd_m3_transpose(contact_to_world);
-
-  bnd_m3 delta_velocity = {0};
-  float inv_mass = 0;
-  for (count_t k = 0; k < body_count; ++k) {
-    count_t body_index = body_ids[k];
-    bnd_m3 r_cross = bnd_m3_skew_symmetric(contact->relative_position[k]);
-
-    bnd_m3 delta_velocity_world = bnd_m3_multiply(r_cross, world->dynamics.inv_intertias[body_index]);
-    delta_velocity_world = bnd_m3_multiply(delta_velocity_world, r_cross);
-    delta_velocity_world = bnd_m3_negate(delta_velocity_world);
-
-    inv_mass += world->dynamics.inv_masses[body_index];
-    delta_velocity = bnd_m3_add(delta_velocity, delta_velocity_world);
-  }
-
-  delta_velocity = bnd_m3_multiply(world_to_contact, delta_velocity);
-  delta_velocity = bnd_m3_multiply(delta_velocity, contact_to_world);
-  delta_velocity.m0[0] += inv_mass;
-  delta_velocity.m1[1] += inv_mass;
-  delta_velocity.m2[2] += inv_mass;
-
-  bnd_m3 impulse_matrix = bnd_m3_inverse(delta_velocity);
-  bnd_v3 velocity_to_kill = {-contact->local_velocity.x, contact->desired_delta_velocity, -contact->local_velocity.z};
-  bnd_v3 contact_space_impulse = bnd_m3_rotate(velocity_to_kill, impulse_matrix);
-  float planar_impulse = sqrtf(contact_space_impulse.x * contact_space_impulse.x + contact_space_impulse.z * contact_space_impulse.z);
-
-  if (planar_impulse > contact_space_impulse.y * contact->friction) {
-    contact_space_impulse.x /= planar_impulse;
-    contact_space_impulse.z /= planar_impulse;
-
-    float desired_delta_velocity = contact->desired_delta_velocity;
-    contact_space_impulse.y = delta_velocity.m1[0] * contact->friction * contact_space_impulse.x +
-                              delta_velocity.m1[1] + delta_velocity.m1[2] * contact->friction * contact_space_impulse.z;
-    contact_space_impulse.y = desired_delta_velocity / contact_space_impulse.y;
-    contact_space_impulse.x *= contact->friction * contact_space_impulse.y;
-    contact_space_impulse.z *= contact->friction * contact_space_impulse.y;
-  }
-
-  bnd_v3 world_space_impulse = bnd_m3_rotate(contact_space_impulse, contact->basis);
-
-  for (count_t k = 0; k < body_count; ++k) {
-    count_t body_index = body_ids[k];
-    inv_mass = world->dynamics.inv_masses[body_index];
-
-    bnd_v3 linear_impulse_delta = bnd_v3_scale(world_space_impulse, inv_mass);
-    bnd_v3 angular_impulse_delta = bnd_v3_cross(contact->relative_position[k], world_space_impulse);
-
-    bnd_v3 *velocity = &world->dynamics.velocities[body_index];
-    bnd_v3 *angular_momentum = &world->dynamics.angular_momenta[body_index];
-
-    *velocity = bnd_v3_add(*velocity, linear_impulse_delta);
-    *angular_momentum = bnd_v3_add(*angular_momentum, angular_impulse_delta);
-
-    deltas[2 * k] = linear_impulse_delta;
-    deltas[2 * k + 1] = angular_impulse_delta;
-
-    world_space_impulse = bnd_v3_scale(world_space_impulse, -1);
-  }
-
-  PROFILER_FUNCTION_END
-}
-
-// Find the worst penetration contact. Returns false if none above threshold.
-static bool find_worst_penetration(bnd_world *world, count_t *out_contact_index) {
-  float max_penetration = world->config.advanced.penetration_epsilon;
-  count_t best_contact = (count_t)-1;
-
-  for (count_t i = 0; i < world->contacts.count; ++i) {
-    contact *contact = &world->contacts.values[i];
-
-    if (contact->depth > max_penetration) {
-      max_penetration = contact->depth;
-      best_contact = i;
-    }
-  }
-
-  if (best_contact == (count_t)-1)
-    return false;
-
-  *out_contact_index = best_contact;
-  return true;
-}
-
-// Find the worst velocity contact. Returns false if none above threshold.
-static bool find_worst_velocity(bnd_world *world, count_t *out_contact_index) {
-  float max_velocity = world->config.advanced.velocity_epsilon;
-  count_t best_contact = (count_t)-1;
-
-  for (count_t i = 0; i < world->contacts.count; ++i) {
-    contact *contact = &world->contacts.values[i];
-
-    if (contact->desired_delta_velocity > max_velocity) {
-      max_velocity = contact->desired_delta_velocity;
-      best_contact = i;
-    }
-  }
-
-  if (best_contact == (count_t)-1) {
-    return false;
-  }
-
-  *out_contact_index = best_contact;
-  return true;
-}
-
-static void update_awake_status_for_collision(bnd_world *world, count_t contact_index) {
-  if (contact_index >= world->contacts.dynamic_count) {
-    return;
-  }
-
-  contact *contact = &world->contacts.values[contact_index];
-
-  bool body_a_awake = contact->index_a < world->dynamics.awake_count;
-  bool body_b_awake = contact->index_b < world->dynamics.awake_count;
-  if (body_a_awake == body_b_awake) {
-    return;
-  }
-
-  const float sleep_threshold = world->config.simulation.sleep_threshold;
-  if (!body_a_awake) {
-    world->dynamics.motion_avgs[contact->index_a] = 2.0 * sleep_threshold;
-  }
-
-  if (!body_b_awake) {
-    world->dynamics.motion_avgs[contact->index_b] = 2.0 * sleep_threshold;
-  }
-}
-
-static void resolve_interpenetrations(bnd_world *world) {
-  PROFILER_FUNCTION_START
-
-  const count_t count = world->contacts.count;
-  const count_t max_iterations = count * world->config.advanced.resolution_attempts_factor;
-
-  if (count == 0) {
-    PROFILER_FUNCTION_END
-    return;
-  }
-
-  count_t iterations = 0;
-  count_t max_penetration_index = -1;
-  while (iterations < max_iterations) {
-    if (!find_worst_penetration(world, &max_penetration_index)) {
-      break;
-    }
-
-    update_awake_status_for_collision(world, max_penetration_index);
-
-    bnd_v3 deltas[4];
-    resolve_interpenetration_contact(world, max_penetration_index, deltas);
-    update_penetration_depths(world, max_penetration_index, deltas);
-
-    iterations += 1;
-  }
-
-  world->stats.incomplete_resolutions += iterations >= max_iterations;
-
-  PROFILER_FUNCTION_END
-}
-
-static void update_velocity_deltas(bnd_world *world, count_t contact_index, const bnd_v3 *deltas, float dt) {
-  contact *worst_contact = &world->contacts.values[contact_index];
-  count_t worst_body_ids[] = {worst_contact->index_a, worst_contact->index_b};
-  count_t worst_body_count = contact_index < world->contacts.dynamic_count ? 2 : 1;
-
-  count_t count = world->contacts.count;
-  for (count_t i = 0; i < count; ++i) {
-    contact *contact = &world->contacts.values[i];
-    count_t body_ids[] = {contact->index_a, contact->index_b};
-    count_t body_count = i < world->contacts.dynamic_count ? 2 : 1;
-
-    for (count_t k = 0; k < body_count; ++k) {
-      count_t body_index = body_ids[k];
-
-      for (count_t m = 0; m < worst_body_count; ++m) {
-        count_t worst_body_index = worst_body_ids[m];
-
-        if (body_index == worst_body_index) {
-          bnd_v3 angular_velocity_delta = bnd_m3_rotate(deltas[2 * m + 1], world->dynamics.inv_intertias[worst_body_index]);
-          bnd_v3 delta_velocity = bnd_v3_add(deltas[2 * m], bnd_v3_cross(angular_velocity_delta, contact->relative_position[k]));
-          delta_velocity = bnd_m3_rotate_inverse(delta_velocity, contact->basis);
-
-          contact->local_velocity = bnd_v3_add(contact->local_velocity, bnd_v3_scale(delta_velocity, (k ? -1 : 1)));
-
-          update_desired_velocity_delta(world, i, dt);
-        }
-      }
-    }
-  }
-}
-
-static void resolve_velocities(bnd_world *world, float dt) {
-  PROFILER_FUNCTION_START
-
-  const count_t count = world->contacts.count;
-  const count_t max_iterations = count * world->config.advanced.resolution_attempts_factor;
-  if (count == 0) {
-    PROFILER_FUNCTION_END
-    return;
-  }
-
-  count_t iterations = 0;
-  count_t worst_contact_index = -1;
-  while (iterations < max_iterations) {
-    if (!find_worst_velocity(world, &worst_contact_index)) {
-      break;
-    }
-
-    update_awake_status_for_collision(world, worst_contact_index);
-
-    bnd_v3 deltas[4];
-    resolve_velocity_contact(world, worst_contact_index, deltas);
-    update_velocity_deltas(world, worst_contact_index, deltas, dt);
-
-    iterations += 1;
-  }
-
-  world->stats.incomplete_resolutions += iterations >= max_iterations;
-
-  PROFILER_FUNCTION_END
-}
-
-void contacts_resolve(bnd_world *world, float dt) {
-  PROFILER_FUNCTION_START
-
-  prepare_contacts(world, dt);
-  resolve_interpenetrations(world);
-  resolve_velocities(world, dt);
-
-  PROFILER_FUNCTION_END
-}
-
-// ================
-//   mesh.c
-// ================
-
-
-static inline bnd_error mesh_validation_error(char *message) {
-  return (bnd_error) { BND_ERROR_INVALID_MESH, message };
-}
-
-static inline bnd_error realloc_error(void) {
-  return (bnd_error) { BND_ERROR_NO_SPACE_AVAILABLE, "Allocator.realloc failed to re-allocate mesh buffer" };
-}
-
-static bnd_error resize_buffer(bnd_allocator allocator, void **buffer, count_t alignment, count_t count, count_t *capacity, count_t element_size) {
-  count_t old_capacity = *capacity;
-  if (count <= old_capacity) {
-    return OK;
-  }
-
-  if (allocator.realloc == NULL) {
-    return (bnd_error) { BND_ERROR_NO_SPACE_AVAILABLE, "Mesh buffer is full and Allocator.realloc is NULL" };
-  }
-
-  count_t new_capacity = old_capacity;
-  while (count > new_capacity) {
-    new_capacity *= 2;
-  }
-
-  void *new_buffer = allocator.realloc(*buffer, alignment, old_capacity * element_size, new_capacity * element_size);
-  if (new_buffer == NULL) {
-    return realloc_error();
-  }
-
-  *buffer = new_buffer;
-  *capacity = new_capacity;
-
-  return OK;
-}
-
-static bnd_error ensure_meshes_capacity(bnd_allocator allocator, mesh_storage *meshes) {
-  if (meshes->mesh_count + 1 < meshes->mesh_capacity) {
-    return OK;
-  }
-
-  if (allocator.realloc == NULL) {
-    return (bnd_error) { BND_ERROR_NO_SPACE_AVAILABLE, "Mesh buffer is full and Allocator.realloc is NULL" };
-  }
-
-  count_t old_capacity = meshes->mesh_capacity;
-  while (meshes->mesh_count + 1 > meshes->mesh_capacity) {
-    meshes->mesh_capacity *= 2;
-  }
-
-  REALLOC_BUFFER4(meshes->meshes, allocator, sizeof(bnd_mesh), old_capacity, meshes->mesh_capacity);
-  REALLOC_BUFFER4(meshes->inertias, allocator, sizeof(bnd_m3), old_capacity, meshes->mesh_capacity);
-  REALLOC_BUFFER4(meshes->volumes, allocator, sizeof(float), old_capacity, meshes->mesh_capacity);
-  REALLOC_BUFFER4(meshes->aabbs, allocator, sizeof(bnd_aabb), old_capacity, meshes->mesh_capacity);
-
-  return OK;
-}
-
-static bnd_v3 read_vertex(const bnd_mesh_buffer *buffer, count_t i) {
-  bnd_v3 vertex = bnd_v3_zero();
-  uint8_t *verticies = buffer->buffer;
-  uint32_t step = buffer->element_size + buffer->stride;
-
-  memcpy(&vertex, &verticies[i * step], buffer->element_size);
-
-  return vertex;
-}
-
-static uint32_t read_index(const bnd_mesh_buffer *buffer, count_t i) {
-  uint8_t *indices = buffer->buffer;
-  uint8_t *src = &indices[i * (buffer->element_size + buffer->stride)];
-
-  switch (buffer->element_size) {
-    case 1:
-      return src[0];
-
-    case 2: {
-      uint16_t index;
-      memcpy(&index, src, sizeof(index));
-      return index;
-    }
-
-    case 4: {
-      uint32_t index;
-      memcpy(&index, src, sizeof(index));
-      return index;
-    }
-
-    default:
-      return 0;
-  }
-}
-
-static bnd_error import_verticies(bnd_allocator allocator, const bnd_mesh_buffer *buffer, mesh_storage *meshes, bnd_v3 com) {
-  count_t new_count = buffer->elements_count + meshes->vertex_count;
-  bnd_error err = resize_buffer(allocator, (void **)&meshes->verticies, 4, new_count, &meshes->vertex_capacity, sizeof(bnd_v3));
-  if (err.type != BND_OK) {
-    return err;
-  }
-
-  bnd_v3 *dest = &meshes->verticies[meshes->vertex_count];
-  for (count_t i = 0; i < buffer->elements_count; ++i) {
-    bnd_v3 v = read_vertex(buffer, i);
-    dest[i] = bnd_v3_sub(v, com);
-  }
-
-  meshes->vertex_count = new_count;
-
-  return OK;
-}
-
-static bnd_error import_indicies(bnd_allocator allocator, const bnd_mesh_buffer *buffer, mesh_storage *meshes) {
-  count_t new_count = meshes->index_count + buffer->elements_count;
-  bnd_error err = resize_buffer(allocator, (void **)&meshes->indicies, 4, new_count, &meshes->index_capacity, sizeof(uint32_t));
-  if (err.type != BND_OK) {
-    return err;
-  }
-
-  uint32_t *dest = &meshes->indicies[meshes->index_count];
-  for (count_t i = 0; i < buffer->elements_count; ++i) {
-    uint32_t index = read_index(buffer, i);
-    dest[i] = index + meshes->index_count;
-  }
-
-  meshes->index_count = new_count;
-  return OK;
-}
-
-static float tetr_inertia_moment(bnd_m3 m, count_t i) {
-  return m.m0[i] * m.m0[i] + m.m1[i] * m.m2[i] + m.m1[i] * m.m1[i] + m.m0[i] * m.m2[i] + m.m2[i] * m.m2[i] + m.m0[i] * m.m1[i];
-}
-
-static float tetr_inertia_product(bnd_m3 m, count_t i, count_t j) {
-  return 2.0 * m.m0[i] * m.m0[j] + m.m1[i] * m.m2[j] + m.m2[i] * m.m1[j] +
-    2.0 * m.m1[i] * m.m1[j] + m.m0[i] * m.m2[j] + m.m2[i] * m.m0[j] +
-    2.0 * m.m2[i] * m.m2[j] + m.m0[i] * m.m1[j] + m.m1[i] * m.m0[j];
-}
-
-static bool is_mesh_convex(const bnd_mesh_data *data) {
-  for (count_t i = 0; i + 2 < data->index_buffer.elements_count; i += 3) {
-    count_t i0 = read_index(&data->index_buffer, i + 0);
-    count_t i1 = read_index(&data->index_buffer, i + 1);
-    count_t i2 = read_index(&data->index_buffer, i + 2);
-
-    bnd_v3 v0 = read_vertex(&data->vertex_buffer, i0);
-    bnd_v3 v1 = read_vertex(&data->vertex_buffer, i1);
-    bnd_v3 v2 = read_vertex(&data->vertex_buffer, i2);
-
-    bnd_v3 n = bnd_v3_cross(bnd_v3_sub(v2, v0), bnd_v3_sub(v1, v0));
-    float d = -bnd_v3_dot(n, v2);
-
-    bool has_sign = false;
-    float s = 0;
-    for (count_t j = 0; j < data->vertex_buffer.elements_count; ++j) {
-      if (j == i0 || j == i1 || j == i2) {
-        continue;
-      }
-
-      bnd_v3 v = read_vertex(&data->vertex_buffer, j);
-      float sv = bnd_v3_dot(n, v) + d;
-      if (fabsf(sv) < EPSILON) {
-        continue;
-      }
-
-      if (!has_sign) {
-        s = sv;
-        has_sign = true;
-      } else if ((sv < 0 && s > 0) || (sv > 0 && s < 0)) {
-        return false;
-      }
-    }
-  }
-
-  return true;
-}
-
-static bnd_error validate_mesh(const bnd_mesh_data *data) {
-  bnd_mesh_buffer index_buffer = data->index_buffer;
-  if (index_buffer.buffer == NULL) {
-    return mesh_validation_error("Mesh index buffer is NULL");
-  }
-
-  if (index_buffer.element_size != 1 && index_buffer.element_size != 2 && index_buffer.element_size != 4) {
-    return mesh_validation_error("Unsupported index buffer element size. Supported sizes are 1, 2 or 4 bytes");
-  }
-
-  if (index_buffer.elements_count < 12) {
-    return mesh_validation_error("Mesh index buffer must contain at least 12 elements");
-  }
-
-  if (index_buffer.elements_count % 3 != 0) {
-    return mesh_validation_error("Mesh contains indicies count non-divisible by 3");
-  }
-
-  bnd_mesh_buffer vertex_buffer = data->vertex_buffer;
-  if (vertex_buffer.buffer == NULL) {
-    return mesh_validation_error("Mesh vertex buffer is NULL");
-  }
-
-  if (vertex_buffer.elements_count < 4) {
-    return mesh_validation_error("Mesh vertex buffer must contain at least 4 elements");
-  }
-
-  if (vertex_buffer.element_size != 3 * sizeof(float)) {
-    return mesh_validation_error("Vertex buffer is required to have elements composed of 3 floats");
-  }
-
-  count_t vertex_count = vertex_buffer.elements_count;
-  for (count_t i = 0; i + 2 < index_buffer.elements_count; i += 3) {
-    count_t i0 = read_index(&index_buffer, i + 0);
-    count_t i1 = read_index(&index_buffer, i + 1);
-    count_t i2 = read_index(&index_buffer, i + 2);
-
-    if (i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count) {
-      return mesh_validation_error("One of mesh's indices is out of bounds");
-    }
-
-    // TODO properly check for degenerate faces and perhaps fix them.
-  }
-
-  return OK;
-}
-
-static void calculate_mass_properties(const bnd_mesh_data *data, bnd_m3 *inertia, bnd_v3 *com, float *volume) {
-  /**
-   * This function is a rewrite of SkComputeInertia3x3 from
-   *
-   * https://github.com/blackedout01/simkn
-   */
-
-  float ia = 0, ib = 0, ic = 0, iap = 0, ibp = 0, icp = 0;
-
-  *volume = 0;
-  *com = bnd_v3_zero();
-  *inertia = (bnd_m3){ 0 };
-  for (count_t i = 0; i + 2 < data->index_buffer.elements_count; i += 3) {
-    bnd_v3 v0 = read_vertex(&data->vertex_buffer, read_index(&data->index_buffer, i + 0));
-    bnd_v3 v1 = read_vertex(&data->vertex_buffer, read_index(&data->index_buffer, i + 1));
-    bnd_v3 v2 = read_vertex(&data->vertex_buffer, read_index(&data->index_buffer, i + 2));
-
-    bnd_m3 m = { { v0.x, v0.y, v0.z }, { v1.x, v1.y, v1.z }, { v2.x, v2.y, v2.z } };
-
-    float det = bnd_v3_dot(v0, bnd_v3_cross(v1, v2));
-    float tetr_volume = det / 6.0;
-
-    bnd_v3 tetr_com = v0;
-    tetr_com = bnd_v3_add(tetr_com, v1);
-    tetr_com = bnd_v3_add(tetr_com, v2);
-    tetr_com = bnd_v3_scale(tetr_com, 0.25);
-
-    float v100 = tetr_inertia_moment(m, 0);
-    float v010 = tetr_inertia_moment(m, 1);
-    float v001 = tetr_inertia_moment(m, 2);
-
-    ia += det * (v010 + v001);
-    ib += det * (v100 + v001);
-    ic += det * (v100 + v010);
-    iap += det * tetr_inertia_product(m, 1, 2);
-    ibp += det * tetr_inertia_product(m, 0, 1);
-    icp += det * tetr_inertia_product(m, 0, 2);
-
-    tetr_com = bnd_v3_scale(tetr_com, tetr_volume);
-    *com = bnd_v3_add(*com, tetr_com);
-    *volume += tetr_volume;
-  }
-
-  *com = bnd_v3_scale(*com, 1.0 / *volume);
-  ia = ia / 60.0 - *volume * (com->y * com->y + com->z * com->z);
-  ib = ib / 60.0 - *volume * (com->x * com->x + com->z * com->z);
-  ic = ic / 60.0 - *volume * (com->x * com->x + com->y * com->y);
-  iap = iap / 120.0 - *volume * (com->y * com->z);
-  ibp = ibp / 120.0 - *volume * (com->x * com->y);
-  icp = icp / 120.0 - *volume * (com->x * com->z);
-
-  inertia->m0[0] = ia;
-  inertia->m1[1] = ib;
-  inertia->m2[2] = ic;
-  inertia->m0[1] = inertia->m1[0] = -ibp;
-  inertia->m0[2] = inertia->m2[0] = -icp;
-  inertia->m1[2] = inertia->m2[1] = -iap;
-}
-
-static bnd_aabb mesh_calculate_aabb(const mesh_storage *meshes, submesh submesh) {
-  count_t vertex_start = submesh.vertex_offset;
-  count_t vertex_end = vertex_start + submesh.vertex_count;
-
-  bnd_v3 min = (bnd_v3){FLT_MAX, FLT_MAX, FLT_MAX};
-  bnd_v3 max = bnd_v3_negate(min);
-  for (count_t i = vertex_start; i < vertex_end; ++i) {
-    bnd_v3 v = meshes->verticies[i];
-
-    min = bnd_v3_min(min, v);
-    max = bnd_v3_max(max, v);
-  }
-
-  return (bnd_aabb) {
-    .center = bnd_v3_scale(bnd_v3_add(min, max), 0.5),
-    .half_extents = bnd_v3_scale(bnd_v3_sub(max, min), 0.5),
-  };
-}
-
-bnd_error meshes_init(bnd_world *world) {
-  mesh_storage *meshes = &world->meshes;
-  count_t num_meshes = world->config.memory.meshes_capacity;
-  bnd_allocator allocator = world->allocator;
-
-  ALLOC_BUFFER4(meshes->submeshes, num_meshes * sizeof(submesh));
-  meshes->submesh_capacity = num_meshes;
-  meshes->submesh_count = 0;
-
-  ALLOC_BUFFER4(meshes->meshes, num_meshes * sizeof(bnd_mesh));
-  meshes->mesh_capacity = num_meshes;
-  meshes->mesh_count = 0;
-
-  ALLOC_BUFFER4(meshes->verticies, num_meshes * DEFAULT_VERTEX_PER_MESH * sizeof(bnd_v3));
-  meshes->vertex_capacity = num_meshes * DEFAULT_VERTEX_PER_MESH;
-  meshes->vertex_count = 0;
-
-  ALLOC_BUFFER4(meshes->indicies, num_meshes * DEFAULT_FACE_PER_MESH * 3 * sizeof(uint32_t));
-  meshes->index_capacity = num_meshes * DEFAULT_FACE_PER_MESH * 3;
-  meshes->index_count = 0;
-
-  ALLOC_BUFFER4(meshes->inertias, num_meshes * sizeof(bnd_m3));
-  ALLOC_BUFFER4(meshes->volumes, num_meshes * sizeof(float));
-  ALLOC_BUFFER4(meshes->aabbs, num_meshes * sizeof(bnd_aabb));
-
-  return OK;
-}
-
-void meshes_teardown(bnd_world *world) {
-  mesh_storage meshes = world->meshes;
-
-  world->allocator.free(meshes.submeshes, meshes.submesh_capacity * sizeof(submesh));
-  world->allocator.free(meshes.meshes, meshes.mesh_capacity * sizeof(bnd_mesh));
-  world->allocator.free(meshes.verticies, meshes.vertex_capacity * sizeof(bnd_v3));
-  world->allocator.free(meshes.indicies, meshes.index_capacity * sizeof(uint32_t));
-  world->allocator.free(meshes.inertias, meshes.mesh_capacity * sizeof(bnd_m3));
-  world->allocator.free(meshes.volumes, meshes.mesh_capacity * sizeof(float));
-  world->allocator.free(meshes.aabbs, meshes.mesh_capacity * sizeof(bnd_aabb));
-}
-
-bnd_error bnd_import_mesh(bnd_world *world, const bnd_mesh_data *data, bnd_mesh_handle *handle, bnd_v3 *center_of_mass) {
-  bnd_error e = validate_mesh(data);
-  if (e.type != BND_OK) {
-    return e;
-  }
-
-  if (!is_mesh_convex(data)) {
-    e.type = BND_ERROR_MESH_IS_CONCAVE;
-    e.message = "Concave meshes are not properly supported at the moment";
-
-    return e;
-  }
-
-  bnd_m3 inertia;
-  float volume;
-  calculate_mass_properties(data, &inertia, center_of_mass, &volume);
-
-  mesh_storage *meshes = &world->meshes;
-
-  submesh sm;
-  sm.vertex_offset = meshes->vertex_count;
-  sm.index_offset = meshes->index_count;
-  sm.vertex_count = data->vertex_buffer.elements_count;
-  sm.index_count = data->index_buffer.elements_count;
-
-  bnd_allocator allocator = world->allocator;
-  e = import_verticies(allocator, &data->vertex_buffer, meshes, *center_of_mass);
-  if (e.type != BND_OK) {
-    return e;
-  }
-
-  e = import_indicies(allocator, &data->index_buffer, meshes);
-  if (e.type != BND_OK) {
-    return e;
-  }
-
-  e = resize_buffer(allocator, (void **)&meshes->submeshes, 4, meshes->submesh_count + 1, &meshes->submesh_capacity, sizeof(submesh));
-  if (e.type != BND_OK) {
-    return e;
-  }
-
-  e = ensure_meshes_capacity(allocator, meshes);
-  if (e.type != BND_OK) {
-    return e;
-  }
-
-  count_t submesh_offset = meshes->submesh_count++;
-  meshes->submeshes[submesh_offset] = sm;
-
-  *handle = meshes->mesh_count++;
-  meshes->meshes[*handle] = (bnd_mesh){ submesh_offset, 1 };
-  meshes->inertias[*handle] = inertia;
-  meshes->volumes[*handle] = volume;
-  meshes->aabbs[*handle] = mesh_calculate_aabb(meshes, sm);
-
-  return OK;
-}
