@@ -640,12 +640,13 @@ static epa_status epa_run(epa_polytope *polytope, const collision_detection_cont
 
 
 count_t epa_get_contact(bnd_world *world, const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact) {
-  PROFILE_FUNCTION
+  PROFILER_FUNCTION_START
 
   epa_polytope *polytope = &world->epa_polytope;
   body_support support_point = simplex->points[0];
   if (!polytope_from_simplex(polytope, simplex)) {
     epa_invalid_contact(support_point, contact);
+    PROFILER_FUNCTION_END
     return 0;
   }
 
@@ -658,14 +659,17 @@ count_t epa_get_contact(bnd_world *world, const collision_detection_context *ctx
 
       case EPA_STATUS_CONVERGED:
         epa_calculate_contact(polytope, contact);
+        PROFILER_FUNCTION_END
         return attempts;
 
       default:
         epa_invalid_contact(support_point, contact);
+        PROFILER_FUNCTION_END
         return attempts;
     }
   }
 
+  PROFILER_FUNCTION_END
   return attempts;
 }
 

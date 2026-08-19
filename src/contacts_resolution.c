@@ -54,7 +54,7 @@ static bnd_m3 contact_space_transform(const contact *contact) {
 }
 
 static void prepare_contacts(bnd_world *world, float dt) {
-  PROFILE_FUNCTION
+  PROFILER_FUNCTION_START
 
   dynamic_bodies *dynamics = &world->dynamics;
 
@@ -93,10 +93,12 @@ static void prepare_contacts(bnd_world *world, float dt) {
 
     update_desired_velocity_delta(world, i, dt);
   }
+
+  PROFILER_FUNCTION_END
 }
 
 static void resolve_interpenetration_contact(bnd_world *world, count_t contact_index, bnd_v3 *deltas) {
-  PROFILE_FUNCTION
+  PROFILER_FUNCTION_START
 
   contact *contact = &world->contacts.values[contact_index];
   count_t body_count = contact_index < world->contacts.dynamic_count ? 2 : 1;
@@ -173,6 +175,8 @@ static void resolve_interpenetration_contact(bnd_world *world, count_t contact_i
   for (count_t k = 0; k < body_count; ++k) {
     contact->relative_position[k] = bnd_v3_sub(contact->point, world->dynamics.positions[body_ids[k]]);
   }
+
+  PROFILER_FUNCTION_END
 }
 
 static void update_penetration_depths(bnd_world *world, count_t contact_index, const bnd_v3 *deltas) {
@@ -203,7 +207,7 @@ static void update_penetration_depths(bnd_world *world, count_t contact_index, c
 }
 
 static void resolve_velocity_contact(bnd_world *world, count_t contact_index, bnd_v3 *deltas) {
-  PROFILE_FUNCTION
+  PROFILER_FUNCTION_START
 
   contact *contact = &world->contacts.values[contact_index];
   count_t body_count = contact_index < world->contacts.dynamic_count ? 2 : 1;
@@ -269,6 +273,8 @@ static void resolve_velocity_contact(bnd_world *world, count_t contact_index, bn
 
     world_space_impulse = bnd_v3_scale(world_space_impulse, -1);
   }
+
+  PROFILER_FUNCTION_END
 }
 
 // Find the worst penetration contact. Returns false if none above threshold.
@@ -338,12 +344,13 @@ static void update_awake_status_for_collision(bnd_world *world, count_t contact_
 }
 
 static void resolve_interpenetrations(bnd_world *world) {
-  PROFILE_FUNCTION
+  PROFILER_FUNCTION_START
 
   const count_t count = world->contacts.count;
   const count_t max_iterations = count * world->config.advanced.resolution_attempts_factor;
 
   if (count == 0) {
+    PROFILER_FUNCTION_END
     return;
   }
 
@@ -364,6 +371,8 @@ static void resolve_interpenetrations(bnd_world *world) {
   }
 
   world->stats.incomplete_resolutions += iterations >= max_iterations;
+
+  PROFILER_FUNCTION_END
 }
 
 static void update_velocity_deltas(bnd_world *world, count_t contact_index, const bnd_v3 *deltas, float dt) {
@@ -398,11 +407,12 @@ static void update_velocity_deltas(bnd_world *world, count_t contact_index, cons
 }
 
 static void resolve_velocities(bnd_world *world, float dt) {
-  PROFILE_FUNCTION
+  PROFILER_FUNCTION_START
 
   const count_t count = world->contacts.count;
   const count_t max_iterations = count * world->config.advanced.resolution_attempts_factor;
   if (count == 0) {
+    PROFILER_FUNCTION_END
     return;
   }
 
@@ -423,12 +433,16 @@ static void resolve_velocities(bnd_world *world, float dt) {
   }
 
   world->stats.incomplete_resolutions += iterations >= max_iterations;
+
+  PROFILER_FUNCTION_END
 }
 
 void contacts_resolve(bnd_world *world, float dt) {
-  PROFILE_FUNCTION
+  PROFILER_FUNCTION_START
 
   prepare_contacts(world, dt);
   resolve_interpenetrations(world);
   resolve_velocities(world, dt);
+
+  PROFILER_FUNCTION_END
 }

@@ -161,7 +161,7 @@ static bool simplex_update(simplex *s, bnd_v3 *direction) {
 }
 
 bool gjk_check_intersection(const bnd_world *world, const collision_detection_context *ctx, simplex *simplex) {
-  PROFILE_FUNCTION
+  PROFILER_FUNCTION_START
 
   bnd_v3 direction = (bnd_v3){ 1, 0, 0 };
 
@@ -176,21 +176,26 @@ bool gjk_check_intersection(const bnd_world *world, const collision_detection_co
     support_point = support(ctx, direction);
 
     if (bnd_v3_dot(support_point.p, direction) < 0) {
+      PROFILER_FUNCTION_END
       return false;
     }
 
     simplex_add_point(simplex, support_point);
 
     if (simplex_update(simplex, &direction)) {
+      PROFILER_FUNCTION_END
       return true;
     }
 
     if (bnd_v3_lensqr(direction) < TOLERANCE) {
+      PROFILER_FUNCTION_END
       return false;
     }
 
     direction = bnd_v3_normalize(direction);
   }
+
+  PROFILER_FUNCTION_END
 
   return false;
 }

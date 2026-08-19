@@ -79,8 +79,8 @@ pub fn amalgamate(b: *std.Build) ![]u8 {
 
         try collectStdIncludes(&set, sources[@intFromEnum(Headers.count)..fileCount], &output, b.allocator);
 
-        try output.appendSlice(b.allocator, "\n#if defined(BND_TESTS)\n\n");
-        try collectStdIncludes(&set, sources[@intFromEnum(Headers.testing) .. @intFromEnum(Headers.testing) + 1], &output, b.allocator);
+        try output.appendSlice(b.allocator, "\n#if defined(BND_PROFILING)\n\n");
+        try collectStdIncludes(&set, sources[@intFromEnum(Headers.profiler) .. @intFromEnum(Headers.profiler) + 1], &output, b.allocator);
         try output.appendSlice(b.allocator, "#endif\n");
     }
 
@@ -226,10 +226,6 @@ fn writeProfilerHeader(source: SourceFile, writer: *Writer) !void {
     var insideDefine = false;
 
     while (readLine(&lineStart, source.contents)) |line| {
-        if (isIncludeStatement(line)) {
-            continue;
-        }
-
         if (insideDefine and lineEq(line, "#else")) {
             break;
         }

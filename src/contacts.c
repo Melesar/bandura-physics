@@ -174,7 +174,7 @@ void contacts_cache_reset(bnd_world *world) {
 }
 
 void contacts_generate(bnd_world *world) {
-  PROFILE_FUNCTION
+  PROFILER_FUNCTION_START
 
   count_t dynamic_count = collisions_detect(world, 0, BND_BODY_DYNAMIC);
   emit_collision_events(world, world->contacts.values, dynamic_count, BND_BODY_DYNAMIC);
@@ -190,6 +190,8 @@ void contacts_generate(bnd_world *world) {
   world->contacts.count = dynamic_count + static_count;
   world->contacts.dynamic_count = dynamic_count;
   world->stats.contacts_count = world->contacts.count;
+
+  PROFILER_FUNCTION_END
 }
 
 void contacts_reset(bnd_world *world) {
@@ -293,7 +295,7 @@ cache_entry *contacts_cache_query(bnd_world *world, contact *contact, bnd_body_t
 }
 
 void contacts_cache_prune(bnd_world *world) {
-  PROFILE_FUNCTION
+  PROFILER_FUNCTION_START
 
   contacts_cache *cache = &world->contacts_cache;
   cache_entry *entries = cache->entries;
@@ -320,6 +322,8 @@ void contacts_cache_prune(bnd_world *world) {
   }
 
   world->contacts_cache.entry_count = entry_count;
+
+  PROFILER_FUNCTION_END
 }
 
 static float cross_2d(bnd_v3 a, bnd_v3 b, bnd_v3 c) {

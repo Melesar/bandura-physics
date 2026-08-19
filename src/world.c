@@ -957,7 +957,7 @@ static void update_aabbs(bnd_world *world) {
 }
 
 static void integrate_bodies(bnd_world *world, float dt) {
-  PROFILE_FUNCTION
+  PROFILER_FUNCTION_START
 
   bnd_v3 gravity_acc = world->config.simulation.gravity;
   float linear_damping = powf(world->config.simulation.linear_drag, dt);
@@ -996,42 +996,34 @@ static void integrate_bodies(bnd_world *world, float dt) {
     dynamics->rotations[i] = rotation;
     dynamics->positions[i] = bnd_v3_add(dynamics->positions[i], bnd_v3_scale(velocity, dt));
   }
+
+  PROFILER_FUNCTION_END
 }
 
 void bnd_simulate(bnd_world *world, float dt) {
-  PROFILER_START_FRAME;
-  {
-    PROFILE_FUNCTION
+  PROFILER_FUNCTION_START
 
-    world->stats.body_count = world->dynamics.count + world->statics.count;
-    world->stats.world_age = world->age;
+  world->stats.body_count = world->dynamics.count + world->statics.count;
+  world->stats.world_age = world->age;
 
-    // TODO before changing the order of integration and collision detection,
-    // revisit aabb generation.
-    integrate_bodies(world, dt);
-    update_aabbs(world);
-    contacts_reset(world);
-    events_reset(world);
+  // TODO before changing the order of integration and collision detection,
+  // revisit aabb generation.
+  integrate_bodies(world, dt);
+  update_aabbs(world);
+  contacts_reset(world);
+  events_reset(world);
 #if defined(BND_DEBUG)
-    epa_debug_capture(world);
+  epa_debug_capture(world);
 #endif
-    contacts_generate(world);
-    contacts_resolve(world, dt);
-    update_awake_statuses(world, dt);
-    clear_forces(world);
-    contacts_cache_prune(world);
+  contacts_generate(world);
+  contacts_resolve(world, dt);
+  update_awake_statuses(world, dt);
+  clear_forces(world);
+  contacts_cache_prune(world);
 
-    world->age += 1;
-  }
+  world->age += 1;
 
-#ifdef BND_PROFILING
-  profiler_frame_metadata metadata = {
-    .body_count = world->dynamics.count + world->statics.count,
-    .contacts_count = world->contacts.count,
-  };
-#endif
-
-  PROFILER_END_FRAME(metadata);
+  PROFILER_FUNCTION_END
 }
 
 bnd_error bnd_put_to_sleep(bnd_world *world, bnd_body_handle handle) {

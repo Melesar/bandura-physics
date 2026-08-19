@@ -1,3 +1,4 @@
+#include "profiler.h"
 #include "raylib.h"
 #include "scenario-core.h"
 #include "raygui.h"
@@ -119,7 +120,9 @@ int main(int argc, char **argv) {
           break;
         }
 
+        PROFILER_FRAME_START
         scenario_simulate(world, simulation_step);
+        PROFILER_FRAME_END
 
         step_forward = false;
       }

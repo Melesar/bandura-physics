@@ -9,6 +9,8 @@
 #include <stdbool.h>
 #include <string.h>
 
+#define PROFILING_BLOCK_NAME "Contacts cache"
+
 typedef count_t (*collision_detection_func)(bnd_world *world, const collision_detection_context *ctx);
 
 typedef struct {
@@ -199,8 +201,6 @@ static support_point mesh_support(const shape_context *ctx, bnd_v3 direction) {
 support_func support_functions[] = { box_support, sphere_support, capsule_support, mesh_support };
 
 body_support support(const collision_detection_context *ctx, bnd_v3 direction) {
-  PROFILE_FUNCTION
-
   shape_context sa = { ctx->world, ctx->data_a, ctx->shape_a, ctx->body_a };
   shape_context sb = { ctx->world, ctx->data_b, ctx->shape_b, ctx->body_b };
 
@@ -581,15 +581,7 @@ bnd_error collision_detection_epa_context(const bnd_world *world, bnd_body_handl
     count_t tmp_index = index_a;
     index_a = index_b;
     index_b = tmp_index;
-  } /*else if (body_a.type == BND_BODY_DYNAMIC && body_b.type == BND_BODY_DYNAMIC && index_a < index_b) {
-    const common_data *tmp_data = data_a;
-    data_a = data_b;
-    data_b = tmp_data;
-
-    count_t tmp_index = index_a;
-    index_a = index_b;
-    index_b = tmp_index;
-    }*/
+  }
 
   if (data_a == data_b && index_a == index_b) {
     return (bnd_error) { BND_ERROR_EPA_NOT_APPLICABLE, message };
@@ -707,10 +699,11 @@ count_t collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_ty
         continue;
       }
 
-      PROFILE_BLOCK("Contacts cache")
+      PROFILER_BLOCK_START(PROFILING_BLOCK_NAME);
 
       cache_entry *cached_entry = contacts_cache_query(world, world->contacts.values + pair_offset, type);
       if (cached_entry == NULL) {
+        PROFILER_BLOCK_END;
         continue;
       }
 
@@ -821,6 +814,8 @@ count_t collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_ty
       }
 
       count += pair_contacts_count;
+
+      PROFILER_BLOCK_END;
     }
   }
 

@@ -1,26 +1,29 @@
 #ifndef PROFILER_H
 #define PROFILER_H
 
-#include <stdint.h>
-
-typedef struct {
-  uint16_t body_count;
-  uint16_t contacts_count;
-} profiler_frame_metadata;
-
 #ifndef BND_PROFILING
 
-#define PROFILE_BLOCK(name)
-#define PROFILE_FUNCTION
+#define PROFILER_BLOCK_START(name) (void)(name)
+#define PROFILER_BLOCK_END
 
-#define PROFILER_START_FRAME
-#define PROFILER_END_FRAME(metadata)
-#define PROFILER_INIT
-#define PROFILER_TEARDOWN
+#define PROFILER_FUNCTION_START
+#define PROFILER_FUNCTION_END
+
+#define PROFILER_FRAME_START
+#define PROFILER_FRAME_END
 
 #else
 
-// TODO
+#include <tracy/TracyC.h>
+
+#define PROFILER_BLOCK_START(name) TracyCZoneN(profiler_ctx, name, true)
+#define PROFILER_BLOCK_END TracyCZoneEnd(profiler_ctx)
+
+#define PROFILER_FRAME_START TracyCFrameMarkStart("bnd_simulate")
+#define PROFILER_FRAME_END TracyCFrameMarkEnd("bnd_simulate")
+
+#define PROFILER_FUNCTION_START PROFILER_BLOCK_START(__FUNCTION__)
+#define PROFILER_FUNCTION_END PROFILER_BLOCK_END
 
 #endif
 

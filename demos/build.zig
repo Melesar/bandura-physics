@@ -66,8 +66,11 @@ pub fn enumerate(b: *std.Build, options: Options) ![]const Scenario {
             .profiling = try makeModule(b, profilingOptions, srcFile, binarySources),
         };
 
+        scenario.profiling.addIncludePath(tracy.path("public"));
         scenario.profiling.addCSourceFile(tracySourceFile);
         scenario.profiling.link_libcpp = true;
+        scenario.profiling.addCMacro("BND_PROFILING", "");
+        scenario.profiling.addCMacro("TRACY_ENABLE", "");
 
         scenarios[i] = scenario;
     }

@@ -1,5 +1,5 @@
 #include "bnd-core.h"
-#include "profiler.h"
+
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -244,8 +244,6 @@ static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allo
 
   world->epa_debug = NULL;
 
-  PROFILER_INIT;
-
   return OK;
 }
 
@@ -277,7 +275,6 @@ bnd_result_world bnd_init_with_allocator(bnd_config config, bnd_allocator alloca
 
 void bnd_teardown(bnd_world *world) {
   if (world->allocator.free == NULL) {
-    PROFILER_TEARDOWN;
     return;
   }
 
@@ -307,8 +304,6 @@ void bnd_teardown(bnd_world *world) {
   epa_teardown(world);
 
   world->allocator.free(world, sizeof(bnd_world));
-
-  PROFILER_TEARDOWN;
 }
 
 count_t ephemeral_body_index(const common_data *data) {
