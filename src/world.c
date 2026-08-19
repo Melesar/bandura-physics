@@ -998,6 +998,7 @@ static void integrate_bodies(bnd_world *world, float dt) {
   }
 
   PROFILER_FUNCTION_END
+
 }
 
 void bnd_simulate(bnd_world *world, float dt) {
@@ -1024,6 +1025,10 @@ void bnd_simulate(bnd_world *world, float dt) {
   world->age += 1;
 
   PROFILER_FUNCTION_END
+
+  PROFILER_REPORT_METRIC_INT("Dynamic bodies", world->dynamics.count);
+  PROFILER_REPORT_METRIC_INT("Static bodies", world->statics.count);
+  PROFILER_REPORT_METRIC_INT("Total bodies", world->dynamics.count + world->statics.count);
 }
 
 bnd_error bnd_put_to_sleep(bnd_world *world, bnd_body_handle handle) {

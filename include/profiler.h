@@ -12,6 +12,9 @@
 #define PROFILER_FRAME_START
 #define PROFILER_FRAME_END
 
+#define PROFILER_REPORT_METRIC_INT(name, val)
+#define PROFILER_REPORT_METRIC_FLOAT(name, val)
+
 #else
 
 #include <tracy/TracyC.h>
@@ -24,6 +27,9 @@
 
 #define PROFILER_FUNCTION_START PROFILER_BLOCK_START(__FUNCTION__)
 #define PROFILER_FUNCTION_END PROFILER_BLOCK_END
+
+#define PROFILER_REPORT_METRIC_INT(name, val) TracyCPlotI(name, val)
+#define PROFILER_REPORT_METRIC_FLOAT(name, val) TracyCPlotF(name, val)
 
 #endif
 
