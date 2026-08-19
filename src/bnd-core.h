@@ -108,6 +108,18 @@ struct cache_entry {
 };
 
 typedef struct {
+  float restitution;
+  float friction;
+} body_material;
+
+typedef struct {
+  body_material *values;
+
+  count_t count;
+  count_t capacity;
+} body_materials;
+
+typedef struct {
   count_t *hash_table;
   count_t hash_table_capacity;
 
@@ -187,6 +199,7 @@ typedef struct {
   bnd_quat *rotations;                                                                                                     \
   body_shapes *shapes;                                                                                                 \
   bnd_aabb *aabbs;                                                                                                     \
+  bnd_material_handle *materials;    \
   bnd_event_type *event_masks;                                                                                         \
   event_link *event_links;                                                                                             \
   uint8_t *generations;                                                                                                \
@@ -312,7 +325,7 @@ typedef struct {
   collision_detection_context ctx;
   simplex s;
   int target_iteration;
-  
+
   bool initialized;
 } epa_debug_status;
 
@@ -355,6 +368,7 @@ struct bnd_world_t {
   mesh_storage meshes;
   events_storage events;
   contacts_cache contacts_cache;
+  body_materials materials;
   epa_polytope epa_polytope;
 
   epa_debug_status *epa_debug;
@@ -427,6 +441,9 @@ bnd_allocator         bnd_default_allocator(void);
 bnd_body_handle       make_body_handle(const bnd_world *world, bnd_body_type type, count_t index);
 count_t               handle_to_inner_index(const bnd_world *world, bnd_body_handle handle);
 
+float                 mix_restitution(const collision_detection_context *ctx);
+float                 mix_friction(const collision_detection_context *ctx);
+
 common_data          *as_common(bnd_world *world, bnd_body_type type);
 const common_data    *as_common_const(const bnd_world *world, bnd_body_type type);
 
@@ -455,6 +472,8 @@ void                  joints_remove_stale_if_needed(bnd_world *world, bnd_body_h
 
 bnd_error             meshes_init(bnd_world *world);
 void                  meshes_teardown(bnd_world *world);
+
+bnd_error             materials_init(bnd_world *world);
 
 bnd_error             shapes_init(bnd_world *world);
 void                  shapes_teardown(bnd_world *world);

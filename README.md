@@ -400,6 +400,7 @@ If you know  the upper limit for your body count in advance, you can adjust this
 * `joints_capacity` - number of joints.
 * `meshes_capacity` - number of meshes imported with `bnd_import_mesh`.
 * `events_capacity` - maximum number of events produced per simulation frame.
+* `materials_capacity` - number of material definitions, including the default material.
 
 ### Simulation
 
@@ -408,8 +409,8 @@ These parameters affect the physics simulation. You may want to adjust them for 
 * `gravity` - constant gravitational _acceleration_ applied to all dynamic bodies every simulation frame. Default is `(0, -9.81, 0)`.
 * `linear_drag` - how much linear velocity is lost every simulation frame. You may think of this as drag due to the air friction. Should be a value from 0 to 1. Default is `0.95`, meaning the bodies are being slowed down by 5% every frame.
 * `angular_drag` - same as the previous one, but for the angular velocity (rotation speed). Default is `0.8`. 
-* `bounciness` - Specifies how much the bodies bounce off each other upon collision. Should be the value from 0 to 1. Default is `0.2` which means that the bounce velocity will be 20% of the collision velocity.
-* `friction` - dynamic friction between two bodies. Should be the value between 0 and 1, where the bigger value means stronger friction. Default is `0.9`.
+* `bounciness` - the restitution of the default material assigned to new bodies. Should be the value from 0 to 1. Default is `0.2` which means that the bounce velocity will be 20% of the collision velocity.
+* `friction` - the dynamic friction of the default material assigned to new bodies. Should be the value between 0 and 1, where the bigger value means stronger friction. Default is `0.9`.
 * `sleep_base_bias` and `sleep_threshold` control how quickly the bodies go to sleep. Sleeping bodies are dynamic bodies which currently don't move. While in this state they consume almost no CPU resources for simulation, so this is benefitial for the game performance. To determine which body has to fall asleep, the engine uses the biased average of its velocity values across multiple frames. `sleep_base_bias` specifies which velocities are more important: values closer to 0 favour previous velocities, while values closer to 1 favour the current velocity. Once this biased average crosses `sleep_threshold`, the body falls asleep. 
 * `min_bounce_velocity` defines the minimum velocity at which the body will bounce. Adjusting this may be useful for getting the more stable resting bodies. Default value is `0.25`.
 

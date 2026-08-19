@@ -381,6 +381,7 @@ static bnd_error realloc_data(common_data *data, bnd_allocator allocator, bool w
   REALLOC_BUFFER4(data->rotations, allocator, sizeof(bnd_quat), old_capacity, total_capacity);
   REALLOC_BUFFER4(data->shapes, allocator, sizeof(body_shapes), old_capacity, total_capacity);
   REALLOC_BUFFER4(data->aabbs, allocator, sizeof(bnd_aabb), old_capacity, total_capacity);
+  REALLOC_BUFFER4(data->materials, allocator, sizeof(bnd_material_handle), old_capacity, total_capacity);
   REALLOC_BUFFER4(data->event_masks, allocator, sizeof(bnd_event_type), old_capacity, total_capacity);
   REALLOC_BUFFER4(data->event_links, allocator, sizeof(event_link), old_capacity, total_capacity);
   REALLOC_BUFFER4(data->free_list, allocator, sizeof(count_t), old_capacity, total_capacity);
@@ -424,6 +425,7 @@ static void init_body_common(bnd_world *world, common_data *data, shape_dimensio
   data->positions[index] = bnd_v3_zero();
   data->rotations[index] = bnd_quat_identity();
   data->shapes[index] = shapes_write(world, bracket, shapes, shapes_count);
+  data->materials[index] = bnd_default_material();
   data->event_masks[index] = 0;
   data->event_links[index] = (event_link) { 0 };
 
@@ -1124,6 +1126,7 @@ static void swap_bodies(bnd_world *world, bnd_body_type type, count_t index_a, c
   SWAP_COMMON(bnd_quat, rotations)
   SWAP_COMMON(body_shapes, shapes)
   SWAP_COMMON(bnd_aabb, aabbs)
+  SWAP_COMMON(bnd_material_handle, materials)
   SWAP_COMMON(bnd_event_type, event_masks)
   SWAP_COMMON(event_link, event_links)
   SWAP_COMMON(count_t, inner_lookup)
@@ -1159,6 +1162,7 @@ static void move_body(bnd_world *world, count_t src_index, count_t dst_index) {
   data->rotations[dst_index] = data->rotations[src_index];
   data->shapes[dst_index] = data->shapes[src_index];
   data->aabbs[dst_index] = data->aabbs[src_index];
+  data->materials[dst_index] = data->materials[src_index];
   data->event_masks[dst_index] = data->event_masks[src_index];
   data->event_links[dst_index] = data->event_links[src_index];
   data->inv_masses[dst_index] = data->inv_masses[src_index];
@@ -1173,4 +1177,73 @@ static void move_body(bnd_world *world, count_t src_index, count_t dst_index) {
   data->impulses[dst_index] = data->impulses[src_index];
   data->angular_impulses[dst_index] = data->angular_impulses[src_index];
   data->accelerations[dst_index] = data->accelerations[src_index];
+}
+
+bnd_material_handle  bnd_default_material() {
+  return 0;
+}
+
+bnd_result_u32 bnd_create_material(bnd_world *world, float bounciness, float friction) {
+  count_t count = world->materials.count;
+  count_t capacity = world->materials.capacity;
+  body_material *values = world->materials.values;
+
+  if (count >= capacity) {
+    if (world->allocator.realloc == NULL) {
+      return (bnd_result_u32) { { .type = BND_ERROR_NO_SPACE_AVAILABLE, "Failed to realloc materials buffer. Re-alloc function not provided" }, 0 };
+    }
+
+    count_t new_capacity = capacity << 1;
+    world->materials.values = world->allocator.realloc(values, 4, sizeof(body_material) * capacity, sizeof(body_material) * new_capacity);
+    if (world->materials.values == NULL) {
+      return (bnd_result_u32) { { .type = BND_ERROR_NO_SPACE_AVAILABLE, "Failed to realloc materials buffer. Re-alloc function returned null" }, 0 };
+    }
+    world->materials.capacity = new_capacity;
+  }
+
+  bnd_material_handle handle = world->materials.count++;
+  body_material *material = &world->materials.values[handle];
+
+  material->friction = fminf(fmaxf(0, friction), 1);
+  material->restitution = fminf(fmaxf(0, bounciness), 1);
+
+  return BND_RESULT_OK(u32, handle);
+}
+
+bnd_result_u32 bnd_get_material(const bnd_world *world, bnd_body_handle handle) {
+  PROPAGATE_RESULT(u32, bnd_handle_valid(world, handle));
+
+  const common_data *data = as_common_const(world, handle.type);
+  count_t index = handle_to_inner_index(world, handle);
+
+  return BND_RESULT_OK(u32, data->materials[index]);
+
+}
+
+bnd_error bnd_set_material(bnd_world *world, bnd_body_handle handle, bnd_material_handle material) {
+  PROPAGATE_ERROR(bnd_handle_valid(world, handle));
+
+  if (material >= world->materials.count) {
+    return (bnd_error) { BND_ERROR_INVALID_INPUT, "Provided material doesn't exist" };
+  }
+
+  common_data *data = as_common(world, handle.type);
+  count_t index = handle_to_inner_index(world, handle);
+
+  data->materials[index] = material;
+
+  return OK;
+}
+
+bnd_error materials_init(bnd_world *world) {
+  bnd_allocator allocator = world->allocator;
+  bnd_config config = world->config;
+
+  world->materials.capacity = config.memory.materials_capacity >= 1 ? config.memory.materials_capacity : 1;
+  world->materials.count = 1;
+  ALLOC_BUFFER4(world->materials.values, config.memory.materials_capacity * sizeof(body_material));
+
+  world->materials.values[bnd_default_material()] = (body_material){ config.simulation.bounciness, config.simulation.friction };
+
+  return OK;
 }

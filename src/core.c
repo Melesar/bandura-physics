@@ -1,5 +1,6 @@
 #include "bnd-core.h"
 
+#include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -65,6 +66,7 @@ count_t bnd_required_memory(const bnd_config *config) {
     + sizeof(bnd_quat)
     + sizeof(body_shapes)
     + sizeof(bnd_aabb)
+    + sizeof(bnd_material_handle)
     + sizeof(bnd_event_type)
     + sizeof(event_link)
     + sizeof(uint8_t)
@@ -90,6 +92,7 @@ count_t bnd_required_memory(const bnd_config *config) {
     + sizeof(bnd_m3)
     + sizeof(float)
     + sizeof(bnd_aabb);
+  count_t material_size = sizeof(body_material);
 
   count_t event_size = sizeof(bnd_event) + sizeof(count_t);
   count_t shapes_size = 0;
@@ -117,13 +120,14 @@ count_t bnd_required_memory(const bnd_config *config) {
     + config->memory.joints_capacity * joint_size
     + config->memory.meshes_capacity * mesh_size
     + config->memory.events_capacity * event_size
+    + config->memory.materials_capacity * material_size
     + shapes_size
     + polytope_size
     + contacts_cache_size;
 
   // Alignment
   size += 8 * 7; // 8-bytes for world, shapes slots, EPA polytope and the cache entries buffer
-  size += 45 * 3; // 4-bytes for the rest of the buffers
+  size += 46 * 3; // 4-bytes for the rest of the buffers
 
   return size;
 }
@@ -139,6 +143,7 @@ static bnd_error init_commons(common_data *data, count_t capacity, bnd_allocator
   ALLOC_BUFFER4(data->rotations, sizeof(bnd_quat) * total_capacity);
   ALLOC_BUFFER4(data->shapes, sizeof(body_shapes) * total_capacity);
   ALLOC_BUFFER4(data->aabbs, sizeof(bnd_aabb) * total_capacity);
+  ALLOC_BUFFER4(data->materials, sizeof(bnd_material_handle) * total_capacity);
   ALLOC_BUFFER4(data->event_masks, sizeof(bnd_event_type) * total_capacity);
   ALLOC_BUFFER4(data->event_links, sizeof(event_link) * total_capacity);
   ALLOC_BUFFER4(data->free_list, sizeof(count_t) * total_capacity);
@@ -156,6 +161,7 @@ static void teardown_commons(common_data *data, bnd_allocator allocator) {
   allocator.free(data->rotations, total_capacity * sizeof(bnd_quat));
   allocator.free(data->shapes, total_capacity * sizeof(body_shapes));
   allocator.free(data->aabbs, total_capacity * sizeof(bnd_aabb));
+  allocator.free(data->materials, total_capacity * sizeof(bnd_material_handle));
   allocator.free(data->event_masks, total_capacity * sizeof(bnd_event_type));
   allocator.free(data->event_links, total_capacity * sizeof(event_link));
   allocator.free(data->free_list, total_capacity * sizeof(count_t));
@@ -183,6 +189,7 @@ bnd_config bnd_default_config(void) {
       .joints_capacity = 64,
       .meshes_capacity = 32,
       .events_capacity = 128,
+      .materials_capacity = 8,
     },
     .advanced = {
       .max_gjk_iterations = 100,
@@ -241,6 +248,7 @@ static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allo
   INVOKE(meshes_init(world))
   INVOKE(events_init(world))
   INVOKE(epa_init(world))
+  INVOKE(materials_init(world))
 
   world->epa_debug = NULL;
 
@@ -303,9 +311,24 @@ void bnd_teardown(bnd_world *world) {
   events_teardown(world);
   epa_teardown(world);
 
+  world->allocator.free(world->materials.values, sizeof(body_material) * world->materials.capacity);
   world->allocator.free(world, sizeof(bnd_world));
 }
 
 count_t ephemeral_body_index(const common_data *data) {
   return data->capacity;
+}
+
+float mix_restitution(const collision_detection_context *ctx) {
+  float a = ctx->world->materials.values[ctx->data_a->materials[ctx->body_a]].restitution;
+  float b = ctx->world->materials.values[ctx->data_b->materials[ctx->body_b]].restitution;
+
+  return fmaxf(a, b);
+}
+
+float mix_friction(const collision_detection_context *ctx) {
+  float a = ctx->world->materials.values[ctx->data_a->materials[ctx->body_a]].friction;
+  float b = ctx->world->materials.values[ctx->data_b->materials[ctx->body_b]].friction;
+
+  return sqrtf(a * b);
 }

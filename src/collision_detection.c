@@ -49,8 +49,8 @@ static contact *new_contact(const collision_detection_context *ctx, count_t offs
   contact *c = &ctx->world->contacts.values[ctx->contacts_offset + offset];
   c->index_a = ctx->body_a;
   c->index_b = ctx->body_b;
-  c->friction = ctx->world->config.simulation.friction;
-  c->restitution = ctx->world->config.simulation.bounciness;
+  c->friction = mix_friction(ctx);
+  c->restitution = mix_restitution(ctx);
   c->from_cache = false;
 
   return c;
@@ -786,8 +786,8 @@ count_t collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_ty
         c->normal = normal_world;
         c->depth = -separation;
         c->features = *cached_features;
-        c->restitution = world->config.simulation.bounciness;
-        c->friction = world->config.simulation.friction;
+        c->restitution = mix_restitution(&ctx);
+        c->friction = mix_friction(&ctx);
 
         contacts_from_cache += 1;
       }
