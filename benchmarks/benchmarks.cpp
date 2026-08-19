@@ -1,6 +1,6 @@
 #include <benchmark/benchmark.h>
 
-#include <bandura.h>
+#include <load-testing.h>
 
 #include <cmath>
 #include <ctime>
@@ -157,134 +157,24 @@ bnd_config MakeConfig(const SceneDefinition &definition) {
   return config;
 }
 
-bool BuildSparseAwakeGrid(SceneInstance *instance,
-                          const SceneDefinition &definition) {
-  for (unsigned int y = 0; y < definition.grid_y; ++y) {
-    for (unsigned int z = 0; z < definition.grid_z; ++z) {
-      for (unsigned int x = 0; x < definition.grid_x; ++x) {
-        bnd_body_handle body;
-        if (!Check(
-                instance,
-                bnd_add_box_dynamic(instance->world, 1.0f, {1.0f, 1.0f, 1.0f}),
-                "bnd_add_box_dynamic", &body) ||
-            !Check(instance,
-                   bnd_set_position(instance->world, body,
-                                    {4.0f * static_cast<float>(x),
-                                     4.0f * static_cast<float>(y),
-                                     4.0f * static_cast<float>(z)}),
-                   "bnd_set_position") ||
-            !Check(
-                instance,
-                bnd_set_velocity(instance->world, body, {0.70f, 0.20f, -0.30f}),
-                "bnd_set_velocity") ||
-            !Check(instance,
-                   bnd_set_angular_momentum(instance->world, body,
-                                            {0.20f, -0.10f, 0.15f}),
-                   "bnd_set_angular_momentum")) {
-          return false;
-        }
-      }
-    }
-  }
+bool BuildSparseAwakeGrid(SceneInstance *instance, const SceneDefinition &definition) {
 
+  sparse_awake_grid(instance->world, definition.grid_x, definition.grid_y, definition.grid_z);
   instance->expected_dynamics = definition.primary_size;
   return true;
 }
 
 bool BuildDenseSettlingPile(SceneInstance *instance, unsigned int side) {
-  constexpr float box_size = 1.0f;
-  constexpr float spacing = 0.92f;
-  const float half_extent =
-      0.5f * static_cast<float>(side - 1U) * spacing + box_size;
-  if (!AddStaticEnclosure(instance, half_extent,
-                          static_cast<float>(side) * spacing + 2.0f)) {
-    return false;
-  }
 
-  for (unsigned int y = 0; y < side; ++y) {
-    for (unsigned int z = 0; z < side; ++z) {
-      for (unsigned int x = 0; x < side; ++x) {
-        bnd_body_handle body;
-        const bnd_v3 position = {
-            (static_cast<float>(x) - 0.5f * static_cast<float>(side - 1U)) *
-                spacing,
-            0.5f * box_size + static_cast<float>(y) * spacing,
-            (static_cast<float>(z) - 0.5f * static_cast<float>(side - 1U)) *
-                spacing,
-        };
-        if (!Check(instance,
-                   bnd_add_box_dynamic(instance->world, 1.0f,
-                                       {box_size, box_size, box_size}),
-                   "bnd_add_box_dynamic", &body) ||
-            !Check(instance, bnd_set_position(instance->world, body, position),
-                   "bnd_set_position")) {
-          return false;
-        }
-      }
-    }
-  }
+  dense_settling_pile(instance->world, side);
 
   instance->expected_dynamics = side * side * side;
   instance->expected_statics = 5;
   return true;
 }
 
-bool BuildCompoundCrowd(SceneInstance *instance,
-                        const SceneDefinition &definition) {
-  constexpr float box_size = 0.60f;
-  constexpr float shape_offset = 0.35f;
-  constexpr float spacing = 1.10f;
-  const float half_extent =
-      0.5f * static_cast<float>(definition.grid_x - 1U) * spacing + 1.0f;
-  if (!AddStaticEnclosure(instance, half_extent,
-                          static_cast<float>(definition.grid_y) * spacing +
-                              2.0f)) {
-    return false;
-  }
-
-  for (unsigned int y = 0; y < definition.grid_y; ++y) {
-    for (unsigned int z = 0; z < definition.grid_z; ++z) {
-      for (unsigned int x = 0; x < definition.grid_x; ++x) {
-        bnd_body_shape shapes[4] = {
-            {BND_BOX,
-             {{{box_size, box_size, box_size}}},
-             {shape_offset, 0.0f, 0.0f},
-             kIdentityRotation},
-            {BND_BOX,
-             {{{box_size, box_size, box_size}}},
-             {-shape_offset, 0.0f, 0.0f},
-             kIdentityRotation},
-            {BND_BOX,
-             {{{box_size, box_size, box_size}}},
-             {0.0f, 0.0f, shape_offset},
-             kIdentityRotation},
-            {BND_BOX,
-             {{{box_size, box_size, box_size}}},
-             {0.0f, 0.0f, -shape_offset},
-             kIdentityRotation},
-        };
-        float masses[4] = {1.0f, 1.0f, 1.0f, 1.0f};
-        bnd_body_handle body;
-        const bnd_v3 position = {
-            (static_cast<float>(x) -
-             0.5f * static_cast<float>(definition.grid_x - 1U)) *
-                spacing,
-            0.5f * box_size + static_cast<float>(y) * spacing,
-            (static_cast<float>(z) -
-             0.5f * static_cast<float>(definition.grid_z - 1U)) *
-                spacing,
-        };
-        if (!Check(instance,
-                   bnd_add_compound_body_dynamic(instance->world, shapes,
-                                                 masses, 4),
-                   "bnd_add_compound_body_dynamic", &body) ||
-            !Check(instance, bnd_set_position(instance->world, body, position),
-                   "bnd_set_position")) {
-          return false;
-        }
-      }
-    }
-  }
+bool BuildCompoundCrowd(SceneInstance *instance, const SceneDefinition &definition) {
+  compound_crowd(instance->world, definition.grid_x, definition.grid_y, definition.grid_z);
 
   instance->expected_dynamics = definition.primary_size;
   instance->expected_statics = 5;
@@ -293,77 +183,9 @@ bool BuildCompoundCrowd(SceneInstance *instance,
 }
 
 bool BuildDrivenJointLattice(SceneInstance *instance, unsigned int side) {
-  constexpr float radius = 0.15f;
-  constexpr float spacing = 1.20f;
-  constexpr float max_joint_distance = 1.00f;
-  constexpr float anchor_distance = 0.40f;
-  std::vector<bnd_body_handle> bodies(side * side);
   instance->anchors.reserve(side);
 
-  for (unsigned int y = 0; y < side; ++y) {
-    for (unsigned int x = 0; x < side; ++x) {
-      bnd_body_handle body;
-      if (!Check(instance,
-                 bnd_add_sphere_dynamic(instance->world, 1.0f, radius),
-                 "bnd_add_sphere_dynamic", &body) ||
-          !Check(instance,
-                 bnd_set_position(instance->world, body,
-                                  {static_cast<float>(x) * spacing,
-                                   static_cast<float>(y) * spacing, 0.0f}),
-                 "bnd_set_position")) {
-        return false;
-      }
-      bodies[y * side + x] = body;
-    }
-  }
-
-  for (unsigned int x = 0; x < side; ++x) {
-    bnd_body_handle anchor;
-    if (!Check(instance, bnd_add_sphere_static(instance->world, 0.01f),
-               "bnd_add_sphere_static", &anchor) ||
-        !Check(instance,
-               bnd_set_position(
-                   instance->world, anchor,
-                   {static_cast<float>(x) * spacing,
-                    static_cast<float>(side - 1U) * spacing + anchor_distance,
-                    0.0f}),
-               "bnd_set_position")) {
-      return false;
-    }
-    instance->anchors.push_back(anchor);
-  }
-
-  for (unsigned int y = 0; y < side; ++y) {
-    for (unsigned int x = 0; x < side; ++x) {
-      const bnd_body_handle body = bodies[y * side + x];
-      if (x + 1U < side &&
-          !Check(instance,
-                 bnd_add_joint(instance->world, body, bodies[y * side + x + 1U],
-                               {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f},
-                               max_joint_distance),
-                 "bnd_add_joint")) {
-        return false;
-      }
-      if (y + 1U < side &&
-          !Check(instance,
-                 bnd_add_joint(instance->world, body,
-                               bodies[(y + 1U) * side + x], {0.0f, 0.0f, 0.0f},
-                               {0.0f, 0.0f, 0.0f}, max_joint_distance),
-                 "bnd_add_joint")) {
-        return false;
-      }
-    }
-  }
-
-  for (unsigned int x = 0; x < side; ++x) {
-    if (!Check(instance,
-               bnd_add_joint(instance->world, bodies[(side - 1U) * side + x],
-                             instance->anchors[x], {0.0f, 0.0f, 0.0f},
-                             {0.0f, 0.0f, 0.0f}, 0.20f),
-               "bnd_add_joint")) {
-      return false;
-    }
-  }
+  joints_lattice(instance->world, side, instance->anchors.data());
 
   instance->expected_dynamics = side * side;
   instance->expected_statics = side;
@@ -431,25 +253,7 @@ bool WarmUp(SceneInstance *instance, const SceneDefinition &definition) {
 }
 
 bool DriveJointLattice(SceneInstance *instance, unsigned int step) {
-  constexpr float spacing = 1.20f;
-  constexpr float anchor_distance = 0.40f;
-  const unsigned int side = static_cast<unsigned int>(instance->anchors.size());
-  const float phase = static_cast<float>(step) * 0.19f;
-  for (unsigned int x = 0; x < side; ++x) {
-    const float anchor_phase = phase + static_cast<float>(x) * 0.37f;
-    const bnd_v3 position = {
-        static_cast<float>(x) * spacing + 0.12f * std::sin(anchor_phase),
-        static_cast<float>(side - 1U) * spacing + anchor_distance +
-            0.10f * std::sin(anchor_phase * 0.7f),
-        0.10f * std::cos(anchor_phase),
-    };
-    if (!Check(
-            instance,
-            bnd_set_position(instance->world, instance->anchors[x], position),
-            "bnd_set_position")) {
-      return false;
-    }
-  }
+  drive_joint_lattice(instance->world, step, instance->anchors.data(), instance->anchors.size());
   return true;
 }
 
