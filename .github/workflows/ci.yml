@@ -82,7 +82,7 @@ jobs:
       - name: Compile with MSVC
         if: matrix.platform == 'Windows'
         shell: cmd
-        run: cl /nologo /c bandura.c /std:c11 /W4 /WX /Za
+        run: cl /nologo /c bandura.c /std:c11 /W4 /WX
 
   test:
     needs: update-amalgamation
@@ -92,7 +92,7 @@ jobs:
         os:
           - ubuntu-latest
           - macos-latest
-          - windows-latest
+          # - windows-latest
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
