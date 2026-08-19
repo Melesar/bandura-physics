@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  update-amalgamation:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      revision: ${{ steps.commit.outputs.revision }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Set up Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Generate bandura.c
+        run: zig build --prefix .
+
+      - name: Commit generated source
+        id: commit
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bandura.c
+
+          if git diff --cached --quiet; then
+            echo "revision=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          else
+            git commit -m "Update bandura.c"
+            git push origin HEAD:main
+            echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
+  compile:
+    needs: update-amalgamation
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: Linux
+          - os: macos-latest
+            platform: Mac
+          - os: windows-latest
+            platform: Windows
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - name: Check out generated source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.update-amalgamation.outputs.revision }}
+          submodules: false
+
+      - name: Compile with GCC and Clang
+        if: matrix.platform == 'Linux'
+        run: |
+          gcc -c bandura.c -std=c99 -Wall -Wextra -Werror -pedantic
+          clang -c bandura.c -std=c99 -Wall -Wextra -Werror -pedantic
+
+      - name: Compile with Clang
+        if: matrix.platform == 'Mac'
+        run: clang -c bandura.c -std=c99 -Wall -Wextra -Werror -pedantic
+
+      - name: Set up MSVC
+        if: matrix.platform == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Compile with MSVC
+        if: matrix.platform == 'Windows'
+        shell: cmd
+        run: cl /nologo /c bandura.c /std:c11 /W4 /WX /Za
+
+  test:
+    needs: update-amalgamation
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - name: Check out generated source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.update-amalgamation.outputs.revision }}
+          submodules: recursive
+
+      - name: Set up Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Run tests
+        run: zig build test
