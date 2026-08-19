@@ -6,6 +6,7 @@ Bandura is a traditional Ukrainian [musical instrument](https://en.wikipedia.org
 
 * [Features](#features)
 * [Installation and build](#installation-and-build)
+* [Limitations](#limitations)
 * [Using the library](#using-the-library)
   * [Quickstart](#quickstart)
   * [Spawning bodies](#spawning-bodies)
@@ -32,6 +33,12 @@ Bandura is a traditional Ukrainian [musical instrument](https://en.wikipedia.org
 * **Easy to use**. Include `bandura.h` for the core API and compile `bandura.c` with your other source files. No need to build or link the library.
 * **Rigidbody physics simulation**. Allows for dynamic simulations with different shapes, including primitives, compounds and triangular meshes. Supports forces, impulses, rotations and joints.
 * **Impulse-based collision resolution**. Objects respond to the collisions based on their mass, shape and collision velocity.
+
+## Limitations
+
+* **No concave meshes support yet**. Currently the library can only use convex meshes as collision shapes. Support for concave ones will be added in the future.
+* **Only discrete collision detection**. Object that move very fast can pass through objects. This will be fixed in the future versions.
+* **Not thread-safe**. All library APIs can only be called from a single thread. This limitation will also be lifted in the future.
 
 ## Installation and build
 
