@@ -9,6 +9,7 @@
 #define DEFAULT_VERTEX_PER_MESH 512
 #define DEFAULT_FACE_PER_MESH 256
 #define MAX_CONTACTS_PER_PAIR 4
+#define MAX_COLLISION_LAYERS 64
 
 #define OK (bnd_error){BND_OK, NULL}
 #define OOM_ERROR (bnd_error){BND_ERROR_OUT_OF_MEMORY, "Allocator.malloc failed to allocate memory"}
@@ -190,6 +191,11 @@ typedef struct {
   uint8_t count;
 } event_link;
 
+typedef struct {
+  bnd_collision_mask matrix[MAX_COLLISION_LAYERS];
+  uint8_t layers_available;
+} collision_matrix;
+
 #define COMMON_FIELDS                                                                                                  \
   count_t capacity;                                                                                                    \
   count_t count;                                                                                                       \
@@ -199,6 +205,7 @@ typedef struct {
   bnd_quat *rotations;                                                                                                     \
   body_shapes *shapes;                                                                                                 \
   bnd_aabb *aabbs;                                                                                                     \
+  bnd_collision_layer *collision_layers; \
   bnd_material_handle *materials;    \
   void **custom_data;  \
   bnd_event_type *event_masks;                                                                                         \
@@ -371,6 +378,7 @@ struct bnd_world_t {
   contacts_cache contacts_cache;
   body_materials materials;
   epa_polytope epa_polytope;
+  collision_matrix matrix;
 
   epa_debug_status *epa_debug;
 
@@ -474,6 +482,8 @@ void                  joints_remove_stale_if_needed(bnd_world *world, bnd_body_h
 bnd_error             meshes_init(bnd_world *world);
 void                  meshes_teardown(bnd_world *world);
 
+bnd_collision_mask    layer_to_mask(bnd_collision_layer layer);
+bnd_collision_mask    mask_for_count(uint8_t count);
 bnd_error             materials_init(bnd_world *world);
 
 bnd_error             shapes_init(bnd_world *world);

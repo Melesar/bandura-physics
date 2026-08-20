@@ -630,6 +630,12 @@ count_t collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_ty
   for (count_t i = 0; i < dynamics->count; ++i) {
     count_t until = type == BND_BODY_DYNAMIC ? i : data_b->count;
     for (count_t j = 0; j < until; ++j) {
+      bnd_collision_mask validation_mask = layer_to_mask(dynamics->collision_layers[i]);
+      bnd_collision_mask reference_mask = world->matrix.matrix[data_b->collision_layers[j]];
+      if ((reference_mask & validation_mask) == 0) {
+        continue;
+      }
+
       if (!aabb_intersect(dynamics, data_b, i, j)) {
         continue;
       }

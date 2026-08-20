@@ -1,3 +1,4 @@
+#include "bandura.h"
 #include "bnd-core.h"
 
 #include <math.h>
@@ -30,6 +31,8 @@ BND_RESULT_FUNC_DECL(aabb, bnd_aabb)
 BND_RESULT_FUNC_DECL(u32, uint32_t)
 BND_RESULT_FUNC_DECL(bool, bool)
 BND_RESULT_FUNC_DECL(handle, bnd_body_handle)
+BND_RESULT_FUNC_DECL(material, bnd_material_handle)
+BND_RESULT_FUNC_DECL(layer, bnd_collision_layer)
 BND_RESULT_FUNC_DECL(ptr, void*)
 
 const count_t max_body_index = (count_t)~0 >> 9;
@@ -69,6 +72,7 @@ count_t bnd_required_memory(const bnd_config *config) {
     + sizeof(bnd_aabb)
     + sizeof(bnd_material_handle)
     + sizeof(void*)
+    + sizeof(bnd_collision_layer)
     + sizeof(bnd_event_type)
     + sizeof(event_link)
     + sizeof(uint8_t)
@@ -147,6 +151,7 @@ static bnd_error init_commons(common_data *data, count_t capacity, bnd_allocator
   ALLOC_BUFFER4(data->aabbs, sizeof(bnd_aabb) * total_capacity);
   ALLOC_BUFFER4(data->materials, sizeof(bnd_material_handle) * total_capacity);
   ALLOC_BUFFER8(data->custom_data, sizeof(void*) * total_capacity)
+  ALLOC_BUFFER1(data->collision_layers, sizeof(bnd_collision_layer) * total_capacity);
   ALLOC_BUFFER4(data->event_masks, sizeof(bnd_event_type) * total_capacity);
   ALLOC_BUFFER4(data->event_links, sizeof(event_link) * total_capacity);
   ALLOC_BUFFER4(data->free_list, sizeof(count_t) * total_capacity);
@@ -166,6 +171,7 @@ static void teardown_commons(common_data *data, bnd_allocator allocator) {
   allocator.free(data->aabbs, total_capacity * sizeof(bnd_aabb));
   allocator.free(data->materials, total_capacity * sizeof(bnd_material_handle));
   allocator.free(data->custom_data, total_capacity * sizeof(void*));
+  allocator.free(data->collision_layers, total_capacity * sizeof(bnd_collision_layer));
   allocator.free(data->event_masks, total_capacity * sizeof(bnd_event_type));
   allocator.free(data->event_links, total_capacity * sizeof(event_link));
   allocator.free(data->free_list, total_capacity * sizeof(count_t));
@@ -242,6 +248,13 @@ static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allo
   ALLOC(world->dynamics.inv_intertias, matrices);
   ALLOC(world->dynamics.motion_avgs, floats);
 
+  world->matrix.matrix[0] = 1;
+  for(count_t i = 1; i < MAX_COLLISION_LAYERS; ++i) {
+    world->matrix.matrix[i] = 0;
+  }
+
+  world->matrix.layers_available = 1;
+
   world->dynamics.awake_count = 0;
   world->generation = 0;
   world->age = 0;
@@ -300,7 +313,6 @@ void bnd_teardown(bnd_world *world) {
   world->allocator.free(world->dynamics.impulses, dynamics_total_capacity * sizeof(bnd_v3));
   world->allocator.free(world->dynamics.angular_impulses, dynamics_total_capacity * sizeof(bnd_v3));
   world->allocator.free(world->dynamics.accelerations, dynamics_total_capacity * sizeof(bnd_v3));
-
   world->allocator.free(world->dynamics.inv_masses, dynamics_total_capacity * sizeof(float));
   world->allocator.free(world->dynamics.velocities, dynamics_total_capacity * sizeof(bnd_v3));
   world->allocator.free(world->dynamics.angular_momenta, dynamics_total_capacity * sizeof(bnd_v3));
@@ -323,16 +335,3 @@ count_t ephemeral_body_index(const common_data *data) {
   return data->capacity;
 }
 
-float mix_restitution(const collision_detection_context *ctx) {
-  float a = ctx->world->materials.values[ctx->data_a->materials[ctx->body_a]].restitution;
-  float b = ctx->world->materials.values[ctx->data_b->materials[ctx->body_b]].restitution;
-
-  return fmaxf(a, b);
-}
-
-float mix_friction(const collision_detection_context *ctx) {
-  float a = ctx->world->materials.values[ctx->data_a->materials[ctx->body_a]].friction;
-  float b = ctx->world->materials.values[ctx->data_b->materials[ctx->body_b]].friction;
-
-  return sqrtf(a * b);
-}

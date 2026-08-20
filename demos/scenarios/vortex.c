@@ -20,6 +20,14 @@
 bnd_contact contacts_buffer[MAX_CONTACTS];
 uint64_t grounded_bodies_lookup[GROUNDED_BODIES_BUFFER_SIZE];
 
+typedef enum {
+  LAYER_DEFAULT,
+  LAYER_COLUMN,
+  LAYER_CONE,
+
+  LAYERS_COUNT
+} collision_layers;
+
 typedef struct {
   bnd_v3 position;
   float kick_radius;
@@ -134,6 +142,8 @@ void scenario_initialize(bnd_world *world) {
   SetRandomSeed(33);
 
   cone_mesh.success = import_raylib_mesh(world, GenMeshCone(1, 3, 16), &cone_mesh.mesh);
+  bnd_set_layers_count(world, LAYERS_COUNT);
+  bnd_set_layers_collision(world, LAYER_COLUMN, LAYER_CONE, false);
 }
 
 void scenario_setup_scene(bnd_world *world) {
@@ -141,6 +151,7 @@ void scenario_setup_scene(bnd_world *world) {
 
   if (cone_mesh.success) {
     bnd_body_handle cone = bnd_add_mesh_dynamic(world, 5, cone_mesh.mesh).value;
+    bnd_set_collision_layer(world, cone, LAYER_CONE);
     scatter_dynamic_body(world, cone, 2, 7);
   }
 
@@ -243,6 +254,7 @@ void scenario_setup_scene(bnd_world *world) {
 
   bnd_body_handle cylinder = bnd_add_capsule_static(world, 2, 5).value;
   bnd_set_position(world, cylinder, (bnd_v3){ 0, 2.5, 0 });
+  bnd_set_collision_layer(world, cylinder, LAYER_COLUMN);
 
   vorticies[0] = vortex_create((bnd_v3){ 0, 0, -8 }, 20, 1);
   vorticies[1] = vortex_create((bnd_v3){ 8, 0, 5 }, 10, 1.5);

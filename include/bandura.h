@@ -50,6 +50,7 @@ typedef enum {
   BND_ERROR_MESH_IS_CONCAVE,
   BND_ERROR_BODY_HANDLE_INVALID,
   BND_ERROR_INVALID_BODY_TYPE,
+  BND_ERROR_INVALID_COLLISION_LAYER,
   BND_ERROR_INVALID_INPUT,
 
   // Debug mode errors
@@ -120,9 +121,10 @@ typedef struct {
   bnd_mesh_buffer index_buffer;
 } bnd_mesh_data;
 
-typedef uint32_t bnd_mesh_handle;
-
-typedef uint32_t bnd_material_handle;
+typedef uint32_t   bnd_mesh_handle;
+typedef uint32_t   bnd_material_handle;
+typedef uint8_t    bnd_collision_layer;
+typedef uint64_t   bnd_collision_mask;
 
 typedef struct {
   bnd_v3 size;
@@ -278,6 +280,8 @@ BND_RESULT_TYPE(v3, bnd_v3)
 BND_RESULT_TYPE(quat, bnd_quat)
 BND_RESULT_TYPE(aabb, bnd_aabb)
 BND_RESULT_TYPE(u32, uint32_t)
+BND_RESULT_TYPE(material, bnd_material_handle)
+BND_RESULT_TYPE(layer, bnd_collision_layer)
 BND_RESULT_TYPE(bool, bool)
 BND_RESULT_TYPE(handle, bnd_body_handle)
 
@@ -325,11 +329,17 @@ BNDAPI bnd_result_handle    bnd_add_compound_body_dynamic(bnd_world *world, bnd_
 BNDAPI bnd_result_handle    bnd_add_primitive_body(bnd_world *world, bnd_body_type type, bnd_shape_type shape_type, bnd_shape shape, float mass);
 BNDAPI bnd_result_handle    bnd_add_compound_body(bnd_world *world, bnd_body_type type, bnd_body_shape *shapes, float *masses, uint32_t shapes_count);
 
-BNDAPI bnd_material_handle  bnd_default_material();
-BNDAPI bnd_result_u32       bnd_create_material(bnd_world *world, float bounciness, float friction);
+BNDAPI bnd_material_handle  bnd_default_material(void);
+BNDAPI bnd_result_material  bnd_create_material(bnd_world *world, float bounciness, float friction);
 BNDAPI bnd_error            bnd_set_material_bounciness(bnd_world *world, bnd_material_handle material, float bounciness);
 BNDAPI bnd_error            bnd_set_material_friction(bnd_world *world, bnd_material_handle material, float friction);
 BNDAPI bnd_error            bnd_get_material_properties(bnd_world *world, bnd_material_handle material, float *bounciness, float *friction);
+
+BNDAPI bnd_collision_mask   bnd_get_all_layers_mask(const bnd_world *world);
+BNDAPI uint32_t             bnd_get_layers_count(const bnd_world *world);
+BNDAPI bnd_error            bnd_set_layers_count(bnd_world *world, uint8_t new_count);
+BNDAPI bnd_error            bnd_set_layers_collision(bnd_world *world, bnd_collision_layer layer_a, bnd_collision_layer layer_b, bool collide);
+BNDAPI bool                 bnd_get_layers_collision(const bnd_world *world, bnd_collision_layer layer_a, bnd_collision_layer layer_b);
 
 BNDAPI bnd_error            bnd_remove_body(bnd_world *world, bnd_body_handle handle);
 
@@ -358,8 +368,9 @@ BNDAPI bnd_result_aabb      bnd_get_bounding_box(const bnd_world *world, bnd_bod
 BNDAPI bnd_result_v3        bnd_get_velocity(const bnd_world *world, bnd_body_handle handle);
 BNDAPI bnd_result_v3        bnd_get_angular_velocity(const bnd_world *world, bnd_body_handle handle);
 BNDAPI bnd_result_v3        bnd_get_angular_momentum(const bnd_world *world, bnd_body_handle handle);
-BNDAPI bnd_result_u32       bnd_get_material(const bnd_world *world, bnd_body_handle handle);
+BNDAPI bnd_result_material  bnd_get_material(const bnd_world *world, bnd_body_handle handle);
 BNDAPI bnd_result_ptr       bnd_get_custom_data(const bnd_world *world, bnd_body_handle handle);
+BNDAPI bnd_result_layer     bnd_get_collision_layer(const bnd_world *world, bnd_body_handle handle);
 
 BNDAPI bnd_error            bnd_set_position(bnd_world *world, bnd_body_handle handle, bnd_v3 position);
 BNDAPI bnd_error            bnd_set_rotation(bnd_world *world, bnd_body_handle handle, bnd_quat rotation);
@@ -367,6 +378,7 @@ BNDAPI bnd_error            bnd_set_velocity(bnd_world *world, bnd_body_handle h
 BNDAPI bnd_error            bnd_set_angular_momentum(bnd_world *world, bnd_body_handle handle, bnd_v3 angular_momentum);
 BNDAPI bnd_error            bnd_set_material(bnd_world *world, bnd_body_handle handle, bnd_material_handle material);
 BNDAPI bnd_error            bnd_set_custom_data(bnd_world *world, bnd_body_handle handle, void *data);
+BNDAPI bnd_error            bnd_set_collision_layer(bnd_world *world, bnd_body_handle handle, bnd_collision_layer layer);
 
 BNDAPI bnd_error            bnd_event_subscribe(bnd_world *world, bnd_body_handle body, bnd_event_type type);
 BNDAPI bnd_error            bnd_event_unsubscribe(bnd_world *world, bnd_body_handle body, bnd_event_type type);
@@ -385,9 +397,9 @@ BNDAPI bnd_error            bnd_awaken_body(bnd_world *world, bnd_body_handle ha
 BNDAPI bnd_error            bnd_put_to_sleep(bnd_world *world, bnd_body_handle handle);
 BNDAPI void                 bnd_reset_world(bnd_world *world);
 
-BNDAPI bool                 bnd_raycast_closest(const bnd_world *world, bnd_ray ray, bnd_raycast_hit *closest_hit);
-BNDAPI uint32_t             bnd_raycast_multiple(const bnd_world *world, bnd_ray ray, bnd_raycast_hit *hits, uint32_t max_hits);
-BNDAPI uint32_t             bnd_overlap(const bnd_world *world, bnd_v3 origin, float radius, bnd_body_handle *overlaps, uint32_t max_overlaps);
+BNDAPI bool                 bnd_raycast_closest(const bnd_world *world, bnd_ray ray, bnd_collision_mask mask, bnd_raycast_hit *closest_hit);
+BNDAPI uint32_t             bnd_raycast_multiple(const bnd_world *world, bnd_ray ray, bnd_collision_mask mask, bnd_raycast_hit *hits, uint32_t max_hits);
+BNDAPI uint32_t             bnd_overlap(const bnd_world *world, bnd_v3 origin, float radius, bnd_collision_mask mask, bnd_body_handle *overlaps, uint32_t max_overlaps);
 
 BNDAPI void                 bnd_debug_draw(const bnd_world *world, bnd_debug_draw_flags flags, bnd_debug_draw_callbacks callbacks, void *user_data);
 

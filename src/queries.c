@@ -10,6 +10,7 @@ typedef struct {
   const bnd_world *world;
   const common_data *data;
   bnd_body_type type;
+  bnd_collision_mask mask;
   count_t body_index;
   count_t shape_index;
 } raycast_context;
@@ -345,13 +346,14 @@ static raycast_func raycasts[] = {
   raycast_plane,
 };
 
-static raycast_context begin_raycast(const bnd_world *world, bnd_body_type type) {
+static raycast_context begin_raycast(const bnd_world *world, bnd_collision_mask mask, bnd_body_type type) {
   const common_data *data = as_common_const(world, type);
 
   return (raycast_context) {
     .world = world,
     .data = data,
     .type = type,
+    .mask = mask,
     .body_index = 0,
     .shape_index = 0,
   };
@@ -360,6 +362,13 @@ static raycast_context begin_raycast(const bnd_world *world, bnd_body_type type)
 static bool next_raycast(raycast_context *ctx, bnd_ray r, bnd_raycast_hit *hit) {
   if (ctx->body_index >= ctx->data->count) {
     return false;
+  }
+
+  bnd_collision_mask validation_mask = layer_to_mask(ctx->data->collision_layers[ctx->body_index]);
+  if ((validation_mask & ctx->mask) == 0) {
+    ctx->body_index += 1;
+    ctx->shape_index = 0;
+    return next_raycast(ctx, r, hit);
   }
 
   body_shapes shapes_info = ctx->data->shapes[ctx->body_index];
@@ -382,11 +391,11 @@ static bool next_raycast(raycast_context *ctx, bnd_ray r, bnd_raycast_hit *hit) 
   return next_raycast(ctx, r, hit);
 }
 
-bool bnd_raycast_closest(const bnd_world *world, bnd_ray ray, bnd_raycast_hit *closest_hit) {
+bool bnd_raycast_closest(const bnd_world *world, bnd_ray ray, bnd_collision_mask mask, bnd_raycast_hit *closest_hit) {
   closest_hit->distance = FLT_MAX;
 
   bnd_raycast_hit hit;
-  raycast_context ctxs[] = { begin_raycast(world, BND_BODY_DYNAMIC), begin_raycast(world, BND_BODY_STATIC) };
+  raycast_context ctxs[] = { begin_raycast(world, mask, BND_BODY_DYNAMIC), begin_raycast(world, mask, BND_BODY_STATIC) };
 
   for (count_t i = 0; i < 2; ++i) {
     while(next_raycast(&ctxs[i], ray, &hit)) {
@@ -399,13 +408,13 @@ bool bnd_raycast_closest(const bnd_world *world, bnd_ray ray, bnd_raycast_hit *c
   return closest_hit->distance < FLT_MAX;
 }
 
-count_t bnd_raycast_multiple(const bnd_world *world, bnd_ray ray, bnd_raycast_hit *hits, count_t max_hits) {
+count_t bnd_raycast_multiple(const bnd_world *world, bnd_ray ray, bnd_collision_mask mask, bnd_raycast_hit *hits, count_t max_hits) {
   if (max_hits == 0) {
     return 0;
   }
 
   count_t num_hits = 0;
-  raycast_context ctxs[] = { begin_raycast(world, BND_BODY_DYNAMIC), begin_raycast(world, BND_BODY_STATIC) };
+  raycast_context ctxs[] = { begin_raycast(world, mask, BND_BODY_DYNAMIC), begin_raycast(world, mask, BND_BODY_STATIC) };
 
   for (count_t i = 0; i < 2; ++i) {
     while(next_raycast(&ctxs[i], ray, &hits[num_hits])) {
@@ -419,7 +428,7 @@ count_t bnd_raycast_multiple(const bnd_world *world, bnd_ray ray, bnd_raycast_hi
   return num_hits;
 }
 
-static count_t overlap_typed(const bnd_world *world, bnd_v3 origin, float radius, bnd_body_handle *overlaps, count_t max_overlaps, bnd_body_type type) {
+static count_t overlap_typed(const bnd_world *world, bnd_v3 origin, float radius, bnd_collision_mask mask, bnd_body_handle *overlaps, count_t max_overlaps, bnd_body_type type) {
   const common_data *data = as_common_const(world, type);
 
   count_t ephemeral_index = ephemeral_body_index(data);
@@ -431,6 +440,11 @@ static count_t overlap_typed(const bnd_world *world, bnd_v3 origin, float radius
   count_t overlap_count = 0;
   simplex s = { 0 };
   for (count_t i = 0; i < data->count; ++i) {
+    bnd_collision_mask validation_mask = layer_to_mask(data->collision_layers[i]);
+    if ((validation_mask & mask) == 0) {
+      continue;
+    }
+
     if (!aabb_intersect(data, data, ephemeral_index, i)) {
       continue;
     }
@@ -476,18 +490,18 @@ static count_t overlap_typed(const bnd_world *world, bnd_v3 origin, float radius
   return overlap_count;
 }
 
-count_t bnd_overlap(const bnd_world *world, bnd_v3 origin, float radius, bnd_body_handle *overlaps, count_t max_overlaps) {
+count_t bnd_overlap(const bnd_world *world, bnd_v3 origin, float radius, bnd_collision_mask mask, bnd_body_handle *overlaps, count_t max_overlaps) {
   if (max_overlaps == 0) {
     return 0;
   }
 
-  count_t overlap_count = overlap_typed(world, origin, radius, overlaps, max_overlaps, BND_BODY_DYNAMIC);
+  count_t overlap_count = overlap_typed(world, origin, radius, mask, overlaps, max_overlaps, BND_BODY_DYNAMIC);
   if (overlap_count == max_overlaps) {
     return overlap_count;
   }
 
   max_overlaps -= overlap_count;
-  overlap_count += overlap_typed(world, origin, radius, overlaps + overlap_count, max_overlaps, BND_BODY_STATIC);
+  overlap_count += overlap_typed(world, origin, radius, mask, overlaps + overlap_count, max_overlaps, BND_BODY_STATIC);
 
   return overlap_count;
 }

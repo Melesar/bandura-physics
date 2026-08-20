@@ -131,7 +131,7 @@ void scenario_handle_input(bnd_world *world, Camera *camera) {
     .direction = r.direction,
     .max_distance = 100,
   };
-  has_tracked = bnd_raycast_closest(world, ray, &hit);
+  has_tracked = bnd_raycast_closest(world, ray, ~0, &hit);
   tracked = hit.body;
 }
 
@@ -149,7 +149,7 @@ void scenario_simulate(bnd_world *world, float dt) {
       bnd_remove_body(world, projectiles[i]);
 
       bnd_body_handle overlaps[5];
-      uint32_t overlap_count = bnd_overlap(world, pos, explosion_radius, overlaps, 5);
+      uint32_t overlap_count = bnd_overlap(world, pos, explosion_radius, ~0, overlaps, 5);
 
       for (uint32_t j = 0; j < overlap_count; ++j) {
         bnd_v3 body_pos = bnd_get_position(world, overlaps[j]).value;
