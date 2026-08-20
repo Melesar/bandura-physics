@@ -273,6 +273,7 @@ typedef struct bnd_world_t bnd_world;
 
 
 BND_RESULT_TYPE(world, bnd_world*)
+BND_RESULT_TYPE(ptr, void*)
 BND_RESULT_TYPE(v3, bnd_v3)
 BND_RESULT_TYPE(quat, bnd_quat)
 BND_RESULT_TYPE(aabb, bnd_aabb)
@@ -358,12 +359,14 @@ BNDAPI bnd_result_v3        bnd_get_velocity(const bnd_world *world, bnd_body_ha
 BNDAPI bnd_result_v3        bnd_get_angular_velocity(const bnd_world *world, bnd_body_handle handle);
 BNDAPI bnd_result_v3        bnd_get_angular_momentum(const bnd_world *world, bnd_body_handle handle);
 BNDAPI bnd_result_u32       bnd_get_material(const bnd_world *world, bnd_body_handle handle);
+BNDAPI bnd_result_ptr       bnd_get_custom_data(const bnd_world *world, bnd_body_handle handle);
 
 BNDAPI bnd_error            bnd_set_position(bnd_world *world, bnd_body_handle handle, bnd_v3 position);
 BNDAPI bnd_error            bnd_set_rotation(bnd_world *world, bnd_body_handle handle, bnd_quat rotation);
 BNDAPI bnd_error            bnd_set_velocity(bnd_world *world, bnd_body_handle handle, bnd_v3 velocity);
 BNDAPI bnd_error            bnd_set_angular_momentum(bnd_world *world, bnd_body_handle handle, bnd_v3 angular_momentum);
 BNDAPI bnd_error            bnd_set_material(bnd_world *world, bnd_body_handle handle, bnd_material_handle material);
+BNDAPI bnd_error            bnd_set_custom_data(bnd_world *world, bnd_body_handle handle, void *data);
 
 BNDAPI bnd_error            bnd_event_subscribe(bnd_world *world, bnd_body_handle body, bnd_event_type type);
 BNDAPI bnd_error            bnd_event_unsubscribe(bnd_world *world, bnd_body_handle body, bnd_event_type type);

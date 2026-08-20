@@ -200,6 +200,7 @@ typedef struct {
   body_shapes *shapes;                                                                                                 \
   bnd_aabb *aabbs;                                                                                                     \
   bnd_material_handle *materials;    \
+  void **custom_data;  \
   bnd_event_type *event_masks;                                                                                         \
   event_link *event_links;                                                                                             \
   uint8_t *generations;                                                                                                \

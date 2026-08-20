@@ -30,6 +30,7 @@ BND_RESULT_FUNC_DECL(aabb, bnd_aabb)
 BND_RESULT_FUNC_DECL(u32, uint32_t)
 BND_RESULT_FUNC_DECL(bool, bool)
 BND_RESULT_FUNC_DECL(handle, bnd_body_handle)
+BND_RESULT_FUNC_DECL(ptr, void*)
 
 const count_t max_body_index = (count_t)~0 >> 9;
 count_t next_world_id;
@@ -67,6 +68,7 @@ count_t bnd_required_memory(const bnd_config *config) {
     + sizeof(body_shapes)
     + sizeof(bnd_aabb)
     + sizeof(bnd_material_handle)
+    + sizeof(void*)
     + sizeof(bnd_event_type)
     + sizeof(event_link)
     + sizeof(uint8_t)
@@ -126,7 +128,7 @@ count_t bnd_required_memory(const bnd_config *config) {
     + contacts_cache_size;
 
   // Alignment
-  size += 8 * 7; // 8-bytes for world, shapes slots, EPA polytope and the cache entries buffer
+  size += 9 * 7; // 8-bytes for world, shapes slots, EPA polytope, custom data and the cache entries buffer
   size += 46 * 3; // 4-bytes for the rest of the buffers
 
   return size;
@@ -144,6 +146,7 @@ static bnd_error init_commons(common_data *data, count_t capacity, bnd_allocator
   ALLOC_BUFFER4(data->shapes, sizeof(body_shapes) * total_capacity);
   ALLOC_BUFFER4(data->aabbs, sizeof(bnd_aabb) * total_capacity);
   ALLOC_BUFFER4(data->materials, sizeof(bnd_material_handle) * total_capacity);
+  ALLOC_BUFFER8(data->custom_data, sizeof(void*) * total_capacity)
   ALLOC_BUFFER4(data->event_masks, sizeof(bnd_event_type) * total_capacity);
   ALLOC_BUFFER4(data->event_links, sizeof(event_link) * total_capacity);
   ALLOC_BUFFER4(data->free_list, sizeof(count_t) * total_capacity);
@@ -162,6 +165,7 @@ static void teardown_commons(common_data *data, bnd_allocator allocator) {
   allocator.free(data->shapes, total_capacity * sizeof(body_shapes));
   allocator.free(data->aabbs, total_capacity * sizeof(bnd_aabb));
   allocator.free(data->materials, total_capacity * sizeof(bnd_material_handle));
+  allocator.free(data->custom_data, total_capacity * sizeof(void*));
   allocator.free(data->event_masks, total_capacity * sizeof(bnd_event_type));
   allocator.free(data->event_links, total_capacity * sizeof(event_link));
   allocator.free(data->free_list, total_capacity * sizeof(count_t));

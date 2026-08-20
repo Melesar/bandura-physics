@@ -431,6 +431,7 @@ static void init_body_common(bnd_world *world, common_data *data, shape_dimensio
   data->rotations[index] = bnd_quat_identity();
   data->shapes[index] = shapes_write(world, bracket, shapes, shapes_count);
   data->materials[index] = bnd_default_material();
+  data->custom_data[index] = NULL;
   data->event_masks[index] = 0;
   data->event_links[index] = (event_link) { 0 };
 
@@ -859,6 +860,15 @@ bnd_result_v3 bnd_get_angular_momentum(const bnd_world *world, bnd_body_handle h
   return BND_RESULT_OK(v3, world->dynamics.angular_momenta[index]);
 }
 
+bnd_result_ptr bnd_get_custom_data(const bnd_world *world, bnd_body_handle handle) {
+  PROPAGATE_RESULT(ptr, bnd_handle_valid(world, handle))
+
+  const common_data *data = as_common_const(world, handle.type);
+  count_t index = handle_to_inner_index(world, handle);
+
+  return BND_RESULT_OK(ptr, data->custom_data[index]);
+}
+
 bnd_error bnd_set_position(bnd_world *world, bnd_body_handle handle, bnd_v3 position) {
   PROPAGATE_ERROR(bnd_handle_valid(world, handle))
 
@@ -897,6 +907,17 @@ bnd_error bnd_set_angular_momentum(bnd_world *world, bnd_body_handle handle, bnd
 
   count_t index = handle_to_inner_index(world, handle);
   world->dynamics.angular_momenta[index] = angular_momentum;
+
+  return OK;
+}
+
+bnd_error bnd_set_custom_data(bnd_world *world, bnd_body_handle handle, void *data) {
+  PROPAGATE_ERROR(bnd_handle_valid(world, handle));
+
+  common_data *cdata = as_common(world, handle.type);
+  count_t index = handle_to_inner_index(world, handle);
+
+  cdata->custom_data[index] = data;
 
   return OK;
 }
@@ -1132,6 +1153,7 @@ static void swap_bodies(bnd_world *world, bnd_body_type type, count_t index_a, c
   SWAP_COMMON(body_shapes, shapes)
   SWAP_COMMON(bnd_aabb, aabbs)
   SWAP_COMMON(bnd_material_handle, materials)
+  SWAP_COMMON(void*, custom_data)
   SWAP_COMMON(bnd_event_type, event_masks)
   SWAP_COMMON(event_link, event_links)
   SWAP_COMMON(count_t, inner_lookup)
@@ -1168,6 +1190,7 @@ static void move_body(bnd_world *world, count_t src_index, count_t dst_index) {
   data->shapes[dst_index] = data->shapes[src_index];
   data->aabbs[dst_index] = data->aabbs[src_index];
   data->materials[dst_index] = data->materials[src_index];
+  data->custom_data[dst_index] = data->custom_data[src_index];
   data->event_masks[dst_index] = data->event_masks[src_index];
   data->event_links[dst_index] = data->event_links[src_index];
   data->inv_masses[dst_index] = data->inv_masses[src_index];
