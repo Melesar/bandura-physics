@@ -25,6 +25,7 @@ static void draw_shapes(const bnd_world *world, bnd_body_type type, bnd_debug_dr
   const common_data *data = as_common_const(world, type);
   for (count_t i = 0; i < data->count; i++) {
     body_shapes body_shapes = data->shapes[i];
+    bool is_trigger = data->flags[i] & BODY_FLAG_TRIGGER;
     bnd_body_shape *shapes = shapes_get(world, body_shapes);
 
     for (count_t j = 0; j < body_shapes.count; ++j) {
@@ -39,7 +40,7 @@ static void draw_shapes(const bnd_world *world, bnd_body_type type, bnd_debug_dr
 
       bnd_v3 center = body_center(&ctx);
       bnd_quat rotation = body_rotation(&ctx);
-      callbacks.draw_shape(center, rotation, make_body_handle(world, type, i), shape.type, shape.value, user_data);
+      callbacks.draw_shape(center, rotation, make_body_handle(world, type, i), shape.type, shape.value, is_trigger, user_data);
     }
   }
 }

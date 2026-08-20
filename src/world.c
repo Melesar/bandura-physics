@@ -389,6 +389,7 @@ static bnd_error realloc_data(common_data *data, bnd_allocator allocator, bool w
   REALLOC_BUFFER4(data->materials, allocator, sizeof(bnd_material_handle), old_capacity, total_capacity);
   REALLOC_BUFFER4(data->event_masks, allocator, sizeof(bnd_event_type), old_capacity, total_capacity);
   REALLOC_BUFFER8(data->custom_data, allocator, sizeof(void*), old_capacity, total_capacity);
+  REALLOC_BUFFER1(data->flags, allocator, sizeof(uint8_t), old_capacity, total_capacity);
   REALLOC_BUFFER1(data->collision_layers, allocator, sizeof(bnd_collision_layer), old_capacity, total_capacity);
   REALLOC_BUFFER4(data->event_links, allocator, sizeof(event_link), old_capacity, total_capacity);
   REALLOC_BUFFER4(data->free_list, allocator, sizeof(count_t), old_capacity, total_capacity);
@@ -434,6 +435,7 @@ static void init_body_common(bnd_world *world, common_data *data, shape_dimensio
   data->shapes[index] = shapes_write(world, bracket, shapes, shapes_count);
   data->materials[index] = bnd_default_material();
   data->custom_data[index] = NULL;
+  data->flags[index] = 0;
   data->collision_layers[index] = 0;
   data->event_masks[index] = 0;
   data->event_links[index] = (event_link) { 0 };
@@ -1173,6 +1175,7 @@ static void swap_bodies(bnd_world *world, bnd_body_type type, count_t index_a, c
   SWAP_COMMON(bnd_material_handle, materials)
   SWAP_COMMON(bnd_collision_layer, collision_layers)
   SWAP_COMMON(bnd_event_type, event_masks)
+  SWAP_COMMON(uint8_t, flags)
   SWAP_COMMON(event_link, event_links)
   SWAP_COMMON(count_t, inner_lookup)
   SWAP_COMMON(void*, custom_data)
@@ -1211,6 +1214,7 @@ static void move_body(bnd_world *world, count_t src_index, count_t dst_index) {
   data->materials[dst_index] = data->materials[src_index];
   data->custom_data[dst_index] = data->custom_data[src_index];
   data->collision_layers[dst_index] = data->collision_layers[src_index];
+  data->flags[dst_index] = data->flags[src_index];
   data->event_masks[dst_index] = data->event_masks[src_index];
   data->event_links[dst_index] = data->event_links[src_index];
   data->inv_masses[dst_index] = data->inv_masses[src_index];
@@ -1431,4 +1435,23 @@ float mix_friction(const collision_detection_context *ctx) {
   float b = ctx->world->materials.values[ctx->data_b->materials[ctx->body_b]].friction;
 
   return sqrtf(a * b);
+}
+
+bnd_error bnd_set_trigger(bnd_world *world, bnd_body_handle handle, bool is_trigger) {
+  PROPAGATE_ERROR(bnd_handle_valid(world, handle))
+
+  if (is_trigger && handle.type == BND_BODY_DYNAMIC) {
+    return (bnd_error) { BND_ERROR_INVALID_BODY_TYPE, "Dynamic bodies cannot become triggers" };
+  }
+
+  common_data *data = as_common(world, handle.type);
+  count_t index = handle_to_inner_index(world, handle);
+
+  if (is_trigger) {
+    data->flags[index] |= BODY_FLAG_TRIGGER;
+  } else {
+    data->flags[index] &= ~BODY_FLAG_TRIGGER;
+  }
+
+  return OK;
 }

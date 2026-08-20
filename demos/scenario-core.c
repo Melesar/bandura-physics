@@ -236,7 +236,7 @@ void draw_contact(bnd_v3 point, bnd_v3 normal, float depth, void *user_data) {
   draw_arrow(point, bnd_v3_scale(normal, 0.4), RED);
 }
 
-void draw_shape(bnd_v3 position, bnd_quat rotation, bnd_body_handle body_handle, bnd_shape_type shape_type, bnd_shape shape, void *user_data) {
+void draw_shape(bnd_v3 position, bnd_quat rotation, bnd_body_handle body_handle, bnd_shape_type shape_type, bnd_shape shape, bool is_trigger, void *user_data) {
   master_widget_state *widget_state = (master_widget_state *)user_data;
 
   Matrix scale;

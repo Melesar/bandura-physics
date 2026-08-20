@@ -75,7 +75,7 @@ count_t bnd_required_memory(const bnd_config *config) {
     + sizeof(bnd_collision_layer)
     + sizeof(bnd_event_type)
     + sizeof(event_link)
-    + sizeof(uint8_t)
+    + sizeof(uint8_t) * 2
     + sizeof(count_t)
     + sizeof(outer_lookup_node)
     + sizeof(count_t);
@@ -150,7 +150,8 @@ static bnd_error init_commons(common_data *data, count_t capacity, bnd_allocator
   ALLOC_BUFFER4(data->shapes, sizeof(body_shapes) * total_capacity);
   ALLOC_BUFFER4(data->aabbs, sizeof(bnd_aabb) * total_capacity);
   ALLOC_BUFFER4(data->materials, sizeof(bnd_material_handle) * total_capacity);
-  ALLOC_BUFFER8(data->custom_data, sizeof(void*) * total_capacity)
+  ALLOC_BUFFER8(data->custom_data, sizeof(void*) * total_capacity);
+  ALLOC_BUFFER1(data->flags, sizeof(uint8_t) * total_capacity);
   ALLOC_BUFFER1(data->collision_layers, sizeof(bnd_collision_layer) * total_capacity);
   ALLOC_BUFFER4(data->event_masks, sizeof(bnd_event_type) * total_capacity);
   ALLOC_BUFFER4(data->event_links, sizeof(event_link) * total_capacity);
@@ -170,6 +171,7 @@ static void teardown_commons(common_data *data, bnd_allocator allocator) {
   allocator.free(data->shapes, total_capacity * sizeof(body_shapes));
   allocator.free(data->aabbs, total_capacity * sizeof(bnd_aabb));
   allocator.free(data->materials, total_capacity * sizeof(bnd_material_handle));
+  allocator.free(data->flags, total_capacity * sizeof(uint8_t));
   allocator.free(data->custom_data, total_capacity * sizeof(void*));
   allocator.free(data->collision_layers, total_capacity * sizeof(bnd_collision_layer));
   allocator.free(data->event_masks, total_capacity * sizeof(bnd_event_type));

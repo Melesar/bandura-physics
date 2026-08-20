@@ -28,10 +28,11 @@ static bnd_event make_collision_event(const bnd_world *world, bnd_body_type type
 }
 
 static void emit_collision_events(bnd_world *world, const contact *contacts, count_t count, bnd_body_type type) {
+  common_data *data_a = as_common(world, BND_BODY_DYNAMIC);
+  common_data *data_b = as_common(world, type);
+
   for (count_t i = 0; i < count; ++i) {
     const contact *c = &contacts[i];
-    common_data *data_a = as_common(world, BND_BODY_DYNAMIC);
-    common_data *data_b = as_common(world, type);
 
     if (events_subscribed(data_a, c->index_a, BND_EVENT_COLLISION)) {
       events_push(world, data_a, c->index_a, make_collision_event(world, type, c));

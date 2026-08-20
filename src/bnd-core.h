@@ -196,6 +196,11 @@ typedef struct {
   uint8_t layers_available;
 } collision_matrix;
 
+typedef enum {
+  BODY_FLAG_NONE = 0,
+  BODY_FLAG_TRIGGER = 1,
+} body_flags;
+
 #define COMMON_FIELDS                                                                                                  \
   count_t capacity;                                                                                                    \
   count_t count;                                                                                                       \
@@ -207,6 +212,7 @@ typedef struct {
   bnd_aabb *aabbs;                                                                                                     \
   bnd_collision_layer *collision_layers; \
   bnd_material_handle *materials;    \
+  uint8_t *flags; \
   void **custom_data;  \
   bnd_event_type *event_masks;                                                                                         \
   event_link *event_links;                                                                                             \

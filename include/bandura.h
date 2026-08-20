@@ -252,7 +252,7 @@ typedef struct {
 } bnd_joint;
 
 typedef void (*bnd_debug_draw_contact_fn)(bnd_v3 point, bnd_v3 normal, float depth, void *user_data);
-typedef void (*bnd_debug_draw_shape_fn)(bnd_v3 position, bnd_quat rotation, bnd_body_handle body_handle, bnd_shape_type shape_type, bnd_shape shape, void *user_data);
+typedef void (*bnd_debug_draw_shape_fn)(bnd_v3 position, bnd_quat rotation, bnd_body_handle body_handle, bnd_shape_type shape_type, bnd_shape shape, bool is_trigger, void *user_data);
 typedef void (*bnd_debug_draw_aabb_fn)(bnd_v3 center, bnd_v3 size, bnd_body_handle body_handle, void *user_data);
 typedef void (*bnd_debug_draw_joint_fn)(bnd_body_handle body_a, bnd_body_handle body_b, bnd_v3 point_a, bnd_v3 point_b, void *user_data);
 
@@ -379,6 +379,8 @@ BNDAPI bnd_error            bnd_set_angular_momentum(bnd_world *world, bnd_body_
 BNDAPI bnd_error            bnd_set_material(bnd_world *world, bnd_body_handle handle, bnd_material_handle material);
 BNDAPI bnd_error            bnd_set_custom_data(bnd_world *world, bnd_body_handle handle, void *data);
 BNDAPI bnd_error            bnd_set_collision_layer(bnd_world *world, bnd_body_handle handle, bnd_collision_layer layer);
+
+BNDAPI bnd_error            bnd_set_trigger(bnd_world *world, bnd_body_handle handle, bool is_trigger);
 
 BNDAPI bnd_error            bnd_event_subscribe(bnd_world *world, bnd_body_handle body, bnd_event_type type);
 BNDAPI bnd_error            bnd_event_unsubscribe(bnd_world *world, bnd_body_handle body, bnd_event_type type);

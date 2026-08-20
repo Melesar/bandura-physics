@@ -364,6 +364,12 @@ static bool next_raycast(raycast_context *ctx, bnd_ray r, bnd_raycast_hit *hit) 
     return false;
   }
 
+  if (ctx->data->flags[ctx->body_index] & BODY_FLAG_TRIGGER) {
+    ctx->body_index += 1;
+    ctx->shape_index = 0;
+    return next_raycast(ctx, r, hit);
+  }
+
   bnd_collision_mask validation_mask = layer_to_mask(ctx->data->collision_layers[ctx->body_index]);
   if ((validation_mask & ctx->mask) == 0) {
     ctx->body_index += 1;
@@ -440,6 +446,10 @@ static count_t overlap_typed(const bnd_world *world, bnd_v3 origin, float radius
   count_t overlap_count = 0;
   simplex s = { 0 };
   for (count_t i = 0; i < data->count; ++i) {
+    if (data->flags[i] & BODY_FLAG_TRIGGER) {
+      continue;
+    }
+
     bnd_collision_mask validation_mask = layer_to_mask(data->collision_layers[i]);
     if ((validation_mask & mask) == 0) {
       continue;
