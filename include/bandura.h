@@ -326,6 +326,9 @@ BNDAPI bnd_result_handle    bnd_add_compound_body(bnd_world *world, bnd_body_typ
 
 BNDAPI bnd_material_handle  bnd_default_material();
 BNDAPI bnd_result_u32       bnd_create_material(bnd_world *world, float bounciness, float friction);
+BNDAPI bnd_error            bnd_set_material_bounciness(bnd_world *world, bnd_material_handle material, float bounciness);
+BNDAPI bnd_error            bnd_set_material_friction(bnd_world *world, bnd_material_handle material, float friction);
+BNDAPI bnd_error            bnd_get_material_properties(bnd_world *world, bnd_material_handle material, float *bounciness, float *friction);
 
 BNDAPI bnd_error            bnd_remove_body(bnd_world *world, bnd_body_handle handle);
 
