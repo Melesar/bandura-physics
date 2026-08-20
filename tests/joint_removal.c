@@ -21,7 +21,6 @@ static bool joints_test_has_id(const bnd_world *world, count_t id) {
 }
 
 static void test_joints_removing_unrelated_body_keeps_every_joint(void) {
-  printf("Layer pointer: %p\n", joints_test_world->dynamics.collision_layers);
   bnd_world *world = joints_test_begin();
 
   bnd_body_handle a = bnd_add_sphere_dynamic(world, 1.0f, 1.0f).value;

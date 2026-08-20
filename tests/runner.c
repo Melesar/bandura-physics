@@ -7,6 +7,7 @@ extern void events_tests();
 extern void joint_api_tests();
 extern void queries_tests();
 extern void world_tests();
+extern void collision_layers_tests();
 
 int main() {
   shapes_tests();
@@ -17,4 +18,5 @@ int main() {
   joint_api_tests();
   queries_tests();
   world_tests();
+  collision_layers_tests();
 }
