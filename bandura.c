@@ -3,10 +3,10 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <string.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <stdarg.h>
 
 #if defined(BND_PROFILING)
 
@@ -43,6 +43,7 @@ typedef enum {
   BND_ERROR_MESH_IS_CONCAVE,
   BND_ERROR_BODY_HANDLE_INVALID,
   BND_ERROR_INVALID_BODY_TYPE,
+  BND_ERROR_INVALID_COLLISION_LAYER,
   BND_ERROR_INVALID_INPUT,
 
   // Debug mode errors
@@ -88,6 +89,7 @@ typedef enum {
 
 typedef enum {
   BND_EVENT_COLLISION = 1,
+  BND_EVENT_TRIGGER = 2,
 } bnd_event_type;
 
 typedef struct {
@@ -113,7 +115,10 @@ typedef struct {
   bnd_mesh_buffer index_buffer;
 } bnd_mesh_data;
 
-typedef uint32_t bnd_mesh_handle;
+typedef uint32_t   bnd_mesh_handle;
+typedef uint32_t   bnd_material_handle;
+typedef uint8_t    bnd_collision_layer;
+typedef uint64_t   bnd_collision_mask;
 
 typedef struct {
   bnd_v3 size;
@@ -180,6 +185,7 @@ typedef struct {
   uint32_t joints_capacity;
   uint32_t meshes_capacity;
   uint32_t events_capacity;
+  uint32_t materials_capacity;
 } bnd_config_memory;
 
 typedef struct {
@@ -240,7 +246,7 @@ typedef struct {
 } bnd_joint;
 
 typedef void (*bnd_debug_draw_contact_fn)(bnd_v3 point, bnd_v3 normal, float depth, void *user_data);
-typedef void (*bnd_debug_draw_shape_fn)(bnd_v3 position, bnd_quat rotation, bnd_body_handle body_handle, bnd_shape_type shape_type, bnd_shape shape, void *user_data);
+typedef void (*bnd_debug_draw_shape_fn)(bnd_v3 position, bnd_quat rotation, bnd_body_handle body_handle, bnd_shape_type shape_type, bnd_shape shape, bool is_trigger, void *user_data);
 typedef void (*bnd_debug_draw_aabb_fn)(bnd_v3 center, bnd_v3 size, bnd_body_handle body_handle, void *user_data);
 typedef void (*bnd_debug_draw_joint_fn)(bnd_body_handle body_a, bnd_body_handle body_b, bnd_v3 point_a, bnd_v3 point_b, void *user_data);
 
@@ -263,10 +269,13 @@ typedef struct bnd_world_t bnd_world;
 
 
 BND_RESULT_TYPE(world, bnd_world*)
+BND_RESULT_TYPE(ptr, void*)
 BND_RESULT_TYPE(v3, bnd_v3)
 BND_RESULT_TYPE(quat, bnd_quat)
 BND_RESULT_TYPE(aabb, bnd_aabb)
 BND_RESULT_TYPE(u32, uint32_t)
+BND_RESULT_TYPE(material, bnd_material_handle)
+BND_RESULT_TYPE(layer, bnd_collision_layer)
 BND_RESULT_TYPE(bool, bool)
 BND_RESULT_TYPE(handle, bnd_body_handle)
 
@@ -280,8 +289,13 @@ typedef struct {
 typedef bnd_body_enumerator bnd_body_enumerator_typed;
 
 typedef struct {
+  bnd_body_handle other;
+} bnd_trigger;
+
+typedef struct {
   bnd_event_type type;
   bnd_contact collision;
+  bnd_trigger trigger;
 } bnd_event;
 
 typedef struct {
@@ -312,6 +326,18 @@ BNDAPI bnd_result_handle    bnd_add_compound_body_dynamic(bnd_world *world, bnd_
 BNDAPI bnd_result_handle    bnd_add_primitive_body(bnd_world *world, bnd_body_type type, bnd_shape_type shape_type, bnd_shape shape, float mass);
 BNDAPI bnd_result_handle    bnd_add_compound_body(bnd_world *world, bnd_body_type type, bnd_body_shape *shapes, float *masses, uint32_t shapes_count);
 
+BNDAPI bnd_material_handle  bnd_default_material(void);
+BNDAPI bnd_result_material  bnd_create_material(bnd_world *world, float bounciness, float friction);
+BNDAPI bnd_error            bnd_set_material_bounciness(bnd_world *world, bnd_material_handle material, float bounciness);
+BNDAPI bnd_error            bnd_set_material_friction(bnd_world *world, bnd_material_handle material, float friction);
+BNDAPI bnd_error            bnd_get_material_properties(bnd_world *world, bnd_material_handle material, float *bounciness, float *friction);
+
+BNDAPI bnd_collision_mask   bnd_get_all_layers_mask(const bnd_world *world);
+BNDAPI uint32_t             bnd_get_layers_count(const bnd_world *world);
+BNDAPI bnd_error            bnd_set_layers_count(bnd_world *world, uint8_t new_count);
+BNDAPI bnd_error            bnd_set_layers_collision(bnd_world *world, bnd_collision_layer layer_a, bnd_collision_layer layer_b, bool collide);
+BNDAPI bool                 bnd_get_layers_collision(const bnd_world *world, bnd_collision_layer layer_a, bnd_collision_layer layer_b);
+
 BNDAPI bnd_error            bnd_remove_body(bnd_world *world, bnd_body_handle handle);
 
 BNDAPI bnd_result_u32       bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_v3 contact_offset_a, bnd_v3 contact_offset_b, float max_distance);
@@ -330,6 +356,7 @@ BNDAPI uint32_t             bnd_collisions_count(const bnd_world *world);
 
 BNDAPI bnd_config          *bnd_edit_config(bnd_world *world);
 BNDAPI bnd_world_stats      bnd_stats(const bnd_world *world);
+BNDAPI uint32_t             bnd_get_contacts(const bnd_world *world, bnd_contact *contacts, uint32_t max_contacts);
 
 BNDAPI bnd_result_v3        bnd_get_position(const bnd_world *world, bnd_body_handle handle);
 BNDAPI bnd_result_quat      bnd_get_rotation(const bnd_world *world, bnd_body_handle handle);
@@ -338,12 +365,19 @@ BNDAPI bnd_result_aabb      bnd_get_bounding_box(const bnd_world *world, bnd_bod
 BNDAPI bnd_result_v3        bnd_get_velocity(const bnd_world *world, bnd_body_handle handle);
 BNDAPI bnd_result_v3        bnd_get_angular_velocity(const bnd_world *world, bnd_body_handle handle);
 BNDAPI bnd_result_v3        bnd_get_angular_momentum(const bnd_world *world, bnd_body_handle handle);
-BNDAPI uint32_t             bnd_get_contacts(const bnd_world *world, bnd_contact *contacts, uint32_t max_contacts);
+BNDAPI bnd_result_material  bnd_get_material(const bnd_world *world, bnd_body_handle handle);
+BNDAPI bnd_result_ptr       bnd_get_custom_data(const bnd_world *world, bnd_body_handle handle);
+BNDAPI bnd_result_layer     bnd_get_collision_layer(const bnd_world *world, bnd_body_handle handle);
 
 BNDAPI bnd_error            bnd_set_position(bnd_world *world, bnd_body_handle handle, bnd_v3 position);
 BNDAPI bnd_error            bnd_set_rotation(bnd_world *world, bnd_body_handle handle, bnd_quat rotation);
 BNDAPI bnd_error            bnd_set_velocity(bnd_world *world, bnd_body_handle handle, bnd_v3 velocity);
 BNDAPI bnd_error            bnd_set_angular_momentum(bnd_world *world, bnd_body_handle handle, bnd_v3 angular_momentum);
+BNDAPI bnd_error            bnd_set_material(bnd_world *world, bnd_body_handle handle, bnd_material_handle material);
+BNDAPI bnd_error            bnd_set_custom_data(bnd_world *world, bnd_body_handle handle, void *data);
+BNDAPI bnd_error            bnd_set_collision_layer(bnd_world *world, bnd_body_handle handle, bnd_collision_layer layer);
+
+BNDAPI bnd_error            bnd_set_trigger(bnd_world *world, bnd_body_handle handle, bool is_trigger);
 
 BNDAPI bnd_error            bnd_event_subscribe(bnd_world *world, bnd_body_handle body, bnd_event_type type);
 BNDAPI bnd_error            bnd_event_unsubscribe(bnd_world *world, bnd_body_handle body, bnd_event_type type);
@@ -362,9 +396,9 @@ BNDAPI bnd_error            bnd_awaken_body(bnd_world *world, bnd_body_handle ha
 BNDAPI bnd_error            bnd_put_to_sleep(bnd_world *world, bnd_body_handle handle);
 BNDAPI void                 bnd_reset_world(bnd_world *world);
 
-BNDAPI bool                 bnd_raycast_closest(const bnd_world *world, bnd_ray ray, bnd_raycast_hit *closest_hit);
-BNDAPI uint32_t             bnd_raycast_multiple(const bnd_world *world, bnd_ray ray, bnd_raycast_hit *hits, uint32_t max_hits);
-BNDAPI uint32_t             bnd_overlap(const bnd_world *world, bnd_v3 origin, float radius, bnd_body_handle *overlaps, uint32_t max_overlaps);
+BNDAPI bool                 bnd_raycast_closest(const bnd_world *world, bnd_ray ray, bnd_collision_mask mask, bnd_raycast_hit *closest_hit);
+BNDAPI uint32_t             bnd_raycast_multiple(const bnd_world *world, bnd_ray ray, bnd_collision_mask mask, bnd_raycast_hit *hits, uint32_t max_hits);
+BNDAPI uint32_t             bnd_overlap(const bnd_world *world, bnd_v3 origin, float radius, bnd_collision_mask mask, bnd_body_handle *overlaps, uint32_t max_overlaps);
 
 BNDAPI void                 bnd_debug_draw(const bnd_world *world, bnd_debug_draw_flags flags, bnd_debug_draw_callbacks callbacks, void *user_data);
 
@@ -418,6 +452,7 @@ BNDAPI void                 bnd_teardown(bnd_world *world);
 #define DEFAULT_VERTEX_PER_MESH 512
 #define DEFAULT_FACE_PER_MESH 256
 #define MAX_CONTACTS_PER_PAIR 4
+#define MAX_COLLISION_LAYERS 64
 
 #define OK (bnd_error){BND_OK, NULL}
 #define OOM_ERROR (bnd_error){BND_ERROR_OUT_OF_MEMORY, "Allocator.malloc failed to allocate memory"}
@@ -517,6 +552,18 @@ struct cache_entry {
 };
 
 typedef struct {
+  float restitution;
+  float friction;
+} body_material;
+
+typedef struct {
+  body_material *values;
+
+  count_t count;
+  count_t capacity;
+} body_materials;
+
+typedef struct {
   count_t *hash_table;
   count_t hash_table_capacity;
 
@@ -587,6 +634,16 @@ typedef struct {
   uint8_t count;
 } event_link;
 
+typedef struct {
+  bnd_collision_mask matrix[MAX_COLLISION_LAYERS];
+  uint8_t layers_available;
+} collision_matrix;
+
+typedef enum {
+  BODY_FLAG_NONE = 0,
+  BODY_FLAG_TRIGGER = 1,
+} body_flags;
+
 #define COMMON_FIELDS                                                                                                  \
   count_t capacity;                                                                                                    \
   count_t count;                                                                                                       \
@@ -596,6 +653,10 @@ typedef struct {
   bnd_quat *rotations;                                                                                                     \
   body_shapes *shapes;                                                                                                 \
   bnd_aabb *aabbs;                                                                                                     \
+  bnd_collision_layer *collision_layers; \
+  bnd_material_handle *materials;    \
+  uint8_t *flags; \
+  void **custom_data;  \
   bnd_event_type *event_masks;                                                                                         \
   event_link *event_links;                                                                                             \
   uint8_t *generations;                                                                                                \
@@ -721,7 +782,7 @@ typedef struct {
   collision_detection_context ctx;
   simplex s;
   int target_iteration;
-  
+
   bool initialized;
 } epa_debug_status;
 
@@ -764,7 +825,9 @@ struct bnd_world_t {
   mesh_storage meshes;
   events_storage events;
   contacts_cache contacts_cache;
+  body_materials materials;
   epa_polytope epa_polytope;
+  collision_matrix matrix;
 
   epa_debug_status *epa_debug;
 
@@ -836,6 +899,9 @@ bnd_allocator         bnd_default_allocator(void);
 bnd_body_handle       make_body_handle(const bnd_world *world, bnd_body_type type, count_t index);
 count_t               handle_to_inner_index(const bnd_world *world, bnd_body_handle handle);
 
+float                 mix_restitution(const collision_detection_context *ctx);
+float                 mix_friction(const collision_detection_context *ctx);
+
 common_data          *as_common(bnd_world *world, bnd_body_type type);
 const common_data    *as_common_const(const bnd_world *world, bnd_body_type type);
 
@@ -864,6 +930,10 @@ void                  joints_remove_stale_if_needed(bnd_world *world, bnd_body_h
 
 bnd_error             meshes_init(bnd_world *world);
 void                  meshes_teardown(bnd_world *world);
+
+bnd_collision_mask    layer_to_mask(bnd_collision_layer layer);
+bnd_collision_mask    mask_for_count(uint8_t count);
+bnd_error             materials_init(bnd_world *world);
 
 bnd_error             shapes_init(bnd_world *world);
 void                  shapes_teardown(bnd_world *world);
@@ -1357,6 +1427,11 @@ bool gjk_check_intersection(const bnd_world *world, const collision_detection_co
     return (bnd_error) { BND_ERROR_BODY_HANDLE_INVALID , "Operation is not valid for static bodies" }; \
   }
 
+#define ASSERT_MATERIAL_VALID(material) \
+  if (material >= world->materials.count) { \
+    return (bnd_error) { BND_ERROR_INVALID_INPUT, "Provided material is invalid" }; \
+  } \
+
 #define REALLOCATE_IF_NEEDED(data, is_dynamic, allocator) \
   if ((data)->count + 1 > (data)->capacity) { \
     if (allocator.realloc == NULL) { \
@@ -1719,7 +1794,11 @@ static bnd_error realloc_data(common_data *data, bnd_allocator allocator, bool w
   REALLOC_BUFFER4(data->rotations, allocator, sizeof(bnd_quat), old_capacity, total_capacity);
   REALLOC_BUFFER4(data->shapes, allocator, sizeof(body_shapes), old_capacity, total_capacity);
   REALLOC_BUFFER4(data->aabbs, allocator, sizeof(bnd_aabb), old_capacity, total_capacity);
+  REALLOC_BUFFER4(data->materials, allocator, sizeof(bnd_material_handle), old_capacity, total_capacity);
   REALLOC_BUFFER4(data->event_masks, allocator, sizeof(bnd_event_type), old_capacity, total_capacity);
+  REALLOC_BUFFER8(data->custom_data, allocator, sizeof(void*), old_capacity, total_capacity);
+  REALLOC_BUFFER1(data->flags, allocator, sizeof(uint8_t), old_capacity, total_capacity);
+  REALLOC_BUFFER1(data->collision_layers, allocator, sizeof(bnd_collision_layer), old_capacity, total_capacity);
   REALLOC_BUFFER4(data->event_links, allocator, sizeof(event_link), old_capacity, total_capacity);
   REALLOC_BUFFER4(data->free_list, allocator, sizeof(count_t), old_capacity, total_capacity);
   REALLOC_BUFFER1(data->generations, allocator, sizeof(uint8_t), old_capacity, total_capacity);
@@ -1762,6 +1841,10 @@ static void init_body_common(bnd_world *world, common_data *data, shape_dimensio
   data->positions[index] = bnd_v3_zero();
   data->rotations[index] = bnd_quat_identity();
   data->shapes[index] = shapes_write(world, bracket, shapes, shapes_count);
+  data->materials[index] = bnd_default_material();
+  data->custom_data[index] = NULL;
+  data->flags[index] = 0;
+  data->collision_layers[index] = 0;
   data->event_masks[index] = 0;
   data->event_links[index] = (event_link) { 0 };
 
@@ -2190,6 +2273,15 @@ bnd_result_v3 bnd_get_angular_momentum(const bnd_world *world, bnd_body_handle h
   return BND_RESULT_OK(v3, world->dynamics.angular_momenta[index]);
 }
 
+bnd_result_ptr bnd_get_custom_data(const bnd_world *world, bnd_body_handle handle) {
+  PROPAGATE_RESULT(ptr, bnd_handle_valid(world, handle))
+
+  const common_data *data = as_common_const(world, handle.type);
+  count_t index = handle_to_inner_index(world, handle);
+
+  return BND_RESULT_OK(ptr, data->custom_data[index]);
+}
+
 bnd_error bnd_set_position(bnd_world *world, bnd_body_handle handle, bnd_v3 position) {
   PROPAGATE_ERROR(bnd_handle_valid(world, handle))
 
@@ -2228,6 +2320,32 @@ bnd_error bnd_set_angular_momentum(bnd_world *world, bnd_body_handle handle, bnd
 
   count_t index = handle_to_inner_index(world, handle);
   world->dynamics.angular_momenta[index] = angular_momentum;
+
+  return OK;
+}
+
+bnd_error bnd_set_custom_data(bnd_world *world, bnd_body_handle handle, void *data) {
+  PROPAGATE_ERROR(bnd_handle_valid(world, handle));
+
+  common_data *cdata = as_common(world, handle.type);
+  count_t index = handle_to_inner_index(world, handle);
+
+  cdata->custom_data[index] = data;
+
+  return OK;
+}
+
+bnd_error bnd_set_collision_layer(bnd_world *world, bnd_body_handle handle, bnd_collision_layer layer) {
+  PROPAGATE_ERROR(bnd_handle_valid(world, handle));
+
+  if (layer >= world->matrix.layers_available) {
+    return (bnd_error) { BND_ERROR_INVALID_COLLISION_LAYER, "Provided layer doesn't exist" };
+  }
+
+  common_data *data = as_common(world, handle.type);
+  count_t index = handle_to_inner_index(world, handle);
+
+  data->collision_layers[index] = layer;
 
   return OK;
 }
@@ -2462,9 +2580,13 @@ static void swap_bodies(bnd_world *world, bnd_body_type type, count_t index_a, c
   SWAP_COMMON(bnd_quat, rotations)
   SWAP_COMMON(body_shapes, shapes)
   SWAP_COMMON(bnd_aabb, aabbs)
+  SWAP_COMMON(bnd_material_handle, materials)
+  SWAP_COMMON(bnd_collision_layer, collision_layers)
   SWAP_COMMON(bnd_event_type, event_masks)
+  SWAP_COMMON(uint8_t, flags)
   SWAP_COMMON(event_link, event_links)
   SWAP_COMMON(count_t, inner_lookup)
+  SWAP_COMMON(void*, custom_data)
 
   if (type == BND_BODY_DYNAMIC) {
     SWAP_DYNAMIC(float, inv_masses)
@@ -2497,6 +2619,10 @@ static void move_body(bnd_world *world, count_t src_index, count_t dst_index) {
   data->rotations[dst_index] = data->rotations[src_index];
   data->shapes[dst_index] = data->shapes[src_index];
   data->aabbs[dst_index] = data->aabbs[src_index];
+  data->materials[dst_index] = data->materials[src_index];
+  data->custom_data[dst_index] = data->custom_data[src_index];
+  data->collision_layers[dst_index] = data->collision_layers[src_index];
+  data->flags[dst_index] = data->flags[src_index];
   data->event_masks[dst_index] = data->event_masks[src_index];
   data->event_links[dst_index] = data->event_links[src_index];
   data->inv_masses[dst_index] = data->inv_masses[src_index];
@@ -2511,6 +2637,251 @@ static void move_body(bnd_world *world, count_t src_index, count_t dst_index) {
   data->impulses[dst_index] = data->impulses[src_index];
   data->angular_impulses[dst_index] = data->angular_impulses[src_index];
   data->accelerations[dst_index] = data->accelerations[src_index];
+}
+
+bnd_collision_mask bnd_get_all_layers_mask(const bnd_world *world) {
+  return mask_for_count(world->matrix.layers_available);
+}
+
+uint32_t bnd_get_layers_count(const bnd_world *world) {
+  return world->matrix.layers_available;
+}
+
+bnd_error bnd_set_layers_count(bnd_world *world, uint8_t new_count) {
+  if (new_count == 0) {
+    return (bnd_error) { BND_ERROR_INVALID_INPUT, "There should be at least one collision layer" };
+  }
+
+  if (new_count > MAX_COLLISION_LAYERS) {
+    return (bnd_error) { BND_ERROR_INVALID_INPUT, "Maximum available collision layers is 64" };
+  }
+
+  collision_matrix *matrix = &world->matrix;
+
+  uint8_t old_count = matrix->layers_available;
+  if (new_count == old_count) {
+    return OK;
+  }
+
+  if (new_count < old_count) {
+    return (bnd_error) { BND_ERROR_INVALID_INPUT, "Reducing the collision layers count is unsafe. There might be bodies on layers which would become out-of-bounds" };
+  }
+
+  matrix->layers_available = new_count;  
+
+  bnd_collision_mask old_mask = mask_for_count(old_count);
+  bnd_collision_mask new_mask = mask_for_count(new_count);
+  bnd_collision_mask diff_mask = new_mask & ~old_mask;
+
+  // Make old layers collide with new ones
+  for (count_t i = 0; i < old_count; ++i) {
+    matrix->matrix[i] |= diff_mask;
+  }
+
+  // Make new layers collide with everything
+  for (count_t i = old_count; i < new_count; ++i) {
+    matrix->matrix[i] = new_mask;
+  }
+
+  return OK;
+}
+
+bnd_error bnd_set_layers_collision(bnd_world *world, bnd_collision_layer layer_a, bnd_collision_layer layer_b, bool collide) {
+  collision_matrix *matrix = &world->matrix;
+  if (layer_a >= matrix->layers_available || layer_b >= matrix->layers_available) {
+    return (bnd_error) { BND_ERROR_INVALID_COLLISION_LAYER, "Provided invalid collision layer. Use bnd_set_collision_layers_count to make more room for new layers (up to 64)" };
+  }
+
+  bnd_collision_mask a_to_b_mask = layer_to_mask(layer_b);
+  bnd_collision_mask b_to_a_mask = layer_to_mask(layer_a);
+
+  bnd_collision_mask mask_a = matrix->matrix[layer_a];
+  bnd_collision_mask mask_b = matrix->matrix[layer_b];
+
+  if (collide) {
+    mask_a |= a_to_b_mask;
+    mask_b |= b_to_a_mask;
+  } else {
+    mask_a &= ~a_to_b_mask;
+    mask_b &= ~b_to_a_mask;
+  }
+  matrix->matrix[layer_a] = mask_a;
+  matrix->matrix[layer_b] = mask_b;
+
+  return OK;
+}
+
+bool bnd_get_layers_collision(const bnd_world *world, bnd_collision_layer layer_a, bnd_collision_layer layer_b) {
+  const collision_matrix *matrix = &world->matrix;
+  if (layer_a >= matrix->layers_available || layer_b >= matrix->layers_available) {
+    return false;
+  }
+
+  bnd_collision_mask mask = matrix->matrix[layer_a];
+  return mask & layer_to_mask(layer_b);
+}
+
+bnd_collision_mask mask_for_count(uint8_t count) {
+  return count == 64 ? UINT64_MAX : ((UINT64_C(1) << count) - 1);
+}
+
+bnd_collision_mask layer_to_mask(bnd_collision_layer layer) {
+  return UINT64_C(1) << layer;
+}
+
+
+bnd_collision_mask bnd_layers_to_mask(const bnd_world *world, uint32_t layers_count, ...) {
+  va_list list;
+  va_start(list, layers_count);
+
+  bnd_collision_mask mask = 0;
+  for (uint32_t i = 0; i < layers_count; ++i) {
+    bnd_collision_layer layer = (bnd_collision_layer) (va_arg(list, int) & 0xFF);
+    if (layer >= world->matrix.layers_available) {
+      continue;
+    }
+
+    mask |= (UINT64_C(1) << layer);
+  }
+
+  va_end(list);
+
+  return mask;
+}
+
+bnd_material_handle  bnd_default_material(void) {
+  return 0;
+}
+
+bnd_result_material bnd_create_material(bnd_world *world, float bounciness, float friction) {
+  count_t count = world->materials.count;
+  count_t capacity = world->materials.capacity;
+  body_material *values = world->materials.values;
+
+  if (count >= capacity) {
+    if (world->allocator.realloc == NULL) {
+      return (bnd_result_material) { { .type = BND_ERROR_NO_SPACE_AVAILABLE, "Failed to realloc materials buffer. Re-alloc function not provided" }, 0 };
+    }
+
+    count_t new_capacity = capacity << 1;
+    world->materials.values = world->allocator.realloc(values, 4, sizeof(body_material) * capacity, sizeof(body_material) * new_capacity);
+    if (world->materials.values == NULL) {
+      return (bnd_result_material) { { .type = BND_ERROR_NO_SPACE_AVAILABLE, "Failed to realloc materials buffer. Re-alloc function returned null" }, 0 };
+    }
+    world->materials.capacity = new_capacity;
+  }
+
+  bnd_material_handle handle = world->materials.count++;
+  body_material *material = &world->materials.values[handle];
+
+  material->friction = fminf(fmaxf(0, friction), 1);
+  material->restitution = fminf(fmaxf(0, bounciness), 1);
+
+  return BND_RESULT_OK(material, handle);
+}
+
+bnd_result_material bnd_get_material(const bnd_world *world, bnd_body_handle handle) {
+  PROPAGATE_RESULT(material, bnd_handle_valid(world, handle));
+
+  const common_data *data = as_common_const(world, handle.type);
+  count_t index = handle_to_inner_index(world, handle);
+
+  return BND_RESULT_OK(material, data->materials[index]);
+}
+
+bnd_result_layer bnd_get_collision_layer(const bnd_world *world, bnd_body_handle handle) {
+  PROPAGATE_RESULT(layer, bnd_handle_valid(world, handle));
+
+  const common_data *data = as_common_const(world, handle.type);
+  count_t index = handle_to_inner_index(world, handle);
+
+  return BND_RESULT_OK(layer, data->collision_layers[index]);
+}
+
+bnd_error bnd_set_material(bnd_world *world, bnd_body_handle handle, bnd_material_handle material) {
+  PROPAGATE_ERROR(bnd_handle_valid(world, handle));
+  ASSERT_MATERIAL_VALID(material)
+
+  common_data *data = as_common(world, handle.type);
+  count_t index = handle_to_inner_index(world, handle);
+
+  data->materials[index] = material;
+
+  return OK;
+}
+
+bnd_error bnd_set_material_bounciness(bnd_world *world, bnd_material_handle material, float bounciness) {
+  ASSERT_MATERIAL_VALID(material)
+
+  body_material *m = &world->materials.values[material];
+  m->restitution = bounciness;
+
+  return OK;
+}
+
+bnd_error bnd_set_material_friction(bnd_world *world, bnd_material_handle material, float friction) {
+  ASSERT_MATERIAL_VALID(material)
+
+  body_material *m = &world->materials.values[material];
+  m->friction = friction;
+
+  return OK;
+}
+
+bnd_error bnd_get_material_properties(bnd_world *world, bnd_material_handle material, float *bounciness, float *friction) {
+  ASSERT_MATERIAL_VALID(material)
+
+  body_material *m = &world->materials.values[material];
+  *bounciness = m->restitution;
+  *friction = m->friction;
+
+  return OK;
+}
+
+bnd_error materials_init(bnd_world *world) {
+  bnd_allocator allocator = world->allocator;
+  bnd_config config = world->config;
+
+  world->materials.capacity = config.memory.materials_capacity >= 1 ? config.memory.materials_capacity : 1;
+  world->materials.count = 1;
+  ALLOC_BUFFER4(world->materials.values, config.memory.materials_capacity * sizeof(body_material));
+
+  world->materials.values[bnd_default_material()] = (body_material){ config.simulation.bounciness, config.simulation.friction };
+
+  return OK;
+}
+
+float mix_restitution(const collision_detection_context *ctx) {
+  float a = ctx->world->materials.values[ctx->data_a->materials[ctx->body_a]].restitution;
+  float b = ctx->world->materials.values[ctx->data_b->materials[ctx->body_b]].restitution;
+
+  return fmaxf(a, b);
+}
+
+float mix_friction(const collision_detection_context *ctx) {
+  float a = ctx->world->materials.values[ctx->data_a->materials[ctx->body_a]].friction;
+  float b = ctx->world->materials.values[ctx->data_b->materials[ctx->body_b]].friction;
+
+  return sqrtf(a * b);
+}
+
+bnd_error bnd_set_trigger(bnd_world *world, bnd_body_handle handle, bool is_trigger) {
+  PROPAGATE_ERROR(bnd_handle_valid(world, handle))
+
+  if (is_trigger && handle.type == BND_BODY_DYNAMIC) {
+    return (bnd_error) { BND_ERROR_INVALID_BODY_TYPE, "Dynamic bodies cannot become triggers" };
+  }
+
+  common_data *data = as_common(world, handle.type);
+  count_t index = handle_to_inner_index(world, handle);
+
+  if (is_trigger) {
+    data->flags[index] |= BODY_FLAG_TRIGGER;
+  } else {
+    data->flags[index] &= ~BODY_FLAG_TRIGGER;
+  }
+
+  return OK;
 }
 
 // ================
@@ -2939,6 +3310,7 @@ static void draw_shapes(const bnd_world *world, bnd_body_type type, bnd_debug_dr
   const common_data *data = as_common_const(world, type);
   for (count_t i = 0; i < data->count; i++) {
     body_shapes body_shapes = data->shapes[i];
+    bool is_trigger = data->flags[i] & BODY_FLAG_TRIGGER;
     bnd_body_shape *shapes = shapes_get(world, body_shapes);
 
     for (count_t j = 0; j < body_shapes.count; ++j) {
@@ -2953,7 +3325,7 @@ static void draw_shapes(const bnd_world *world, bnd_body_type type, bnd_debug_dr
 
       bnd_v3 center = body_center(&ctx);
       bnd_quat rotation = body_rotation(&ctx);
-      callbacks.draw_shape(center, rotation, make_body_handle(world, type, i), shape.type, shape.value, user_data);
+      callbacks.draw_shape(center, rotation, make_body_handle(world, type, i), shape.type, shape.value, is_trigger, user_data);
     }
   }
 }
@@ -3401,8 +3773,8 @@ static contact *new_contact(const collision_detection_context *ctx, count_t offs
   contact *c = &ctx->world->contacts.values[ctx->contacts_offset + offset];
   c->index_a = ctx->body_a;
   c->index_b = ctx->body_b;
-  c->friction = ctx->world->config.simulation.friction;
-  c->restitution = ctx->world->config.simulation.bounciness;
+  c->friction = mix_friction(ctx);
+  c->restitution = mix_restitution(ctx);
   c->from_cache = false;
 
   return c;
@@ -3982,6 +4354,12 @@ count_t collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_ty
   for (count_t i = 0; i < dynamics->count; ++i) {
     count_t until = type == BND_BODY_DYNAMIC ? i : data_b->count;
     for (count_t j = 0; j < until; ++j) {
+      bnd_collision_mask validation_mask = layer_to_mask(dynamics->collision_layers[i]);
+      bnd_collision_mask reference_mask = world->matrix.matrix[data_b->collision_layers[j]];
+      if ((reference_mask & validation_mask) == 0) {
+        continue;
+      }
+
       if (!aabb_intersect(dynamics, data_b, i, j)) {
         continue;
       }
@@ -4038,6 +4416,28 @@ count_t collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_ty
 
           pair_contacts_count += shape_contacts_count;
         }
+      }
+
+      bool is_trigger = data_b->flags[j] & BODY_FLAG_TRIGGER;
+      if (is_trigger && pair_contacts_count > 0) {
+        // It's not ideal to process triggers here, since we've already done a lot of useless work.
+        // This is going to change with the introduction of contact islands.
+
+        if (events_subscribed((const common_data *)dynamics, i, BND_EVENT_TRIGGER)) {
+          events_push(world, (common_data *)dynamics, i, (bnd_event) {
+            .type = BND_EVENT_TRIGGER,
+            .trigger = { .other = make_body_handle(world, type, j) }
+          });
+        }
+
+        if (events_subscribed(data_b, j, BND_EVENT_TRIGGER)) {
+          events_push(world, (common_data *)data_b, j, (bnd_event) {
+            .type = BND_EVENT_TRIGGER,
+            .trigger = { .other = make_body_handle(world, BND_BODY_DYNAMIC, i) }
+          });
+        }
+
+        break;
       }
 
       count_t filtered_contact_indices[MAX_CONTACTS_PER_PAIR] = {0};
@@ -4138,8 +4538,8 @@ count_t collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_ty
         c->normal = normal_world;
         c->depth = -separation;
         c->features = *cached_features;
-        c->restitution = world->config.simulation.bounciness;
-        c->friction = world->config.simulation.friction;
+        c->restitution = mix_restitution(&ctx);
+        c->friction = mix_friction(&ctx);
 
         contacts_from_cache += 1;
       }
@@ -4213,6 +4613,7 @@ typedef struct {
   const bnd_world *world;
   const common_data *data;
   bnd_body_type type;
+  bnd_collision_mask mask;
   count_t body_index;
   count_t shape_index;
 } raycast_context;
@@ -4548,13 +4949,14 @@ static raycast_func raycasts[] = {
   raycast_plane,
 };
 
-static raycast_context begin_raycast(const bnd_world *world, bnd_body_type type) {
+static raycast_context begin_raycast(const bnd_world *world, bnd_collision_mask mask, bnd_body_type type) {
   const common_data *data = as_common_const(world, type);
 
   return (raycast_context) {
     .world = world,
     .data = data,
     .type = type,
+    .mask = mask,
     .body_index = 0,
     .shape_index = 0,
   };
@@ -4563,6 +4965,19 @@ static raycast_context begin_raycast(const bnd_world *world, bnd_body_type type)
 static bool next_raycast(raycast_context *ctx, bnd_ray r, bnd_raycast_hit *hit) {
   if (ctx->body_index >= ctx->data->count) {
     return false;
+  }
+
+  if (ctx->data->flags[ctx->body_index] & BODY_FLAG_TRIGGER) {
+    ctx->body_index += 1;
+    ctx->shape_index = 0;
+    return next_raycast(ctx, r, hit);
+  }
+
+  bnd_collision_mask validation_mask = layer_to_mask(ctx->data->collision_layers[ctx->body_index]);
+  if ((validation_mask & ctx->mask) == 0) {
+    ctx->body_index += 1;
+    ctx->shape_index = 0;
+    return next_raycast(ctx, r, hit);
   }
 
   body_shapes shapes_info = ctx->data->shapes[ctx->body_index];
@@ -4585,11 +5000,11 @@ static bool next_raycast(raycast_context *ctx, bnd_ray r, bnd_raycast_hit *hit) 
   return next_raycast(ctx, r, hit);
 }
 
-bool bnd_raycast_closest(const bnd_world *world, bnd_ray ray, bnd_raycast_hit *closest_hit) {
+bool bnd_raycast_closest(const bnd_world *world, bnd_ray ray, bnd_collision_mask mask, bnd_raycast_hit *closest_hit) {
   closest_hit->distance = FLT_MAX;
 
   bnd_raycast_hit hit;
-  raycast_context ctxs[] = { begin_raycast(world, BND_BODY_DYNAMIC), begin_raycast(world, BND_BODY_STATIC) };
+  raycast_context ctxs[] = { begin_raycast(world, mask, BND_BODY_DYNAMIC), begin_raycast(world, mask, BND_BODY_STATIC) };
 
   for (count_t i = 0; i < 2; ++i) {
     while(next_raycast(&ctxs[i], ray, &hit)) {
@@ -4602,13 +5017,13 @@ bool bnd_raycast_closest(const bnd_world *world, bnd_ray ray, bnd_raycast_hit *c
   return closest_hit->distance < FLT_MAX;
 }
 
-count_t bnd_raycast_multiple(const bnd_world *world, bnd_ray ray, bnd_raycast_hit *hits, count_t max_hits) {
+count_t bnd_raycast_multiple(const bnd_world *world, bnd_ray ray, bnd_collision_mask mask, bnd_raycast_hit *hits, count_t max_hits) {
   if (max_hits == 0) {
     return 0;
   }
 
   count_t num_hits = 0;
-  raycast_context ctxs[] = { begin_raycast(world, BND_BODY_DYNAMIC), begin_raycast(world, BND_BODY_STATIC) };
+  raycast_context ctxs[] = { begin_raycast(world, mask, BND_BODY_DYNAMIC), begin_raycast(world, mask, BND_BODY_STATIC) };
 
   for (count_t i = 0; i < 2; ++i) {
     while(next_raycast(&ctxs[i], ray, &hits[num_hits])) {
@@ -4622,7 +5037,7 @@ count_t bnd_raycast_multiple(const bnd_world *world, bnd_ray ray, bnd_raycast_hi
   return num_hits;
 }
 
-static count_t overlap_typed(const bnd_world *world, bnd_v3 origin, float radius, bnd_body_handle *overlaps, count_t max_overlaps, bnd_body_type type) {
+static count_t overlap_typed(const bnd_world *world, bnd_v3 origin, float radius, bnd_collision_mask mask, bnd_body_handle *overlaps, count_t max_overlaps, bnd_body_type type) {
   const common_data *data = as_common_const(world, type);
 
   count_t ephemeral_index = ephemeral_body_index(data);
@@ -4634,6 +5049,15 @@ static count_t overlap_typed(const bnd_world *world, bnd_v3 origin, float radius
   count_t overlap_count = 0;
   simplex s = { 0 };
   for (count_t i = 0; i < data->count; ++i) {
+    if (data->flags[i] & BODY_FLAG_TRIGGER) {
+      continue;
+    }
+
+    bnd_collision_mask validation_mask = layer_to_mask(data->collision_layers[i]);
+    if ((validation_mask & mask) == 0) {
+      continue;
+    }
+
     if (!aabb_intersect(data, data, ephemeral_index, i)) {
       continue;
     }
@@ -4679,18 +5103,18 @@ static count_t overlap_typed(const bnd_world *world, bnd_v3 origin, float radius
   return overlap_count;
 }
 
-count_t bnd_overlap(const bnd_world *world, bnd_v3 origin, float radius, bnd_body_handle *overlaps, count_t max_overlaps) {
+count_t bnd_overlap(const bnd_world *world, bnd_v3 origin, float radius, bnd_collision_mask mask, bnd_body_handle *overlaps, count_t max_overlaps) {
   if (max_overlaps == 0) {
     return 0;
   }
 
-  count_t overlap_count = overlap_typed(world, origin, radius, overlaps, max_overlaps, BND_BODY_DYNAMIC);
+  count_t overlap_count = overlap_typed(world, origin, radius, mask, overlaps, max_overlaps, BND_BODY_DYNAMIC);
   if (overlap_count == max_overlaps) {
     return overlap_count;
   }
 
   max_overlaps -= overlap_count;
-  overlap_count += overlap_typed(world, origin, radius, overlaps + overlap_count, max_overlaps, BND_BODY_STATIC);
+  overlap_count += overlap_typed(world, origin, radius, mask, overlaps + overlap_count, max_overlaps, BND_BODY_STATIC);
 
   return overlap_count;
 }
@@ -5463,10 +5887,11 @@ static bnd_event make_collision_event(const bnd_world *world, bnd_body_type type
 }
 
 static void emit_collision_events(bnd_world *world, const contact *contacts, count_t count, bnd_body_type type) {
+  common_data *data_a = as_common(world, BND_BODY_DYNAMIC);
+  common_data *data_b = as_common(world, type);
+
   for (count_t i = 0; i < count; ++i) {
     const contact *c = &contacts[i];
-    common_data *data_a = as_common(world, BND_BODY_DYNAMIC);
-    common_data *data_b = as_common(world, type);
 
     if (events_subscribed(data_a, c->index_a, BND_EVENT_COLLISION)) {
       events_push(world, data_a, c->index_a, make_collision_event(world, type, c));
@@ -6508,6 +6933,9 @@ BND_RESULT_FUNC_DECL(aabb, bnd_aabb)
 BND_RESULT_FUNC_DECL(u32, uint32_t)
 BND_RESULT_FUNC_DECL(bool, bool)
 BND_RESULT_FUNC_DECL(handle, bnd_body_handle)
+BND_RESULT_FUNC_DECL(material, bnd_material_handle)
+BND_RESULT_FUNC_DECL(layer, bnd_collision_layer)
+BND_RESULT_FUNC_DECL(ptr, void*)
 
 const count_t max_body_index = (count_t)~0 >> 9;
 count_t next_world_id;
@@ -6544,9 +6972,12 @@ count_t bnd_required_memory(const bnd_config *config) {
     + sizeof(bnd_quat)
     + sizeof(body_shapes)
     + sizeof(bnd_aabb)
+    + sizeof(bnd_material_handle)
+    + sizeof(void*)
+    + sizeof(bnd_collision_layer)
     + sizeof(bnd_event_type)
     + sizeof(event_link)
-    + sizeof(uint8_t)
+    + sizeof(uint8_t) * 2
     + sizeof(count_t)
     + sizeof(outer_lookup_node)
     + sizeof(count_t);
@@ -6569,6 +7000,7 @@ count_t bnd_required_memory(const bnd_config *config) {
     + sizeof(bnd_m3)
     + sizeof(float)
     + sizeof(bnd_aabb);
+  count_t material_size = sizeof(body_material);
 
   count_t event_size = sizeof(bnd_event) + sizeof(count_t);
   count_t shapes_size = 0;
@@ -6596,13 +7028,14 @@ count_t bnd_required_memory(const bnd_config *config) {
     + config->memory.joints_capacity * joint_size
     + config->memory.meshes_capacity * mesh_size
     + config->memory.events_capacity * event_size
+    + config->memory.materials_capacity * material_size
     + shapes_size
     + polytope_size
     + contacts_cache_size;
 
   // Alignment
-  size += 8 * 7; // 8-bytes for world, shapes slots, EPA polytope and the cache entries buffer
-  size += 45 * 3; // 4-bytes for the rest of the buffers
+  size += 9 * 7; // 8-bytes for world, shapes slots, EPA polytope, custom data and the cache entries buffer
+  size += 46 * 3; // 4-bytes for the rest of the buffers
 
   return size;
 }
@@ -6618,6 +7051,10 @@ static bnd_error init_commons(common_data *data, count_t capacity, bnd_allocator
   ALLOC_BUFFER4(data->rotations, sizeof(bnd_quat) * total_capacity);
   ALLOC_BUFFER4(data->shapes, sizeof(body_shapes) * total_capacity);
   ALLOC_BUFFER4(data->aabbs, sizeof(bnd_aabb) * total_capacity);
+  ALLOC_BUFFER4(data->materials, sizeof(bnd_material_handle) * total_capacity);
+  ALLOC_BUFFER8(data->custom_data, sizeof(void*) * total_capacity);
+  ALLOC_BUFFER1(data->flags, sizeof(uint8_t) * total_capacity);
+  ALLOC_BUFFER1(data->collision_layers, sizeof(bnd_collision_layer) * total_capacity);
   ALLOC_BUFFER4(data->event_masks, sizeof(bnd_event_type) * total_capacity);
   ALLOC_BUFFER4(data->event_links, sizeof(event_link) * total_capacity);
   ALLOC_BUFFER4(data->free_list, sizeof(count_t) * total_capacity);
@@ -6635,6 +7072,10 @@ static void teardown_commons(common_data *data, bnd_allocator allocator) {
   allocator.free(data->rotations, total_capacity * sizeof(bnd_quat));
   allocator.free(data->shapes, total_capacity * sizeof(body_shapes));
   allocator.free(data->aabbs, total_capacity * sizeof(bnd_aabb));
+  allocator.free(data->materials, total_capacity * sizeof(bnd_material_handle));
+  allocator.free(data->flags, total_capacity * sizeof(uint8_t));
+  allocator.free(data->custom_data, total_capacity * sizeof(void*));
+  allocator.free(data->collision_layers, total_capacity * sizeof(bnd_collision_layer));
   allocator.free(data->event_masks, total_capacity * sizeof(bnd_event_type));
   allocator.free(data->event_links, total_capacity * sizeof(event_link));
   allocator.free(data->free_list, total_capacity * sizeof(count_t));
@@ -6662,6 +7103,7 @@ bnd_config bnd_default_config(void) {
       .joints_capacity = 64,
       .meshes_capacity = 32,
       .events_capacity = 128,
+      .materials_capacity = 8,
     },
     .advanced = {
       .max_gjk_iterations = 100,
@@ -6710,6 +7152,13 @@ static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allo
   ALLOC(world->dynamics.inv_intertias, matrices);
   ALLOC(world->dynamics.motion_avgs, floats);
 
+  world->matrix.matrix[0] = 1;
+  for(count_t i = 1; i < MAX_COLLISION_LAYERS; ++i) {
+    world->matrix.matrix[i] = 0;
+  }
+
+  world->matrix.layers_available = 1;
+
   world->dynamics.awake_count = 0;
   world->generation = 0;
   world->age = 0;
@@ -6720,6 +7169,7 @@ static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allo
   INVOKE(meshes_init(world))
   INVOKE(events_init(world))
   INVOKE(epa_init(world))
+  INVOKE(materials_init(world))
 
   world->epa_debug = NULL;
 
@@ -6767,7 +7217,6 @@ void bnd_teardown(bnd_world *world) {
   world->allocator.free(world->dynamics.impulses, dynamics_total_capacity * sizeof(bnd_v3));
   world->allocator.free(world->dynamics.angular_impulses, dynamics_total_capacity * sizeof(bnd_v3));
   world->allocator.free(world->dynamics.accelerations, dynamics_total_capacity * sizeof(bnd_v3));
-
   world->allocator.free(world->dynamics.inv_masses, dynamics_total_capacity * sizeof(float));
   world->allocator.free(world->dynamics.velocities, dynamics_total_capacity * sizeof(bnd_v3));
   world->allocator.free(world->dynamics.angular_momenta, dynamics_total_capacity * sizeof(bnd_v3));
@@ -6782,12 +7231,14 @@ void bnd_teardown(bnd_world *world) {
   events_teardown(world);
   epa_teardown(world);
 
+  world->allocator.free(world->materials.values, sizeof(body_material) * world->materials.capacity);
   world->allocator.free(world, sizeof(bnd_world));
 }
 
 count_t ephemeral_body_index(const common_data *data) {
   return data->capacity;
 }
+
 
 // ================
 //   epa.c
