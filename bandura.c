@@ -951,7 +951,7 @@ static inline bnd_v3 bnd_v3_normalize(bnd_v3 x) {
     return x;
   }
 
-  float t = 1.0 / l;
+  float t = 1.0f / l;
   return (bnd_v3){ x.x * t, x.y * t, x.z * t };
 }
 
@@ -1381,22 +1381,22 @@ static bnd_v3 capsule_inertia(float radius, float height, float mass) {
 
   const float pi = 3.14159265358979323846f;
   float mcy = r2 * height * pi;
-  float mhs = 2.0 / 3 * r3 * pi;
+  float mhs = 2.0f / 3.0f * r3 * pi;
   float m = mcy + mhs + mhs;
   float scale = mass / m;
 
-  float side = mcy * (h2 / 12.0 + r2 / 4.0) + 2 * mhs * (2 * r2 / 5.0 + h2 / 2 + 3 * height * radius / 8.0);
-  float prime = mcy * r2 / 2.0 + 2 * mhs * 2 * r2 / 5.0;
+  float side = mcy * (h2 / 12.0f + r2 / 4.0f) + 2.0f * mhs * (2.0f * r2 / 5.0f + h2 / 2.0f + 3.0f * height * radius / 8.0f);
+  float prime = mcy * r2 / 2.0f + 2 * mhs * 2 * r2 / 5.0f;
   return (bnd_v3) { scale * side, scale * prime, scale * side };
 }
 
 static bnd_v3 sphere_inertia(float radius, float mass) {
-  float s = 2.0 * mass * radius * radius / 5.0;
+  float s = 2.0f * mass * radius * radius / 5.0f;
   return bnd_v3_scale(bnd_v3_one(), s);
 }
 
 static bnd_v3 box_inertia(bnd_v3 size, float mass) {
-  float m = mass / 12;
+  float m = mass / 12.0f;
   float xx = size.x * size.x;
   float yy = size.y * size.y;
   float zz = size.z * size.z;
@@ -1473,7 +1473,7 @@ static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
     switch (shape.type) {
       case BND_BOX:
         rotation_matrix = quat_as_matrix(shape_rotation);
-        half_extents = rotated_box_half_extents(rotation_matrix, bnd_v3_scale(shape.value.box.size, 0.5));
+        half_extents = rotated_box_half_extents(rotation_matrix, bnd_v3_scale(shape.value.box.size, 0.5f));
         break;
 
       case BND_SPHERE:
@@ -1484,7 +1484,7 @@ static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
         rotation_matrix = quat_as_matrix(shape_rotation);
         local_aabb = (bnd_aabb) {
           .center = shape_center,
-          .half_extents = { shape.value.capsule.radius, 0.5 * shape.value.capsule.height + shape.value.capsule.radius, shape.value.capsule.radius }
+          .half_extents = { shape.value.capsule.radius, 0.5f * shape.value.capsule.height + shape.value.capsule.radius, shape.value.capsule.radius }
         };
         half_extents = rotated_box_half_extents(rotation_matrix, local_aabb.half_extents);
         break;
@@ -1508,8 +1508,8 @@ static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
   }
 
   data->aabbs[index] = (bnd_aabb) {
-    .center = bnd_v3_scale(bnd_v3_add(min, max), 0.5),
-    .half_extents = bnd_v3_scale(bnd_v3_sub(max, min), 0.5),
+    .center = bnd_v3_scale(bnd_v3_add(min, max), 0.5f),
+    .half_extents = bnd_v3_scale(bnd_v3_sub(max, min), 0.5f),
   };
 }
 
@@ -1530,7 +1530,7 @@ static void awaken_body(bnd_world *world, count_t index) {
     return;
   }
 
-  dynamics->motion_avgs[index] = 2.0 * world->config.simulation.sleep_threshold;
+  dynamics->motion_avgs[index] = 2.0f * world->config.simulation.sleep_threshold;
 
   swap_bodies(world, BND_BODY_DYNAMIC, index, dynamics->awake_count);
   dynamics->awake_count += 1;
@@ -1771,12 +1771,12 @@ static void init_body_common(bnd_world *world, common_data *data, shape_dimensio
 static void init_body_dynamic(bnd_world *world, float mass, bnd_m3 inertia_tensor, count_t index) {
   dynamic_bodies *data = &world->dynamics;
 
-  data->inv_masses[index] = 1.0 / mass;
+  data->inv_masses[index] = 1.0f / mass;
   data->velocities[index] = bnd_v3_zero();
   data->angular_momenta[index] = bnd_v3_zero();
   data->inv_inertia_tensors[index] = bnd_m3_inverse(inertia_tensor);
   data->inv_intertias[index] = data->inv_inertia_tensors[index];
-  data->motion_avgs[index] = 2 * world->config.simulation.sleep_threshold;
+  data->motion_avgs[index] = 2.0f * world->config.simulation.sleep_threshold;
   data->forces[index] = bnd_v3_zero();
   data->torques[index] = bnd_v3_zero();
   data->impulses[index] = bnd_v3_zero();
@@ -2415,7 +2415,7 @@ bnd_error bnd_awaken_body(bnd_world *world, bnd_body_handle handle) {
     swap_bodies(world, BND_BODY_DYNAMIC, index, target_index);
   }
 
-  dynamics->motion_avgs[target_index] = 2.0 * world->config.simulation.sleep_threshold;
+  dynamics->motion_avgs[target_index] = 2.0f * world->config.simulation.sleep_threshold;
   dynamics->awake_count += 1;
 
   return OK;
@@ -2649,9 +2649,9 @@ static float tetr_inertia_moment(bnd_m3 m, count_t i) {
 }
 
 static float tetr_inertia_product(bnd_m3 m, count_t i, count_t j) {
-  return 2.0 * m.m0[i] * m.m0[j] + m.m1[i] * m.m2[j] + m.m2[i] * m.m1[j] +
-    2.0 * m.m1[i] * m.m1[j] + m.m0[i] * m.m2[j] + m.m2[i] * m.m0[j] +
-    2.0 * m.m2[i] * m.m2[j] + m.m0[i] * m.m1[j] + m.m1[i] * m.m0[j];
+  return 2.0f * m.m0[i] * m.m0[j] + m.m1[i] * m.m2[j] + m.m2[i] * m.m1[j] +
+    2.0f * m.m1[i] * m.m1[j] + m.m0[i] * m.m2[j] + m.m2[i] * m.m0[j] +
+    2.0f * m.m2[i] * m.m2[j] + m.m0[i] * m.m1[j] + m.m1[i] * m.m0[j];
 }
 
 static bool is_mesh_convex(const bnd_mesh_data *data) {
@@ -2746,7 +2746,7 @@ static void calculate_mass_properties(const bnd_mesh_data *data, bnd_m3 *inertia
    * https://github.com/blackedout01/simkn
    */
 
-  float ia = 0, ib = 0, ic = 0, iap = 0, ibp = 0, icp = 0;
+  float ia = 0.0f, ib = 0.0f, ic = 0.0f, iap = 0.0f, ibp = 0.0f, icp = 0.0f;
 
   *volume = 0;
   *com = bnd_v3_zero();
@@ -2759,12 +2759,12 @@ static void calculate_mass_properties(const bnd_mesh_data *data, bnd_m3 *inertia
     bnd_m3 m = { { v0.x, v0.y, v0.z }, { v1.x, v1.y, v1.z }, { v2.x, v2.y, v2.z } };
 
     float det = bnd_v3_dot(v0, bnd_v3_cross(v1, v2));
-    float tetr_volume = det / 6.0;
+    float tetr_volume = det / 6.0f;
 
     bnd_v3 tetr_com = v0;
     tetr_com = bnd_v3_add(tetr_com, v1);
     tetr_com = bnd_v3_add(tetr_com, v2);
-    tetr_com = bnd_v3_scale(tetr_com, 0.25);
+    tetr_com = bnd_v3_scale(tetr_com, 0.25f);
 
     float v100 = tetr_inertia_moment(m, 0);
     float v010 = tetr_inertia_moment(m, 1);
@@ -2782,13 +2782,13 @@ static void calculate_mass_properties(const bnd_mesh_data *data, bnd_m3 *inertia
     *volume += tetr_volume;
   }
 
-  *com = bnd_v3_scale(*com, 1.0 / *volume);
-  ia = ia / 60.0 - *volume * (com->y * com->y + com->z * com->z);
-  ib = ib / 60.0 - *volume * (com->x * com->x + com->z * com->z);
-  ic = ic / 60.0 - *volume * (com->x * com->x + com->y * com->y);
-  iap = iap / 120.0 - *volume * (com->y * com->z);
-  ibp = ibp / 120.0 - *volume * (com->x * com->y);
-  icp = icp / 120.0 - *volume * (com->x * com->z);
+  *com = bnd_v3_scale(*com, 1.0f / *volume);
+  ia = ia / 60.0f - *volume * (com->y * com->y + com->z * com->z);
+  ib = ib / 60.0f - *volume * (com->x * com->x + com->z * com->z);
+  ic = ic / 60.0f - *volume * (com->x * com->x + com->y * com->y);
+  iap = iap / 120.0f - *volume * (com->y * com->z);
+  ibp = ibp / 120.0f - *volume * (com->x * com->y);
+  icp = icp / 120.0f - *volume * (com->x * com->z);
 
   inertia->m0[0] = ia;
   inertia->m1[1] = ib;
@@ -3473,9 +3473,9 @@ static support_point box_support(const shape_context *ctx, bnd_v3 direction) {
 
   bnd_v3 local_direction = bnd_v3_normalize(bnd_v3_rotate(direction, inv_rotation));
   bnd_v3 v = (bnd_v3) {
-    (local_direction.x > 0 ? 1 : -1) * ctx->shape.value.box.size.x * 0.5,
-    (local_direction.y > 0 ? 1 : -1) * ctx->shape.value.box.size.y * 0.5,
-    (local_direction.z > 0 ? 1 : -1) * ctx->shape.value.box.size.z * 0.5
+    (local_direction.x > 0 ? 1.0f : -1.0f) * ctx->shape.value.box.size.x * 0.5f,
+    (local_direction.y > 0 ? 1.0f : -1.0f) * ctx->shape.value.box.size.y * 0.5f,
+    (local_direction.z > 0 ? 1.0f : -1.0f) * ctx->shape.value.box.size.z * 0.5f
   };
 
   v = bnd_v3_rotate(v, rotation);
@@ -3526,7 +3526,7 @@ static support_point mesh_support(const shape_context *ctx, bnd_v3 direction) {
   count_t submesh_end = submesh_start + mesh.submesh_count;
 
   float max_dot = -FLT_MAX;
-  count_t max_vertex = ~0;
+  count_t max_vertex = UINT32_MAX;
   for (count_t mesh_index = submesh_start; mesh_index < submesh_end; ++mesh_index) {
     submesh submesh = meshes->submeshes[mesh_index];
     count_t vertex_start = submesh.vertex_offset;
@@ -3547,7 +3547,7 @@ static support_point mesh_support(const shape_context *ctx, bnd_v3 direction) {
   support = bnd_v3_rotate(support, rotation);
   support = bnd_v3_add(support, position);
 
-  return (support_point) { support, max_vertex };
+  return (support_point) { support, (uint16_t)(max_vertex & 0xFFFF) };
 }
 
 support_func support_functions[] = { box_support, sphere_support, capsule_support, mesh_support };
@@ -3601,14 +3601,14 @@ static count_t capsule_sphere_collision(bnd_world *world, const collision_detect
   bnd_quat capsule_rotation = body_a_rotation(ctx);
   bnd_quat capsule_inv_rotation = bnd_quat_invert(capsule_rotation);
   float capsule_radius = ctx->shape_a.value.capsule.radius;
-  float capsule_half_height = ctx->shape_a.value.capsule.height * 0.5;
+  float capsule_half_height = ctx->shape_a.value.capsule.height * 0.5f;
 
   bnd_v3 sphere_center = body_b_center(ctx);
   bnd_v3 local_sphere_center = bnd_v3_rotate(bnd_v3_sub(sphere_center, capsule_center), capsule_inv_rotation);
   float sphere_radius = ctx->shape_b.value.sphere.radius;
 
   if (fabsf(local_sphere_center.y) < capsule_half_height) {
-    bnd_v3 horizontal_offset = { local_sphere_center.x, 0, local_sphere_center.z };
+    bnd_v3 horizontal_offset = { local_sphere_center.x, 0.0f, local_sphere_center.z };
     float horizontal_distance = bnd_v3_len(horizontal_offset);
 
     if (horizontal_distance < capsule_radius) {
@@ -3707,7 +3707,7 @@ static count_t box_sphere_collision(bnd_world *world, const collision_detection_
       }
     }
 
-    local_normal[min_axis] = c[min_axis] > 0 ? -1 : 1;
+    local_normal[min_axis] = c[min_axis] > 0 ? -1.0f : 1.0f;
     depth = min_dist + r;
   } else {
     bnd_v3 diff = bnd_v3_sub(closest, local_sphere_center);
@@ -3737,7 +3737,7 @@ static count_t box_plane_collision(bnd_world *world, const collision_detection_c
   bnd_quat shape_rotation = ctx->shape_a.rotation;
 
   bnd_v3 box_center = body_a_center(ctx);
-  bnd_v3 extents = bnd_v3_scale(ctx->shape_a.value.box.size, 0.5);
+  bnd_v3 extents = bnd_v3_scale(ctx->shape_a.value.box.size, 0.5f);
 
   bnd_v3 plane_normal = ctx->shape_b.value.plane.normal;
   bnd_v3 plane_point = ctx->data_b->positions[ctx->body_b];
@@ -3762,7 +3762,7 @@ static count_t box_plane_collision(bnd_world *world, const collision_detection_c
 
     contact *c = new_contact(ctx, contact_count);
     c->normal = plane_normal;
-    c->point = bnd_v3_add(corner, bnd_v3_scale(plane_normal, -0.5 * distance));
+    c->point = bnd_v3_add(corner, bnd_v3_scale(plane_normal, -0.5f * distance));
     c->depth = -distance;
 
     contact_count += 1;
@@ -3802,8 +3802,8 @@ static count_t capsule_plane_collision(bnd_world *world, const collision_detecti
 
   bnd_quat capsule_rotation = bnd_quat_mul(ctx->data_a->rotations[ctx->body_a], ctx->shape_a.rotation);
   bnd_v3 capsule_axis = bnd_v3_rotate(bnd_v3_up(), capsule_rotation);
-  bnd_v3 cap_top = bnd_v3_add(capsule_center, bnd_v3_scale(capsule_axis, capsule_height * 0.5));
-  bnd_v3 cap_bottom = bnd_v3_add(capsule_center, bnd_v3_scale(capsule_axis, -capsule_height * 0.5));
+  bnd_v3 cap_top = bnd_v3_add(capsule_center, bnd_v3_scale(capsule_axis, capsule_height * 0.5f));
+  bnd_v3 cap_bottom = bnd_v3_add(capsule_center, bnd_v3_scale(capsule_axis, -capsule_height * 0.5f));
 
   bnd_v3 plane_point = ctx->data_b->positions[ctx->body_b];
   bnd_v3 plane_normal = ctx->shape_b.value.plane.normal;
@@ -4070,7 +4070,7 @@ count_t collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_ty
 
       uint8_t picked_features = 0;
       for (count_t k = 0; k < pair_contacts_count; ++k) {
-        if ((cached_contacts_mask & (1 << k)) == 0) {
+        if ((cached_contacts_mask & (UINT64_C(1) << k)) == 0) {
           continue;
         }
 
@@ -4433,8 +4433,8 @@ static bool raycast_capsule(bnd_ray r, const shape_context *ctx, bnd_raycast_hit
   float height = ctx->shape.value.capsule.height;
   float radius = ctx->shape.value.capsule.radius;
 
-  bnd_v3 local_cap_top =    (bnd_v3) { 0,  0.5 * height, 0 };
-  bnd_v3 local_cap_bottom = (bnd_v3) { 0, -0.5 * height, 0 };
+  bnd_v3 local_cap_top =    (bnd_v3) { 0,  0.5f * height, 0 };
+  bnd_v3 local_cap_bottom = (bnd_v3) { 0, -0.5f * height, 0 };
 
   bnd_raycast_hit proxy_hit = { 0 };
   if (check_ray_sphere(local_ray, local_cap_top, radius, &proxy_hit) && proxy_hit.point.y > local_cap_top.y) {
@@ -4445,7 +4445,7 @@ static bool raycast_capsule(bnd_ray r, const shape_context *ctx, bnd_raycast_hit
     goto hit;
   }
 
-  if (check_ray_cylinder(local_ray, 0.5 * height, radius, &proxy_hit)) {
+  if (check_ray_cylinder(local_ray, 0.5f * height, radius, &proxy_hit)) {
     goto hit;
   }
 
@@ -4485,7 +4485,7 @@ static bool raycast_mesh(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *h
 
   bool has_hit = false;
   float closest_distance = r.max_distance;
-  bnd_v3 closest_point, normal;
+  bnd_v3 closest_point = {0}, normal = {0};
 
   const mesh_storage *meshes = &ctx->world->meshes;
   bnd_mesh m = meshes->meshes[ctx->shape.value.mesh];
@@ -4896,7 +4896,7 @@ float sqr_distance_to_line_segment(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 *clos
   bnd_v3 d = bnd_v3_sub(b, a);
   bnd_v3 ao = bnd_v3_sub(a, from);
 
-  float t = -1.0 * bnd_v3_dot(ao, d);
+  float t = -1.0f * bnd_v3_dot(ao, d);
   t /= bnd_v3_lensqr(d);
 
   if (t <= 0) {
@@ -5018,9 +5018,9 @@ static bnd_m3 contact_space_transform(const contact *contact) {
 
   if (fabsf(y_axis.z) > fabsf(y_axis.x)) {
     // Take (1, 0, 0) as initial guess
-    const float s = 1.0 / sqrtf(y_axis.y * y_axis.y + y_axis.z * y_axis.z);
+    const float s = 1.0f / sqrtf(y_axis.y * y_axis.y + y_axis.z * y_axis.z);
 
-    z_axis.x = 0;
+    z_axis.x = 0.0f;
     z_axis.y = s * y_axis.z;
     z_axis.z = -s * y_axis.y;
 
@@ -5029,11 +5029,11 @@ static bnd_m3 contact_space_transform(const contact *contact) {
     x_axis.z = y_axis.x * z_axis.y;
   } else {
     // Take (0, 0, 1) as initial guess
-    const float s = 1.0 / sqrtf(y_axis.x * y_axis.x + y_axis.y * y_axis.y);
+    const float s = 1.0f / sqrtf(y_axis.x * y_axis.x + y_axis.y * y_axis.y);
 
     x_axis.x = -s * y_axis.y;
     x_axis.y = s * y_axis.x;
-    x_axis.z = 0;
+    x_axis.z = 0.0f;
 
     z_axis.x = -y_axis.z * x_axis.y;
     z_axis.y = x_axis.x * y_axis.z;
@@ -5121,10 +5121,10 @@ static void resolve_interpenetration_contact(bnd_world *world, count_t contact_i
   }
 
   const float angular_limit = 0.2f;
-  float inv_inertia = 1 / total_inertia;
+  float inv_inertia = 1.0f / total_inertia;
   for (count_t k = 0; k < body_count; ++k) {
     count_t body_index = body_ids[k];
-    float sign = k ? -1 : 1;
+    float sign = k ? -1.0f : 1.0f;
     float linear_move = sign * contact->depth * linear_inertia[k] * inv_inertia;
     float angular_move = sign * contact->depth * angular_inertia_contact[k] * inv_inertia;
 
@@ -5143,7 +5143,7 @@ static void resolve_interpenetration_contact(bnd_world *world, count_t contact_i
       linear_move = total_move - angular_move;
     }
 
-    if (fabsf(angular_move) < 0.001) {
+    if (fabsf(angular_move) < 0.001f) {
       deltas[2 * k + 1] = bnd_v3_zero();
     } else {
       bnd_v3 target_angular_direction = bnd_m3_rotate(torque_per_impulse[k], inv_inertia_tensor[k]);
@@ -5291,7 +5291,7 @@ static bool find_worst_penetration(bnd_world *world, count_t *out_contact_index)
 // Find the worst velocity contact. Returns false if none above threshold.
 static bool find_worst_velocity(bnd_world *world, count_t *out_contact_index) {
   float max_velocity = world->config.advanced.velocity_epsilon;
-  count_t best_contact = (count_t)-1;
+  count_t best_contact = UINT32_MAX;
 
   for (count_t i = 0; i < world->contacts.count; ++i) {
     contact *contact = &world->contacts.values[i];
@@ -5302,7 +5302,7 @@ static bool find_worst_velocity(bnd_world *world, count_t *out_contact_index) {
     }
   }
 
-  if (best_contact == (count_t)-1) {
+  if (best_contact == UINT32_MAX) {
     return false;
   }
 
@@ -5325,11 +5325,11 @@ static void update_awake_status_for_collision(bnd_world *world, count_t contact_
 
   const float sleep_threshold = world->config.simulation.sleep_threshold;
   if (!body_a_awake) {
-    world->dynamics.motion_avgs[contact->index_a] = 2.0 * sleep_threshold;
+    world->dynamics.motion_avgs[contact->index_a] = 2.0f * sleep_threshold;
   }
 
   if (!body_b_awake) {
-    world->dynamics.motion_avgs[contact->index_b] = 2.0 * sleep_threshold;
+    world->dynamics.motion_avgs[contact->index_b] = 2.0f * sleep_threshold;
   }
 }
 
@@ -5345,7 +5345,7 @@ static void resolve_interpenetrations(bnd_world *world) {
   }
 
   count_t iterations = 0;
-  count_t max_penetration_index = -1;
+  count_t max_penetration_index = UINT32_MAX;
   while (iterations < max_iterations) {
     if (!find_worst_penetration(world, &max_penetration_index)) {
       break;
@@ -5387,7 +5387,7 @@ static void update_velocity_deltas(bnd_world *world, count_t contact_index, cons
           bnd_v3 delta_velocity = bnd_v3_add(deltas[2 * m], bnd_v3_cross(angular_velocity_delta, contact->relative_position[k]));
           delta_velocity = bnd_m3_rotate_inverse(delta_velocity, contact->basis);
 
-          contact->local_velocity = bnd_v3_add(contact->local_velocity, bnd_v3_scale(delta_velocity, (k ? -1 : 1)));
+          contact->local_velocity = bnd_v3_add(contact->local_velocity, bnd_v3_scale(delta_velocity, (k ? -1.0f : 1.0f)));
 
           update_desired_velocity_delta(world, i, dt);
         }
@@ -5407,7 +5407,7 @@ static void resolve_velocities(bnd_world *world, float dt) {
   }
 
   count_t iterations = 0;
-  count_t worst_contact_index = -1;
+  count_t worst_contact_index = UINT32_MAX;
   while (iterations < max_iterations) {
     if (!find_worst_velocity(world, &worst_contact_index)) {
       break;
@@ -6109,11 +6109,11 @@ count_t joints_generate_contacts(bnd_world *world, count_t contacts_offset, bnd_
     contact *contact = contacts + contacts_offset + spawned_count;
     contact->index_a = indices[0];
     contact->index_b = indices[1];
-    contact->point = bnd_v3_scale(bnd_v3_add(world_points[0], world_points[1]), 0.5);
-    contact->normal = bnd_v3_scale(offset, 1.0 / distance);
+    contact->point = bnd_v3_scale(bnd_v3_add(world_points[0], world_points[1]), 0.5f);
+    contact->normal = bnd_v3_scale(offset, 1.0f / distance);
     contact->depth = distance - j.max_error;
-    contact->friction = 1.0;
-    contact->restitution = 0;
+    contact->friction = 1.0f;
+    contact->restitution = 0.0f;
 
     spawned_count += 1;
   }
@@ -6647,13 +6647,13 @@ bnd_config bnd_default_config(void) {
   return (bnd_config){
     .simulation = {
       .gravity = (bnd_v3){0, -9.81f, 0},
-      .linear_drag = 0.95,
-      .angular_drag = 0.8,
-      .bounciness = 0.2,
-      .friction = 0.9,
-      .sleep_base_bias = 0.5,
-      .sleep_threshold = 0.3,
-      .min_bounce_velocity = 0.25,
+      .linear_drag = 0.95f,
+      .angular_drag = 0.8f,
+      .bounciness = 0.2f,
+      .friction = 0.9f,
+      .sleep_base_bias = 0.5f,
+      .sleep_threshold = 0.3f,
+      .min_bounce_velocity = 0.25f,
     },
     .memory = {
       .dynamics_capacity = 32,
@@ -6665,11 +6665,11 @@ bnd_config bnd_default_config(void) {
     },
     .advanced = {
       .max_gjk_iterations = 100,
-      .epa_tolerance = 0.01,
+      .epa_tolerance = 0.01f,
       .epa_max_nodes = 512,
       .resolution_attempts_factor = 15,
-      .penetration_epsilon = 0.01,
-      .velocity_epsilon = 0.01,
+      .penetration_epsilon = 0.01f,
+      .velocity_epsilon = 0.01f,
       .shapes_brackets_capacity = {64, 1, 1, 1, 1},
       .contacts_cache = {
         .max_age = 3,
@@ -6799,7 +6799,7 @@ count_t ephemeral_body_index(const common_data *data) {
 #define VISIBLE_NODES_STACK_SIZE 16
 
 #define polytope_for_each_node(p, index, type)                                                                         \
-  for (count_t index = p->last_nodes[type]; index != NIL; index = p->nodes[index].prev)
+  for (uint16_t index = p->last_nodes[type]; index != NIL; index = p->nodes[index].prev)
 
 typedef enum {
   EPA_STATUS_OK,
@@ -7178,9 +7178,9 @@ static bool polytope_from_simplex(epa_polytope *polytope, const simplex *s) {
 }
 
 static void epa_invalid_contact(body_support p, contact *contact) {
-  contact->point = bnd_v3_scale(bnd_v3_add(p.p1.point, p.p2.point), 0.5);
+  contact->point = bnd_v3_scale(bnd_v3_add(p.p1.point, p.p2.point), 0.5f);
   contact->normal = bnd_v3_up();
-  contact->depth = 0.1;
+  contact->depth = 0.1f;
 
   contact->features.witness_a = p.p1.point;
   contact->features.witness_b = p.p2.point;
@@ -7211,19 +7211,19 @@ static void epa_calculate_contact(const epa_polytope *polytope, contact *contact
     body_support v1 = polytope->nodes[node.value.edge.verticies[1]].value.vertex.v;
 
     bnd_v3 d = bnd_v3_sub(v1.p, v0.p);
-    float t = -1.0 * bnd_v3_dot(v0.p, d) / bnd_v3_lensqr(d);
+    float t = -1.0f * bnd_v3_dot(v0.p, d) / bnd_v3_lensqr(d);
     p1 = bnd_v3_add(v0.p1.point, bnd_v3_scale(bnd_v3_sub(v1.p1.point, v0.p1.point), t));
     p2 = bnd_v3_add(v0.p2.point, bnd_v3_scale(bnd_v3_sub(v1.p2.point, v0.p2.point), t));
   } else {
     return;
   }
 
-  contact->point = bnd_v3_scale(bnd_v3_add(p1, p2), 0.5);
-  contact->depth = sqrt(node.distance);
+  contact->point = bnd_v3_scale(bnd_v3_add(p1, p2), 0.5f);
+  contact->depth = sqrtf(node.distance);
 
   float length = bnd_v3_len(node.normal);
   if (length > EPSILON) {
-    contact->normal = bnd_v3_scale(node.normal, -1.0 / length);
+    contact->normal = bnd_v3_scale(node.normal, -1.0f / length);
   } else {
     contact->normal = bnd_v3_up();
   }
@@ -7366,7 +7366,7 @@ bnd_error epa_init(bnd_world *world) {
 
   memset(polytope, 0, sizeof(epa_polytope));
 
-  count_t max_nodes = world->config.advanced.epa_max_nodes;
+  uint16_t max_nodes = world->config.advanced.epa_max_nodes;
   ALLOC_BUFFER8(polytope->nodes, (max_nodes + 1) * sizeof(epa_polytope_node));
   ALLOC_BUFFER1(polytope->flags, polytope_flags_size(max_nodes));
   ALLOC_BUFFER2(polytope->free_list, max_nodes * sizeof(uint16_t));
