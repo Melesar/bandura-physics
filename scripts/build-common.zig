@@ -4,7 +4,7 @@ pub const ResolvedTarget = std.Build.ResolvedTarget;
 
 const FlagsArray = std.ArrayList([]const u8);
 
-const FLAGS = &.{ "-std=c99", "-Wall", "-Wextra", "-Werror=format", "-Werror=shadow", "-Werror=incompatible-pointer-types", "-Werror=pointer-type-mismatch", "-Werror=return-type", "-Wno-unused-parameter", "-Wno-braced-scalar-init" };
+const FLAGS = &.{ "-std=c99", "-Wall", "-Wextra", "-pedantic", "-Werror=format", "-Werror=shadow", "-Werror=incompatible-pointer-types", "-Werror=pointer-type-mismatch", "-Werror=return-type", "-Wno-unused-parameter", "-Wno-braced-scalar-init" };
 
 pub const CompileFlags = struct {
     flags: FlagsArray,
@@ -35,12 +35,8 @@ pub const CompileFlags = struct {
                 try self.flags.appendSlice(self.allocator, &.{ "-g", "-O0", "-DBND_DEBUG" });
             },
 
-            .ReleaseSafe => {
+            .ReleaseSafe, .ReleaseFast => {
                 try self.flags.append(self.allocator, "-O2");
-            },
-
-            .ReleaseFast => {
-                try self.flags.append(self.allocator, "-O3");
             },
 
             .ReleaseSmall => {
@@ -58,8 +54,9 @@ pub fn enableProfiling(module: *std.Build.Module) void {
     module.addCMacro("BND_PROFILING", "");
 }
 
-pub fn enableTests(module: *std.Build.Module) void {
+pub fn enableTests(b: *std.Build, module: *std.Build.Module) void {
     module.addCMacro("BND_TESTS", "");
+    module.addIncludePath(b.path("tests"));
 }
 
 pub fn collectSources(b: *std.Build, directory: []const u8) ![]const []const u8 {

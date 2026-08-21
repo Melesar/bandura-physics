@@ -67,7 +67,12 @@ pub fn build(b: *std.Build) !void {
     const profilingBanduraSrc = try amalgamPathToSource(tmpPath, b.allocator, .ReleaseFast);
 
     try defaultStep(b, tmpPath, options);
-    try targets.append(b.allocator, try testsStep(b, defaultBanduraSrc, options));
+
+    const banduraTestsModule = try bandura.createBaseModule(b, options.forBandura(), .full);
+    common.enableTests(b, banduraTestsModule);
+
+    const testStep = try testsStep(b, bandura.addLibrary(b, banduraTestsModule, options.forBandura()), options);
+    try targets.append(b.allocator, testStep);
 
     const scenarioOptions = options.forScenarios();
     for (try scenarios.enumerate(b, scenarioOptions)) |s| {
@@ -101,14 +106,14 @@ fn defaultStep(b: *std.Build, tempPath: std.Build.LazyPath, options: Options) !v
     installStep.dependOn(&buildBanduraFromOriginalSources.step);
 }
 
-fn testsStep(b: *std.Build, banduraSource: std.Build.Module.CSourceFile, options: Options) !*std.Build.Step.Compile {
+fn testsStep(b: *std.Build, banduraLib: *std.Build.Step.Compile, options: Options) !*std.Build.Step.Compile {
     const testsOpts = options.forTests();
     const testsModule = try tests.createModule(b, testsOpts);
-    testsModule.addCSourceFile(banduraSource);
     testsModule.addIncludePath(b.path("src"));
     testsModule.addCMacro("COLLISION_TEST_SUITE_PATH", "\"tests/collision_test_cases.yaml\"");
+    testsModule.linkLibrary(banduraLib);
 
-    common.enableTests(testsModule);
+    common.enableTests(b, testsModule);
 
     var step = b.step("test", "Run tests");
 
