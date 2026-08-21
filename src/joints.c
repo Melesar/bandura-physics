@@ -187,11 +187,11 @@ count_t joints_generate_contacts(bnd_world *world, count_t contacts_offset, bnd_
     contact *contact = contacts + contacts_offset + spawned_count;
     contact->index_a = indices[0];
     contact->index_b = indices[1];
-    contact->point = bnd_v3_scale(bnd_v3_add(world_points[0], world_points[1]), 0.5);
-    contact->normal = bnd_v3_scale(offset, 1.0 / distance);
+    contact->point = bnd_v3_scale(bnd_v3_add(world_points[0], world_points[1]), 0.5f);
+    contact->normal = bnd_v3_scale(offset, 1.0f / distance);
     contact->depth = distance - j.max_error;
-    contact->friction = 1.0;
-    contact->restitution = 0;
+    contact->friction = 1.0f;
+    contact->restitution = 0.0f;
 
     spawned_count += 1;
   }

@@ -43,22 +43,22 @@ static bnd_v3 capsule_inertia(float radius, float height, float mass) {
 
   const float pi = 3.14159265358979323846f;
   float mcy = r2 * height * pi;
-  float mhs = 2.0 / 3 * r3 * pi;
+  float mhs = 2.0f / 3.0f * r3 * pi;
   float m = mcy + mhs + mhs;
   float scale = mass / m;
 
-  float side = mcy * (h2 / 12.0 + r2 / 4.0) + 2 * mhs * (2 * r2 / 5.0 + h2 / 2 + 3 * height * radius / 8.0);
-  float prime = mcy * r2 / 2.0 + 2 * mhs * 2 * r2 / 5.0;
+  float side = mcy * (h2 / 12.0f + r2 / 4.0f) + 2.0f * mhs * (2.0f * r2 / 5.0f + h2 / 2.0f + 3.0f * height * radius / 8.0f);
+  float prime = mcy * r2 / 2.0f + 2 * mhs * 2 * r2 / 5.0f;
   return (bnd_v3) { scale * side, scale * prime, scale * side };
 }
 
 static bnd_v3 sphere_inertia(float radius, float mass) {
-  float s = 2.0 * mass * radius * radius / 5.0;
+  float s = 2.0f * mass * radius * radius / 5.0f;
   return bnd_v3_scale(bnd_v3_one(), s);
 }
 
 static bnd_v3 box_inertia(bnd_v3 size, float mass) {
-  float m = mass / 12;
+  float m = mass / 12.0f;
   float xx = size.x * size.x;
   float yy = size.y * size.y;
   float zz = size.z * size.z;
@@ -135,7 +135,7 @@ static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
     switch (shape.type) {
       case BND_BOX:
         rotation_matrix = quat_as_matrix(shape_rotation);
-        half_extents = rotated_box_half_extents(rotation_matrix, bnd_v3_scale(shape.value.box.size, 0.5));
+        half_extents = rotated_box_half_extents(rotation_matrix, bnd_v3_scale(shape.value.box.size, 0.5f));
         break;
 
       case BND_SPHERE:
@@ -146,7 +146,7 @@ static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
         rotation_matrix = quat_as_matrix(shape_rotation);
         local_aabb = (bnd_aabb) {
           .center = shape_center,
-          .half_extents = { shape.value.capsule.radius, 0.5 * shape.value.capsule.height + shape.value.capsule.radius, shape.value.capsule.radius }
+          .half_extents = { shape.value.capsule.radius, 0.5f * shape.value.capsule.height + shape.value.capsule.radius, shape.value.capsule.radius }
         };
         half_extents = rotated_box_half_extents(rotation_matrix, local_aabb.half_extents);
         break;
@@ -170,8 +170,8 @@ static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
   }
 
   data->aabbs[index] = (bnd_aabb) {
-    .center = bnd_v3_scale(bnd_v3_add(min, max), 0.5),
-    .half_extents = bnd_v3_scale(bnd_v3_sub(max, min), 0.5),
+    .center = bnd_v3_scale(bnd_v3_add(min, max), 0.5f),
+    .half_extents = bnd_v3_scale(bnd_v3_sub(max, min), 0.5f),
   };
 }
 
@@ -192,7 +192,7 @@ static void awaken_body(bnd_world *world, count_t index) {
     return;
   }
 
-  dynamics->motion_avgs[index] = 2.0 * world->config.simulation.sleep_threshold;
+  dynamics->motion_avgs[index] = 2.0f * world->config.simulation.sleep_threshold;
 
   swap_bodies(world, BND_BODY_DYNAMIC, index, dynamics->awake_count);
   dynamics->awake_count += 1;
@@ -433,12 +433,12 @@ static void init_body_common(bnd_world *world, common_data *data, shape_dimensio
 static void init_body_dynamic(bnd_world *world, float mass, bnd_m3 inertia_tensor, count_t index) {
   dynamic_bodies *data = &world->dynamics;
 
-  data->inv_masses[index] = 1.0 / mass;
+  data->inv_masses[index] = 1.0f / mass;
   data->velocities[index] = bnd_v3_zero();
   data->angular_momenta[index] = bnd_v3_zero();
   data->inv_inertia_tensors[index] = bnd_m3_inverse(inertia_tensor);
   data->inv_intertias[index] = data->inv_inertia_tensors[index];
-  data->motion_avgs[index] = 2 * world->config.simulation.sleep_threshold;
+  data->motion_avgs[index] = 2.0f * world->config.simulation.sleep_threshold;
   data->forces[index] = bnd_v3_zero();
   data->torques[index] = bnd_v3_zero();
   data->impulses[index] = bnd_v3_zero();
@@ -1077,7 +1077,7 @@ bnd_error bnd_awaken_body(bnd_world *world, bnd_body_handle handle) {
     swap_bodies(world, BND_BODY_DYNAMIC, index, target_index);
   }
 
-  dynamics->motion_avgs[target_index] = 2.0 * world->config.simulation.sleep_threshold;
+  dynamics->motion_avgs[target_index] = 2.0f * world->config.simulation.sleep_threshold;
   dynamics->awake_count += 1;
 
   return OK;

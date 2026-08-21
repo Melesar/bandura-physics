@@ -230,8 +230,8 @@ static bool raycast_capsule(bnd_ray r, const shape_context *ctx, bnd_raycast_hit
   float height = ctx->shape.value.capsule.height;
   float radius = ctx->shape.value.capsule.radius;
 
-  bnd_v3 local_cap_top =    (bnd_v3) { 0,  0.5 * height, 0 };
-  bnd_v3 local_cap_bottom = (bnd_v3) { 0, -0.5 * height, 0 };
+  bnd_v3 local_cap_top =    (bnd_v3) { 0,  0.5f * height, 0 };
+  bnd_v3 local_cap_bottom = (bnd_v3) { 0, -0.5f * height, 0 };
 
   bnd_raycast_hit proxy_hit = { 0 };
   if (check_ray_sphere(local_ray, local_cap_top, radius, &proxy_hit) && proxy_hit.point.y > local_cap_top.y) {
@@ -242,7 +242,7 @@ static bool raycast_capsule(bnd_ray r, const shape_context *ctx, bnd_raycast_hit
     goto hit;
   }
 
-  if (check_ray_cylinder(local_ray, 0.5 * height, radius, &proxy_hit)) {
+  if (check_ray_cylinder(local_ray, 0.5f * height, radius, &proxy_hit)) {
     goto hit;
   }
 
@@ -282,7 +282,7 @@ static bool raycast_mesh(bnd_ray r, const shape_context *ctx, bnd_raycast_hit *h
 
   bool has_hit = false;
   float closest_distance = r.max_distance;
-  bnd_v3 closest_point, normal;
+  bnd_v3 closest_point = {0}, normal = {0};
 
   const mesh_storage *meshes = &ctx->world->meshes;
   bnd_mesh m = meshes->meshes[ctx->shape.value.mesh];

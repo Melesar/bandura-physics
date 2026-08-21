@@ -121,9 +121,9 @@ static support_point box_support(const shape_context *ctx, bnd_v3 direction) {
 
   bnd_v3 local_direction = bnd_v3_normalize(bnd_v3_rotate(direction, inv_rotation));
   bnd_v3 v = (bnd_v3) {
-    (local_direction.x > 0 ? 1 : -1) * ctx->shape.value.box.size.x * 0.5,
-    (local_direction.y > 0 ? 1 : -1) * ctx->shape.value.box.size.y * 0.5,
-    (local_direction.z > 0 ? 1 : -1) * ctx->shape.value.box.size.z * 0.5
+    (local_direction.x > 0 ? 1.0f : -1.0f) * ctx->shape.value.box.size.x * 0.5f,
+    (local_direction.y > 0 ? 1.0f : -1.0f) * ctx->shape.value.box.size.y * 0.5f,
+    (local_direction.z > 0 ? 1.0f : -1.0f) * ctx->shape.value.box.size.z * 0.5f
   };
 
   v = bnd_v3_rotate(v, rotation);
@@ -174,7 +174,7 @@ static support_point mesh_support(const shape_context *ctx, bnd_v3 direction) {
   count_t submesh_end = submesh_start + mesh.submesh_count;
 
   float max_dot = -FLT_MAX;
-  count_t max_vertex = ~0;
+  count_t max_vertex = UINT32_MAX;
   for (count_t mesh_index = submesh_start; mesh_index < submesh_end; ++mesh_index) {
     submesh submesh = meshes->submeshes[mesh_index];
     count_t vertex_start = submesh.vertex_offset;
@@ -195,7 +195,7 @@ static support_point mesh_support(const shape_context *ctx, bnd_v3 direction) {
   support = bnd_v3_rotate(support, rotation);
   support = bnd_v3_add(support, position);
 
-  return (support_point) { support, max_vertex };
+  return (support_point) { support, (uint16_t)(max_vertex & 0xFFFF) };
 }
 
 support_func support_functions[] = { box_support, sphere_support, capsule_support, mesh_support };
@@ -249,14 +249,14 @@ static count_t capsule_sphere_collision(bnd_world *world, const collision_detect
   bnd_quat capsule_rotation = body_a_rotation(ctx);
   bnd_quat capsule_inv_rotation = bnd_quat_invert(capsule_rotation);
   float capsule_radius = ctx->shape_a.value.capsule.radius;
-  float capsule_half_height = ctx->shape_a.value.capsule.height * 0.5;
+  float capsule_half_height = ctx->shape_a.value.capsule.height * 0.5f;
 
   bnd_v3 sphere_center = body_b_center(ctx);
   bnd_v3 local_sphere_center = bnd_v3_rotate(bnd_v3_sub(sphere_center, capsule_center), capsule_inv_rotation);
   float sphere_radius = ctx->shape_b.value.sphere.radius;
 
   if (fabsf(local_sphere_center.y) < capsule_half_height) {
-    bnd_v3 horizontal_offset = { local_sphere_center.x, 0, local_sphere_center.z };
+    bnd_v3 horizontal_offset = { local_sphere_center.x, 0.0f, local_sphere_center.z };
     float horizontal_distance = bnd_v3_len(horizontal_offset);
 
     if (horizontal_distance < capsule_radius) {
@@ -355,7 +355,7 @@ static count_t box_sphere_collision(bnd_world *world, const collision_detection_
       }
     }
 
-    local_normal[min_axis] = c[min_axis] > 0 ? -1 : 1;
+    local_normal[min_axis] = c[min_axis] > 0 ? -1.0f : 1.0f;
     depth = min_dist + r;
   } else {
     bnd_v3 diff = bnd_v3_sub(closest, local_sphere_center);
@@ -385,7 +385,7 @@ static count_t box_plane_collision(bnd_world *world, const collision_detection_c
   bnd_quat shape_rotation = ctx->shape_a.rotation;
 
   bnd_v3 box_center = body_a_center(ctx);
-  bnd_v3 extents = bnd_v3_scale(ctx->shape_a.value.box.size, 0.5);
+  bnd_v3 extents = bnd_v3_scale(ctx->shape_a.value.box.size, 0.5f);
 
   bnd_v3 plane_normal = ctx->shape_b.value.plane.normal;
   bnd_v3 plane_point = ctx->data_b->positions[ctx->body_b];
@@ -410,7 +410,7 @@ static count_t box_plane_collision(bnd_world *world, const collision_detection_c
 
     contact *c = new_contact(ctx, contact_count);
     c->normal = plane_normal;
-    c->point = bnd_v3_add(corner, bnd_v3_scale(plane_normal, -0.5 * distance));
+    c->point = bnd_v3_add(corner, bnd_v3_scale(plane_normal, -0.5f * distance));
     c->depth = -distance;
 
     contact_count += 1;
@@ -450,8 +450,8 @@ static count_t capsule_plane_collision(bnd_world *world, const collision_detecti
 
   bnd_quat capsule_rotation = bnd_quat_mul(ctx->data_a->rotations[ctx->body_a], ctx->shape_a.rotation);
   bnd_v3 capsule_axis = bnd_v3_rotate(bnd_v3_up(), capsule_rotation);
-  bnd_v3 cap_top = bnd_v3_add(capsule_center, bnd_v3_scale(capsule_axis, capsule_height * 0.5));
-  bnd_v3 cap_bottom = bnd_v3_add(capsule_center, bnd_v3_scale(capsule_axis, -capsule_height * 0.5));
+  bnd_v3 cap_top = bnd_v3_add(capsule_center, bnd_v3_scale(capsule_axis, capsule_height * 0.5f));
+  bnd_v3 cap_bottom = bnd_v3_add(capsule_center, bnd_v3_scale(capsule_axis, -capsule_height * 0.5f));
 
   bnd_v3 plane_point = ctx->data_b->positions[ctx->body_b];
   bnd_v3 plane_normal = ctx->shape_b.value.plane.normal;
@@ -718,7 +718,7 @@ count_t collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_ty
 
       uint8_t picked_features = 0;
       for (count_t k = 0; k < pair_contacts_count; ++k) {
-        if ((cached_contacts_mask & (1 << k)) == 0) {
+        if ((cached_contacts_mask & (UINT64_C(1) << k)) == 0) {
           continue;
         }
 

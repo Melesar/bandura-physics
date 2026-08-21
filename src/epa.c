@@ -10,7 +10,7 @@
 #define VISIBLE_NODES_STACK_SIZE 16
 
 #define polytope_for_each_node(p, index, type)                                                                         \
-  for (count_t index = p->last_nodes[type]; index != NIL; index = p->nodes[index].prev)
+  for (uint16_t index = p->last_nodes[type]; index != NIL; index = p->nodes[index].prev)
 
 typedef enum {
   EPA_STATUS_OK,
@@ -389,9 +389,9 @@ static bool polytope_from_simplex(epa_polytope *polytope, const simplex *s) {
 }
 
 static void epa_invalid_contact(body_support p, contact *contact) {
-  contact->point = bnd_v3_scale(bnd_v3_add(p.p1.point, p.p2.point), 0.5);
+  contact->point = bnd_v3_scale(bnd_v3_add(p.p1.point, p.p2.point), 0.5f);
   contact->normal = bnd_v3_up();
-  contact->depth = 0.1;
+  contact->depth = 0.1f;
 
   contact->features.witness_a = p.p1.point;
   contact->features.witness_b = p.p2.point;
@@ -422,19 +422,19 @@ static void epa_calculate_contact(const epa_polytope *polytope, contact *contact
     body_support v1 = polytope->nodes[node.value.edge.verticies[1]].value.vertex.v;
 
     bnd_v3 d = bnd_v3_sub(v1.p, v0.p);
-    float t = -1.0 * bnd_v3_dot(v0.p, d) / bnd_v3_lensqr(d);
+    float t = -1.0f * bnd_v3_dot(v0.p, d) / bnd_v3_lensqr(d);
     p1 = bnd_v3_add(v0.p1.point, bnd_v3_scale(bnd_v3_sub(v1.p1.point, v0.p1.point), t));
     p2 = bnd_v3_add(v0.p2.point, bnd_v3_scale(bnd_v3_sub(v1.p2.point, v0.p2.point), t));
   } else {
     return;
   }
 
-  contact->point = bnd_v3_scale(bnd_v3_add(p1, p2), 0.5);
-  contact->depth = sqrt(node.distance);
+  contact->point = bnd_v3_scale(bnd_v3_add(p1, p2), 0.5f);
+  contact->depth = sqrtf(node.distance);
 
   float length = bnd_v3_len(node.normal);
   if (length > EPSILON) {
-    contact->normal = bnd_v3_scale(node.normal, -1.0 / length);
+    contact->normal = bnd_v3_scale(node.normal, -1.0f / length);
   } else {
     contact->normal = bnd_v3_up();
   }
@@ -577,7 +577,7 @@ bnd_error epa_init(bnd_world *world) {
 
   memset(polytope, 0, sizeof(epa_polytope));
 
-  count_t max_nodes = world->config.advanced.epa_max_nodes;
+  uint16_t max_nodes = world->config.advanced.epa_max_nodes;
   ALLOC_BUFFER8(polytope->nodes, (max_nodes + 1) * sizeof(epa_polytope_node));
   ALLOC_BUFFER1(polytope->flags, polytope_flags_size(max_nodes));
   ALLOC_BUFFER2(polytope->free_list, max_nodes * sizeof(uint16_t));

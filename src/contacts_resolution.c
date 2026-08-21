@@ -28,9 +28,9 @@ static bnd_m3 contact_space_transform(const contact *contact) {
 
   if (fabsf(y_axis.z) > fabsf(y_axis.x)) {
     // Take (1, 0, 0) as initial guess
-    const float s = 1.0 / sqrtf(y_axis.y * y_axis.y + y_axis.z * y_axis.z);
+    const float s = 1.0f / sqrtf(y_axis.y * y_axis.y + y_axis.z * y_axis.z);
 
-    z_axis.x = 0;
+    z_axis.x = 0.0f;
     z_axis.y = s * y_axis.z;
     z_axis.z = -s * y_axis.y;
 
@@ -39,11 +39,11 @@ static bnd_m3 contact_space_transform(const contact *contact) {
     x_axis.z = y_axis.x * z_axis.y;
   } else {
     // Take (0, 0, 1) as initial guess
-    const float s = 1.0 / sqrtf(y_axis.x * y_axis.x + y_axis.y * y_axis.y);
+    const float s = 1.0f / sqrtf(y_axis.x * y_axis.x + y_axis.y * y_axis.y);
 
     x_axis.x = -s * y_axis.y;
     x_axis.y = s * y_axis.x;
-    x_axis.z = 0;
+    x_axis.z = 0.0f;
 
     z_axis.x = -y_axis.z * x_axis.y;
     z_axis.y = x_axis.x * y_axis.z;
@@ -131,10 +131,10 @@ static void resolve_interpenetration_contact(bnd_world *world, count_t contact_i
   }
 
   const float angular_limit = 0.2f;
-  float inv_inertia = 1 / total_inertia;
+  float inv_inertia = 1.0f / total_inertia;
   for (count_t k = 0; k < body_count; ++k) {
     count_t body_index = body_ids[k];
-    float sign = k ? -1 : 1;
+    float sign = k ? -1.0f : 1.0f;
     float linear_move = sign * contact->depth * linear_inertia[k] * inv_inertia;
     float angular_move = sign * contact->depth * angular_inertia_contact[k] * inv_inertia;
 
@@ -153,7 +153,7 @@ static void resolve_interpenetration_contact(bnd_world *world, count_t contact_i
       linear_move = total_move - angular_move;
     }
 
-    if (fabsf(angular_move) < 0.001) {
+    if (fabsf(angular_move) < 0.001f) {
       deltas[2 * k + 1] = bnd_v3_zero();
     } else {
       bnd_v3 target_angular_direction = bnd_m3_rotate(torque_per_impulse[k], inv_inertia_tensor[k]);
@@ -301,7 +301,7 @@ static bool find_worst_penetration(bnd_world *world, count_t *out_contact_index)
 // Find the worst velocity contact. Returns false if none above threshold.
 static bool find_worst_velocity(bnd_world *world, count_t *out_contact_index) {
   float max_velocity = world->config.advanced.velocity_epsilon;
-  count_t best_contact = (count_t)-1;
+  count_t best_contact = UINT32_MAX;
 
   for (count_t i = 0; i < world->contacts.count; ++i) {
     contact *contact = &world->contacts.values[i];
@@ -312,7 +312,7 @@ static bool find_worst_velocity(bnd_world *world, count_t *out_contact_index) {
     }
   }
 
-  if (best_contact == (count_t)-1) {
+  if (best_contact == UINT32_MAX) {
     return false;
   }
 
@@ -335,11 +335,11 @@ static void update_awake_status_for_collision(bnd_world *world, count_t contact_
 
   const float sleep_threshold = world->config.simulation.sleep_threshold;
   if (!body_a_awake) {
-    world->dynamics.motion_avgs[contact->index_a] = 2.0 * sleep_threshold;
+    world->dynamics.motion_avgs[contact->index_a] = 2.0f * sleep_threshold;
   }
 
   if (!body_b_awake) {
-    world->dynamics.motion_avgs[contact->index_b] = 2.0 * sleep_threshold;
+    world->dynamics.motion_avgs[contact->index_b] = 2.0f * sleep_threshold;
   }
 }
 
@@ -355,7 +355,7 @@ static void resolve_interpenetrations(bnd_world *world) {
   }
 
   count_t iterations = 0;
-  count_t max_penetration_index = -1;
+  count_t max_penetration_index = UINT32_MAX;
   while (iterations < max_iterations) {
     if (!find_worst_penetration(world, &max_penetration_index)) {
       break;
@@ -397,7 +397,7 @@ static void update_velocity_deltas(bnd_world *world, count_t contact_index, cons
           bnd_v3 delta_velocity = bnd_v3_add(deltas[2 * m], bnd_v3_cross(angular_velocity_delta, contact->relative_position[k]));
           delta_velocity = bnd_m3_rotate_inverse(delta_velocity, contact->basis);
 
-          contact->local_velocity = bnd_v3_add(contact->local_velocity, bnd_v3_scale(delta_velocity, (k ? -1 : 1)));
+          contact->local_velocity = bnd_v3_add(contact->local_velocity, bnd_v3_scale(delta_velocity, (k ? -1.0f : 1.0f)));
 
           update_desired_velocity_delta(world, i, dt);
         }
@@ -417,7 +417,7 @@ static void resolve_velocities(bnd_world *world, float dt) {
   }
 
   count_t iterations = 0;
-  count_t worst_contact_index = -1;
+  count_t worst_contact_index = UINT32_MAX;
   while (iterations < max_iterations) {
     if (!find_worst_velocity(world, &worst_contact_index)) {
       break;

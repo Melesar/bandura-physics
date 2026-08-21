@@ -137,9 +137,9 @@ static float tetr_inertia_moment(bnd_m3 m, count_t i) {
 }
 
 static float tetr_inertia_product(bnd_m3 m, count_t i, count_t j) {
-  return 2.0 * m.m0[i] * m.m0[j] + m.m1[i] * m.m2[j] + m.m2[i] * m.m1[j] +
-    2.0 * m.m1[i] * m.m1[j] + m.m0[i] * m.m2[j] + m.m2[i] * m.m0[j] +
-    2.0 * m.m2[i] * m.m2[j] + m.m0[i] * m.m1[j] + m.m1[i] * m.m0[j];
+  return 2.0f * m.m0[i] * m.m0[j] + m.m1[i] * m.m2[j] + m.m2[i] * m.m1[j] +
+    2.0f * m.m1[i] * m.m1[j] + m.m0[i] * m.m2[j] + m.m2[i] * m.m0[j] +
+    2.0f * m.m2[i] * m.m2[j] + m.m0[i] * m.m1[j] + m.m1[i] * m.m0[j];
 }
 
 static bool is_mesh_convex(const bnd_mesh_data *data) {
@@ -234,7 +234,7 @@ static void calculate_mass_properties(const bnd_mesh_data *data, bnd_m3 *inertia
    * https://github.com/blackedout01/simkn
    */
 
-  float ia = 0, ib = 0, ic = 0, iap = 0, ibp = 0, icp = 0;
+  float ia = 0.0f, ib = 0.0f, ic = 0.0f, iap = 0.0f, ibp = 0.0f, icp = 0.0f;
 
   *volume = 0;
   *com = bnd_v3_zero();
@@ -247,12 +247,12 @@ static void calculate_mass_properties(const bnd_mesh_data *data, bnd_m3 *inertia
     bnd_m3 m = { { v0.x, v0.y, v0.z }, { v1.x, v1.y, v1.z }, { v2.x, v2.y, v2.z } };
 
     float det = bnd_v3_dot(v0, bnd_v3_cross(v1, v2));
-    float tetr_volume = det / 6.0;
+    float tetr_volume = det / 6.0f;
 
     bnd_v3 tetr_com = v0;
     tetr_com = bnd_v3_add(tetr_com, v1);
     tetr_com = bnd_v3_add(tetr_com, v2);
-    tetr_com = bnd_v3_scale(tetr_com, 0.25);
+    tetr_com = bnd_v3_scale(tetr_com, 0.25f);
 
     float v100 = tetr_inertia_moment(m, 0);
     float v010 = tetr_inertia_moment(m, 1);
@@ -270,13 +270,13 @@ static void calculate_mass_properties(const bnd_mesh_data *data, bnd_m3 *inertia
     *volume += tetr_volume;
   }
 
-  *com = bnd_v3_scale(*com, 1.0 / *volume);
-  ia = ia / 60.0 - *volume * (com->y * com->y + com->z * com->z);
-  ib = ib / 60.0 - *volume * (com->x * com->x + com->z * com->z);
-  ic = ic / 60.0 - *volume * (com->x * com->x + com->y * com->y);
-  iap = iap / 120.0 - *volume * (com->y * com->z);
-  ibp = ibp / 120.0 - *volume * (com->x * com->y);
-  icp = icp / 120.0 - *volume * (com->x * com->z);
+  *com = bnd_v3_scale(*com, 1.0f / *volume);
+  ia = ia / 60.0f - *volume * (com->y * com->y + com->z * com->z);
+  ib = ib / 60.0f - *volume * (com->x * com->x + com->z * com->z);
+  ic = ic / 60.0f - *volume * (com->x * com->x + com->y * com->y);
+  iap = iap / 120.0f - *volume * (com->y * com->z);
+  ibp = ibp / 120.0f - *volume * (com->x * com->y);
+  icp = icp / 120.0f - *volume * (com->x * com->z);
 
   inertia->m0[0] = ia;
   inertia->m1[1] = ib;

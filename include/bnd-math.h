@@ -30,7 +30,7 @@ static inline bnd_v3 bnd_v3_normalize(bnd_v3 x) {
     return x;
   }
 
-  float t = 1.0 / l;
+  float t = 1.0f / l;
   return (bnd_v3){ x.x * t, x.y * t, x.z * t };
 }
 

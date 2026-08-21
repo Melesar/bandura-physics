@@ -168,13 +168,13 @@ bnd_config bnd_default_config(void) {
   return (bnd_config){
     .simulation = {
       .gravity = (bnd_v3){0, -9.81f, 0},
-      .linear_drag = 0.95,
-      .angular_drag = 0.8,
-      .bounciness = 0.2,
-      .friction = 0.9,
-      .sleep_base_bias = 0.5,
-      .sleep_threshold = 0.3,
-      .min_bounce_velocity = 0.25,
+      .linear_drag = 0.95f,
+      .angular_drag = 0.8f,
+      .bounciness = 0.2f,
+      .friction = 0.9f,
+      .sleep_base_bias = 0.5f,
+      .sleep_threshold = 0.3f,
+      .min_bounce_velocity = 0.25f,
     },
     .memory = {
       .dynamics_capacity = 32,
@@ -186,11 +186,11 @@ bnd_config bnd_default_config(void) {
     },
     .advanced = {
       .max_gjk_iterations = 100,
-      .epa_tolerance = 0.01,
+      .epa_tolerance = 0.01f,
       .epa_max_nodes = 512,
       .resolution_attempts_factor = 15,
-      .penetration_epsilon = 0.01,
-      .velocity_epsilon = 0.01,
+      .penetration_epsilon = 0.01f,
+      .velocity_epsilon = 0.01f,
       .shapes_brackets_capacity = {64, 1, 1, 1, 1},
       .contacts_cache = {
         .max_age = 3,

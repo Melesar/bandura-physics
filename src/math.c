@@ -198,7 +198,7 @@ float sqr_distance_to_line_segment(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 *clos
   bnd_v3 d = bnd_v3_sub(b, a);
   bnd_v3 ao = bnd_v3_sub(a, from);
 
-  float t = -1.0 * bnd_v3_dot(ao, d);
+  float t = -1.0f * bnd_v3_dot(ao, d);
   t /= bnd_v3_lensqr(d);
 
   if (t <= 0) {
