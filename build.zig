@@ -113,6 +113,10 @@ fn testsStep(b: *std.Build, banduraLib: *std.Build.Step.Compile, options: Option
     testsModule.addCMacro("COLLISION_TEST_SUITE_PATH", "\"tests/collision_test_cases.yaml\"");
     testsModule.linkLibrary(banduraLib);
 
+    if (options.linkage == .dynamic) {
+        testsModule.addCMacro("BND_USE_DLL", "");
+    }
+
     common.enableTests(b, testsModule);
 
     var step = b.step("test", "Run tests");

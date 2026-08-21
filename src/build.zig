@@ -7,18 +7,18 @@ pub const Options = struct {
     linkage: std.builtin.LinkMode,
 
     pub fn forProfiling(self: Options) Options {
-      var opts = self;
-      opts.optimize = .ReleaseFast;
-      return opts;
+        var opts = self;
+        opts.optimize = .ReleaseFast;
+        return opts;
     }
 };
 
 pub fn createBaseModule(b: *std.Build, options: Options, sanitize: std.zig.SanitizeC) !*std.Build.Module {
     const module = b.createModule(.{
-      .target = options.target,
-      .optimize = options.optimize,
-      .link_libc = true,
-      .sanitize_c = sanitize,
+        .target = options.target,
+        .optimize = options.optimize,
+        .link_libc = true,
+        .sanitize_c = sanitize,
     });
 
     module.addIncludePath(b.path("include"));
@@ -31,31 +31,21 @@ pub fn createBaseModule(b: *std.Build, options: Options, sanitize: std.zig.Sanit
         module.addCMacro("BND_BUILD_DLL", "");
 
         try flags.add("-fvisibility=hidden");
-    } else {
-        module.addCMacro("BND_STATIC", "");
     }
 
     if (options.optimize == .Debug) {
-      module.addCMacro("BND_DEBUG", "");
+        module.addCMacro("BND_DEBUG", "");
     }
 
     module.addCMacro("COLLISION_TEST_SUITE_PATH", "\"tests/collision_test_cases.yaml\"");
 
-    module.addCSourceFiles(.{
-      .files = try common.collectSources(b, "src"),
-      .flags = try flags.collect(),
-      .language = .c
-    });
+    module.addCSourceFiles(.{ .files = try common.collectSources(b, "src"), .flags = try flags.collect(), .language = .c });
 
     return module;
 }
 
 pub fn addLibrary(b: *std.Build, module: *std.Build.Module, options: Options) *std.Build.Step.Compile {
-    const lib = b.addLibrary(.{
-      .name = "bandura",
-      .linkage = options.linkage,
-      .root_module = module
-    });
+    const lib = b.addLibrary(.{ .name = "bandura", .linkage = options.linkage, .root_module = module });
 
     lib.installHeader(b.path("include/bandura.h"), "bandura.h");
     lib.installHeader(b.path("include/bnd-math.h"), "bnd-math.h");
@@ -64,11 +54,11 @@ pub fn addLibrary(b: *std.Build, module: *std.Build.Module, options: Options) *s
     return lib;
 }
 pub fn buildLibrary(b: *std.Build, options: Options) !*std.Build.Step.Compile {
-  const sanitize : std.zig.SanitizeC = switch (options.optimize) {
-    .Debug, .ReleaseSafe => .full,
-    else => .off,
-  };
-  const module = try createBaseModule(b, options, sanitize);
+    const sanitize: std.zig.SanitizeC = switch (options.optimize) {
+        .Debug, .ReleaseSafe => .full,
+        else => .off,
+    };
+    const module = try createBaseModule(b, options, sanitize);
 
-  return addLibrary(b, module, options);
+    return addLibrary(b, module, options);
 }
