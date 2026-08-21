@@ -96,6 +96,7 @@ typedef enum {
 
 typedef enum {
   BND_EVENT_COLLISION = 1,
+  BND_EVENT_TRIGGER = 2,
 } bnd_event_type;
 
 typedef struct {
@@ -295,8 +296,13 @@ typedef struct {
 typedef bnd_body_enumerator bnd_body_enumerator_typed;
 
 typedef struct {
+  bnd_body_handle other;
+} bnd_trigger;
+
+typedef struct {
   bnd_event_type type;
   bnd_contact collision;
+  bnd_trigger trigger;
 } bnd_event;
 
 typedef struct {

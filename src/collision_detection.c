@@ -694,6 +694,28 @@ count_t collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_ty
         }
       }
 
+      bool is_trigger = data_b->flags[j] & BODY_FLAG_TRIGGER;
+      if (is_trigger && pair_contacts_count > 0) {
+        // It's not ideal to process triggers here, since we've already done a lot of useless work.
+        // This is going to change with the introduction of contact islands.
+
+        if (events_subscribed((const common_data *)dynamics, i, BND_EVENT_TRIGGER)) {
+          events_push(world, (common_data *)dynamics, i, (bnd_event) {
+            .type = BND_EVENT_TRIGGER,
+            .trigger = { .other = make_body_handle(world, type, j) }
+          });
+        }
+
+        if (events_subscribed(data_b, j, BND_EVENT_TRIGGER)) {
+          events_push(world, (common_data *)data_b, j, (bnd_event) {
+            .type = BND_EVENT_TRIGGER,
+            .trigger = { .other = make_body_handle(world, BND_BODY_DYNAMIC, i) }
+          });
+        }
+
+        break;
+      }
+
       count_t filtered_contact_indices[MAX_CONTACTS_PER_PAIR] = {0};
       if (cached_contacts_mask == 0) {
         if (pair_contacts_count > MAX_CONTACTS_PER_PAIR) {

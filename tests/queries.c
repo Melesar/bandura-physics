@@ -99,10 +99,34 @@ static void test_overlap_covers_dynamic_and_static_bodies_with_distinct_capaciti
   bnd_teardown(world);
 }
 
+static void test_spatial_queries_exclude_triggers(void) {
+  bnd_world *world = test_world();
+  bnd_body_handle trigger = add_static_sphere(world, 1.0f);
+  bnd_body_handle solid = add_static_sphere(world, 1.0f);
+  expect_ok(bnd_set_position(world, trigger, (bnd_v3){0, 0, 3}));
+  expect_ok(bnd_set_position(world, solid, (bnd_v3){0, 0, 6}));
+  expect_ok(bnd_set_trigger(world, trigger, true));
+
+  bnd_ray ray = { .origin = bnd_v3_zero(), .direction = bnd_v3_forward(), .max_distance = 10.0f };
+  bnd_raycast_hit hit;
+  assert(bnd_raycast_closest(world, ray, ~0, &hit));
+  expect_handle(hit.body, solid);
+
+  bnd_raycast_hit hits[2];
+  assert(bnd_raycast_multiple(world, ray, ~0, hits, 2) == 1);
+  expect_handle(hits[0].body, solid);
+
+  bnd_body_handle overlaps[1];
+  assert(bnd_overlap(world, (bnd_v3){0, 0, 3}, 1.0f, ~0, overlaps, 1) == 0);
+
+  bnd_teardown(world);
+}
+
 void queries_tests(void) {
   TESTS_BEGIN("Spatial queries")
     TEST(test_raycast_closest_hits_primitives_compounds_and_planes)
     TEST(test_raycast_multiple_respects_limits_and_body_types)
     TEST(test_overlap_covers_dynamic_and_static_bodies_with_distinct_capacities)
+    TEST(test_spatial_queries_exclude_triggers)
   TESTS_END;
 }

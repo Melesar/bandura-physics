@@ -89,10 +89,41 @@ static void test_reset_invalidates_handles_and_enumerators(void) {
   bnd_teardown(world);
 }
 
+static void test_static_trigger_survives_growth_and_reordering(void) {
+  bnd_config config = test_config();
+  config.memory.statics_capacity = 1;
+  bnd_world *world = bnd_init(config);
+  assert(world != NULL);
+
+  bnd_body_handle dynamic = add_dynamic_sphere(world, 1.0f);
+  bnd_body_handle first = add_static_sphere(world, 1.0f);
+  bnd_body_handle second = add_static_sphere(world, 1.0f);
+  bnd_body_handle trigger = add_static_sphere(world, 1.0f);
+  expect_ok(bnd_set_position(world, first, (bnd_v3){10, 0, 0}));
+  expect_ok(bnd_set_position(world, second, (bnd_v3){20, 0, 0}));
+  expect_ok(bnd_set_trigger(world, trigger, true));
+  expect_ok(bnd_event_subscribe(world, dynamic, BND_EVENT_TRIGGER));
+
+  expect_ok(bnd_remove_body(world, first));
+  bnd_simulate(world, 0.0f);
+
+  assert(bnd_collisions_count(world) == 0);
+  assert(bnd_event_any(world, dynamic).value);
+  bnd_event_enumerator enumerator;
+  assert(bnd_event_enumerate(world, dynamic, &enumerator).value);
+  assert(bnd_event_next(world, &enumerator));
+  assert(enumerator.e.type == BND_EVENT_TRIGGER);
+  expect_handle(enumerator.e.trigger.other, trigger);
+  assert(!bnd_event_next(world, &enumerator));
+
+  bnd_teardown(world);
+}
+
 void world_tests(void) {
   TESTS_BEGIN("World lifecycle")
     TEST(test_handles_survive_reordering_growth_and_removal)
     TEST(test_sleep_wake_keeps_the_awake_prefix_consistent)
     TEST(test_reset_invalidates_handles_and_enumerators)
+    TEST(test_static_trigger_survives_growth_and_reordering)
   TESTS_END;
 }
