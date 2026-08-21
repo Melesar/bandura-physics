@@ -8,6 +8,7 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <string.h>
+#include <stdarg.h>
 
 #define INVALID_INDEX ((count_t)~0)
 #define INVALID_HANDLE (bnd_body_handle) { 0, 0, INVALID_INDEX, 0 }
@@ -1319,6 +1320,26 @@ bnd_collision_mask mask_for_count(uint8_t count) {
 
 bnd_collision_mask layer_to_mask(bnd_collision_layer layer) {
   return UINT64_C(1) << layer;
+}
+
+
+bnd_collision_mask bnd_layers_to_mask(const bnd_world *world, uint32_t layers_count, ...) {
+  va_list list;
+  va_start(list, layers_count);
+
+  bnd_collision_mask mask = 0;
+  for (uint32_t i = 0; i < layers_count; ++i) {
+    bnd_collision_layer layer = (bnd_collision_layer) (va_arg(list, int) & 0xFF);
+    if (layer >= world->matrix.layers_available) {
+      continue;
+    }
+
+    mask |= (UINT64_C(1) << layer);
+  }
+
+  va_end(list);
+
+  return mask;
 }
 
 bnd_material_handle  bnd_default_material(void) {

@@ -15,6 +15,10 @@ Bandura is a traditional Ukrainian [musical instrument](https://en.wikipedia.org
   * [Using meshes as body shapes](#using-meshes-as-body-shapes)
   * [Querying the physics world](#querying-the-physics-world)
   * [Reacting to collisions](#reacting-to-collisions)
+  * [Triggers](#triggers)
+  * [Debug drawing](#debug-drawing)
+  * [Adjusting bounciness and friction](#adjusting-bounciness-and-friction)
+  * [Using collision layers](#using-collision-layers)
 * [Configuring the engine](#configuring-the-engine)
 * [Handling errors](#handling-errors)
 * [Handling simulation time steps](#handling-simulation-time-steps)
@@ -39,6 +43,7 @@ Bandura is a traditional Ukrainian [musical instrument](https://en.wikipedia.org
 * **No concave meshes support yet**. Currently the library can only use convex meshes as collision shapes. Support for concave ones will be added in the future.
 * **Only discrete collision detection**. Object that move very fast can pass through other objects. This will be fixed in the future versions.
 * **Not thread-safe**. All library APIs can only be called from a single thread. This limitation will also be lifted in the future.
+* **For large worlds performance may be poor**. Although the engine is built to efficiently utilize CPU and memory, the algorithms in use are still sub-optimal. This will be the main focus when going forward to v1.0.
 
 ## Installation and build
 
@@ -66,7 +71,7 @@ int main() {
   // Initialize the physics world. This will be the root object for physics operations.
   bnd_world *world = bnd_init(config);
 
-  // Add a ground plane that passes through zero and has a (0, 1, 0) normal vector.
+  // Add a ground plane that passes through zero and has a unit-length (0, 1, 0) normal vector.
   bnd_add_plane(world, bnd_v3_zero(), bnd_v3_up());
 
   // Add a sphere with mass 5 and radius 1.
@@ -95,6 +100,8 @@ bnd_result_handle bnd_add_box_static(bnd_world *world, bnd_v3 size);
 bnd_result_handle bnd_add_sphere_dynamic(bnd_world *world, float mass, float radius);
 bnd_result_handle bnd_add_sphere_static(bnd_world *world, float radius);
 ```
+
+> NOTE: there is no dedicated **kinematic** body type yet, but if you need that, you may safely use **static**. Static bodies can be moved via `bnd_set_position` and `bnd_set_rotation` but don't react to external forces.
 
 Note that the static version doesn't require to specify mass, since static objects are treated as having _infinite_ mass.
 
@@ -126,13 +133,15 @@ int main() {
 Bandura also supports combining multiple primitive shapes into a single body. This allows for creation of complex shapes without using more expensive meshes.
 
 ```c
+  const float pi = 3.1415f;
+
   // Make a dumbell shape with a rotated capsule and two spheres.
   bnd_body_shape shapes[] = {
     (bnd_body_shape) { 
       .type = BND_CAPSULE,
       .value = { .capsule = { .radius = 0.3, .height = 3 } },
       .offset = bnd_v3_zero(),
-      .rotation = (bnd_quat) { sinf(PI / 4), 0, 0, cosf(PI / 4) } 
+      .rotation = (bnd_quat) { sinf(pi / 4), 0, 0, cosf(pi / 4) }
     },
     (bnd_body_shape) {
       .type = BND_SPHERE,
@@ -200,13 +209,15 @@ bnd_remove_body(world, sphere_handle);
 // From here on, `sphere_handle` is no longer valid and shouldn't be used.
 ```
 
-After the body is removed, its corresponding handle is invalidated. You can always check if a handle is valid using `bnd_error bnd_handle_valid(const bnd_world *world, bnd_body_handle handle)`. A valid handle returns `BND_OK`.
+After the body is removed, its corresponding handle is invalidated, and any joints attached to that body are removed automatically. You can always check if a handle is valid using `bnd_error bnd_handle_valid(const bnd_world *world, bnd_body_handle handle)`. A valid handle returns `BND_OK`.
 
-### Bounding the bodies together
+### Binding the bodies together
 
 Bandura supports imposing constraints on the bodies, so that they cannot move further apart than some specified distance. This can be used, for example, to create ragdolls:
 
 ```c
+  const float pi = 3.1415f;
+
   bnd_body_handle head = bnd_add_sphere_dynamic(world, 3, 0.4).value;
   bnd_set_position(world, head, (bnd_v3){0, 5, 0});
 
@@ -218,11 +229,11 @@ Bandura supports imposing constraints on the bodies, so that they cannot move fu
 
   bnd_body_handle left_upper_leg = bnd_add_capsule_dynamic(world, 10, 0.2, 0.8).value;
   bnd_set_position(world, left_upper_leg, (bnd_v3){0.23, 2, -0.2});
-  bnd_set_rotation(world, left_upper_leg, (bnd_quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) });
+  bnd_set_rotation(world, left_upper_leg, (bnd_quat) { sinf(pi / 12), 0, 0, cosf(pi / 12) });
 
   bnd_body_handle left_lower_leg = bnd_add_capsule_dynamic(world, 10, 0.2, 0.8).value;
   bnd_set_position(world, left_lower_leg, (bnd_v3){0.23, 0.9, -0.2});
-  bnd_set_rotation(world, left_lower_leg, (bnd_quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) });
+  bnd_set_rotation(world, left_lower_leg, (bnd_quat) { sinf(pi / 12), 0, 0, cosf(pi / 12) });
 
   bnd_body_handle right_upper_leg = bnd_add_capsule_dynamic(world, 10, 0.2, 0.8).value;
   bnd_set_position(world, right_upper_leg, (bnd_v3){-0.23, 2, 0});
@@ -232,18 +243,18 @@ Bandura supports imposing constraints on the bodies, so that they cannot move fu
 
   bnd_body_handle left_upper_arm = bnd_add_capsule_dynamic(world, 10, 0.1, 1).value;
   bnd_set_position(world, left_upper_arm, (bnd_v3){0.4, 3.9, -0.4});
-  bnd_set_rotation(world, left_upper_arm, (bnd_quat) { sinf(PI / 10), 0, 0, cosf(PI / 10) });
+  bnd_set_rotation(world, left_upper_arm, (bnd_quat) { sinf(pi / 10), 0, 0, cosf(pi / 10) });
 
   bnd_body_handle left_lower_arm = bnd_add_capsule_dynamic(world, 10, 0.1, 1).value;
   bnd_set_position(world, left_lower_arm, (bnd_v3){0.43, 3.37, -1.45});
-  bnd_set_rotation(world, left_lower_arm, (bnd_quat) { sinf(PI / 4), 0, 0, cosf(PI / 12) });
+  bnd_set_rotation(world, left_lower_arm, (bnd_quat) { sinf(pi / 4), 0, 0, cosf(pi / 4) });
 
   bnd_body_handle right_upper_arm = bnd_add_capsule_dynamic(world, 10, 0.1, 1).value;
   bnd_set_position(world, right_upper_arm, (bnd_v3){-0.43, 3.8, 0});
 
   bnd_body_handle right_lower_arm = bnd_add_capsule_dynamic(world, 10, 0.1, 1).value;
   bnd_set_position(world, right_lower_arm, (bnd_v3){-0.43, 2.63, -0.3});
-  bnd_set_rotation(world, right_lower_arm, (bnd_quat) { sinf(PI / 12), 0, 0, cosf(PI / 12) });
+  bnd_set_rotation(world, right_lower_arm, (bnd_quat) { sinf(pi / 12), 0, 0, cosf(pi / 12) });
 
   const float joint_margin = 0.1;
 
@@ -334,6 +345,58 @@ bnd_body_handle mesh_body = bnd_add_mesh_dynamic(world, 5, mesh_handle).value;
 // At this point it's just a regular body. You can change it's position or rotation, store its handle, apply forces, etc.
 ```
 
+### Adjusting bounciness and friction
+
+Bandura allows the user to define *materials* that can be assigned to bodies. Each material can have it's own values for friction and bouncinnes, so that different bodies can react to collisions differently.
+
+Use `bnd_create_material(bnd_world *world, float bounciness, float friction)` to create new materials. You should store the received `bnd_material_handle` somewhere to later assign it to bodies.
+
+You can later adjust the material's properties using `bnd_set_material_bounciness(bnd_world *world, bnd_material_handle material, float bounciness)` and `bnd_set_material_friction(bnd_world *world, bnd_material_handle material, float friction)`. This applies to default material as well.
+
+Assign a material to a body with `bnd_set_material(bnd_world *world, bnd_body_handle handle, bnd_material_handle material)`.
+
+When two bodies with different materials collide, the resulting properties of that collision are calculated using the following rules:
+
+1) *Friction*: `sqrt(friction_a * friction_b)`. Anything slides on a surface with a `0` friction (i.e. ice).
+2) *Bounciness*: `max(bounciness_a, bounciness_b)`. Anything bounces off of a very bouncy surface.
+
+>NOTE: both friction and bounciness should be in range of 0-1. They will be clamped if set outside of that range.
+
+### Using collision layers
+
+Collision layers is a way to configure what collides with what. By default there is only one collision layer, so every body collides with every other one.
+But you can define more layers, assign them to bodies and then configure which layers interact and which do not:
+
+```c
+// Collision layers are just numbers from 0 to 64, so an enum is a good way to represent them.
+typedef enum {
+  LAYER_DEFAULT,
+  LAYER_INTERACTABLE,
+  LAYER_HITTABLE,
+  LAYER_PROJECTILES,
+
+  LAYERS_COUNT,
+} collision_layers;
+
+
+bnd_set_layers_count(world, LAYERS_COUNT); // Count should be between 0 and 64.
+bnd_set_layers_collision(world, LAYER_INTERACTABLE, LAYER_PROJECTILES, false); // Projectiles won't hit interactable items.
+
+bnd_body_handle lootbox = bnd_add_box_static(world, (bnd_v3) { 3, 1, 1 }).value;
+bnd_set_collision_layer(world, lootbox, LAYER_INTERACTABLE);
+
+bnd_body_handle bullet = bnd_add_capsule_dynamic(world, 1, 0.1, 0.5).value;
+bnd_set_collision_layer(world, bullet, LAYER_PROJECTILES);
+
+// Now bullet will not hit the lootbox.
+```
+
+To obtain a mask from a set of layers, use a helper function `bnd_layers_to_mask(bnd_world *world, uint32_t layers_count, ...)`:
+
+```c
+bnd_collision_mask mask = bnd_layers_to_mask(world, 2, LAYER_HITTABLE, LAYER_INTERACTABLE); 
+```
+
 ### Querying the physics world
 
 Bandura currently supports the following queries:
@@ -344,7 +407,8 @@ Here is an example of simulating an "explosion" using an overlap:
 
 ```c
   bnd_body_handle overlaps[5];
-  uint32_t overlap_count = bnd_overlap(world, pos, explosion_radius, overlaps, 5); // Last parameter specifies the maximum overlap count.
+  bnd_collision_mask mask = bnd_get_all_layers_mask(world); // Make sure the overlap affects all bodies.
+  uint32_t overlap_count = bnd_overlap(world, pos, explosion_radius, mask, overlaps, 5); // Last parameter specifies the maximum overlap count.
 
   for (uint32_t i = 0; i < overlap_count; ++i) {
     bnd_v3 body_pos = bnd_get_position(world, overlaps[i]).value;
@@ -352,7 +416,7 @@ Here is an example of simulating an "explosion" using an overlap:
   }
 ```
 
-**NOTE:** `bnd_raycast_multiple` and `bnd_overlap` will only return at most as many results as you specify in the parameter. Do not make any assumptions about their proximity
+> NOTE: `bnd_raycast_multiple` and `bnd_overlap` will only return at most as many results as you specify in the parameter. Do not make any assumptions about their proximity
 to the origin. They are not guaranteed to be the closest.
 
 ### Reacting to collisions
@@ -381,6 +445,74 @@ while (bnd_event_next(world, &enumerator)) {
 // To stop receiving collision events:
 bnd_event_unsubscribe(world, b, BND_EVENT_COLLISION);
 ```
+
+### Triggers
+
+Static bodies can be made triggers. A trigger doesn't collide with other bodies, but it reports event when something intersects with it.
+
+```c
+bnd_body_handle trigger_area = bnd_add_box_static(world, (bnd_v3) { 5, 2, 5 }).value; // Only static bodies can be made triggers.
+bnd_body_handle ball = bnd_add_sphere_dynamic(world, 5, 3);
+bnd_set_position(world, ball, (bnd_v3) { 0, 10, 0 });
+
+bnd_set_trigger(world, trigger_area, true); // If last parameter is set to `false`, the body becomes a regular rigidbody. 
+
+bnd_event_subscribe(world, trigger_area, BND_EVENT_TRIGGER); // You can subcribe to either body to receive trigger events.
+
+for (int i = 0; i < 10; i++) {
+  // Make the sphere fall onto a box.
+  bnd_simulate(world, dt);
+
+  
+  bnd_event_enumerator enumerator;
+  bnd_event_enumerate(world, trigger_area, &enumerator);
+
+  // Trigger events are reported for as long as two bodies intersect.
+  while (bnd_event_next(world, &enumerator)) {
+    bnd_event e = enumerator.e;
+    bnd_trigger trigger_event = e.trigger;
+
+    printf("Body with index %u is intersecting the trigger area\n", trigger_event.other.index);
+  }
+}
+```
+
+### Debug drawing
+
+Bandura does not include a renderer, but it can send the current physics state to your renderer through `bnd_debug_draw`. Provide callbacks for the primitives you want to draw, select one or more `bnd_debug_draw_flags`, and call it from your render loop. A callback may be `NULL` when that primitive is not needed.
+
+```c
+void my_draw_contact(bnd_v3 point, bnd_v3 normal, float depth, void *user_data);
+void my_draw_shape(bnd_v3 position, bnd_quat rotation, bnd_body_handle body,
+                   bnd_shape_type type, bnd_shape shape, bool is_trigger, void *user_data);
+void my_draw_aabb(bnd_v3 center, bnd_v3 half_extents, bnd_body_handle body, void *user_data);
+void my_draw_joint(bnd_body_handle body_a, bnd_body_handle body_b,
+                   bnd_v3 point_a, bnd_v3 point_b, void *user_data);
+
+bnd_debug_draw_callbacks callbacks = {
+  .draw_contact = my_draw_contact,
+  .draw_shape = my_draw_shape,
+  .draw_aabb = my_draw_aabb,
+  .draw_joint = my_draw_joint,
+};
+
+// Run this after bnd_simulate so contacts and transforms are from the latest frame.
+bnd_simulate(world, dt);
+bnd_debug_draw_flags flags = BND_DEBUG_DRAW_SHAPES
+                           | BND_DEBUG_DRAW_CONTACTS
+                           | BND_DEBUG_DRAW_AABBS
+                           | BND_DEBUG_DRAW_JOINTS;
+bnd_debug_draw(world, flags, callbacks, renderer_context);
+```
+
+The available flags are:
+
+* `BND_DEBUG_DRAW_SHAPES_DYNAMIC` and `BND_DEBUG_DRAW_SHAPES_STATIC` draw each body shape. `BND_DEBUG_DRAW_SHAPES` combines both. The shape callback receives the shape's world-space position and rotation, its body handle, shape data, and whether the body is a trigger.
+* `BND_DEBUG_DRAW_CONTACTS` reports stored contact points with their normals and penetration depths. Contact normals point from body B toward body A.
+* `BND_DEBUG_DRAW_AABBS` reports each body's world-space axis-aligned bounding box as a center and half-extents.
+* `BND_DEBUG_DRAW_JOINTS` reports each joint's two body handles and its two world-space anchor points.
+
+`BND_DEBUG_DRAW_ALL` enables every flag. The callbacks are invoked synchronously by `bnd_debug_draw`, so `user_data` can point to the renderer or other per-frame state, as in the Raylib demo.
 
 ## Configuring the engine
 
