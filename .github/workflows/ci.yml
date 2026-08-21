@@ -53,8 +53,8 @@ jobs:
             platform: Linux
           - os: macos-latest
             platform: Mac
-          # - os: windows-latest
-          #   platform: Windows
+          - os: windows-latest
+            platform: Windows
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -75,14 +75,14 @@ jobs:
         if: matrix.platform == 'Mac'
         run: clang -c bandura.c -std=c99 -Wall -Wextra -Werror -pedantic
 
-      # - name: Set up MSVC
-      #   if: matrix.platform == 'Windows'
-      #   uses: ilammy/msvc-dev-cmd@v1
+      - name: Set up MSVC
+        if: matrix.platform == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
 
-      # - name: Compile with MSVC
-      #   if: matrix.platform == 'Windows'
-      #   shell: cmd
-      #   run: cl /nologo /c bandura.c /std:c11 /W4 /WX
+      - name: Compile with MSVC
+        if: matrix.platform == 'Windows'
+        shell: cmd
+        run: cl /nologo /c bandura.c /std:c11 /W4 /WX
 
   test:
     needs: update-amalgamation
@@ -92,7 +92,7 @@ jobs:
         os:
           - ubuntu-latest
           - macos-latest
-          # - windows-latest
+          - windows-latest
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
