@@ -333,6 +333,7 @@ BNDAPI bnd_error            bnd_set_material_friction(bnd_world *world, bnd_mate
 BNDAPI bnd_error            bnd_get_material_properties(bnd_world *world, bnd_material_handle material, float *bounciness, float *friction);
 
 BNDAPI bnd_collision_mask   bnd_get_all_layers_mask(const bnd_world *world);
+BNDAPI bnd_collision_mask   bnd_layers_to_mask(const bnd_world *world, uint32_t layers_count, ...);
 BNDAPI uint32_t             bnd_get_layers_count(const bnd_world *world);
 BNDAPI bnd_error            bnd_set_layers_count(bnd_world *world, uint8_t new_count);
 BNDAPI bnd_error            bnd_set_layers_collision(bnd_world *world, bnd_collision_layer layer_a, bnd_collision_layer layer_b, bool collide);
