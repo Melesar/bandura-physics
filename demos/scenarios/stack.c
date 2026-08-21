@@ -101,7 +101,7 @@ void scenario_draw_scene(bnd_world *world) {
       bnd_quat rot = bnd_get_rotation(world, b).value;
 
       master_widget_state s = { .bodies_as_wireframe = true };
-      draw_shape(pos, rot, b, BND_BOX, (bnd_shape) { .box = { .size = { 1, 1, 1 } } }, &s);
+      draw_shape(pos, rot, b, BND_BOX, (bnd_shape) { .box = { .size = { 1, 1, 1 } } }, false, &s);
     }
   }
 #endif
