@@ -399,6 +399,10 @@ static bool next_raycast(raycast_context *ctx, bnd_ray r, bnd_raycast_hit *hit) 
 
 bool bnd_raycast_closest(const bnd_world *world, bnd_ray ray, bnd_collision_mask mask, bnd_raycast_hit *closest_hit) {
   closest_hit->distance = FLT_MAX;
+  if (bnd_v3_lensqr(ray.direction) < EPSILON * EPSILON)
+    return false;
+
+  ray.direction = bnd_v3_normalize(ray.direction);
 
   bnd_raycast_hit hit;
   raycast_context ctxs[] = { begin_raycast(world, mask, BND_BODY_DYNAMIC), begin_raycast(world, mask, BND_BODY_STATIC) };
@@ -418,6 +422,12 @@ count_t bnd_raycast_multiple(const bnd_world *world, bnd_ray ray, bnd_collision_
   if (max_hits == 0) {
     return 0;
   }
+
+  if (bnd_v3_lensqr(ray.direction) < EPSILON * EPSILON)
+    return false;
+
+  ray.direction = bnd_v3_normalize(ray.direction);
+
 
   count_t num_hits = 0;
   raycast_context ctxs[] = { begin_raycast(world, mask, BND_BODY_DYNAMIC), begin_raycast(world, mask, BND_BODY_STATIC) };
