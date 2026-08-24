@@ -14,6 +14,10 @@
  * @c bnd_error directly or embed one in a @c bnd_result_* value.
  */
 
+#define BND_VERSION_MAJOR 0
+#define BND_VERSION_MINOR 1
+#define BND_VERSION_PATCH 0
+
 #if defined(_WIN32)
   #if defined(BND_BUILD_DLL)
     #define BNDAPI __declspec(dllexport)
@@ -408,6 +412,8 @@ typedef struct {
 #if defined(__cplusplus)
 extern "C" {
 #endif
+
+BNDAPI bool bnd_check_version(int major, int minor, int patch);
 
 /** Return a configuration populated with the engine's default values. */
 BNDAPI bnd_config bnd_default_config(void);
