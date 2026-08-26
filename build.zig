@@ -109,7 +109,6 @@ fn defaultStep(b: *std.Build, tempPath: std.Build.LazyPath, options: Options) !v
 fn testsStep(b: *std.Build, banduraLib: *std.Build.Step.Compile, options: Options) !*std.Build.Step.Compile {
     const testsOpts = options.forTests();
     const testsModule = try tests.createModule(b, testsOpts);
-    testsModule.addIncludePath(b.path("src"));
     testsModule.addCMacro("COLLISION_TEST_SUITE_PATH", "\"tests/collision_test_cases.yaml\"");
     testsModule.linkLibrary(banduraLib);
 

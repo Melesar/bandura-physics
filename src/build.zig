@@ -49,7 +49,7 @@ pub fn addLibrary(b: *std.Build, module: *std.Build.Module, options: Options) *s
 
     lib.installHeader(b.path("include/bandura.h"), "bandura.h");
     lib.installHeader(b.path("include/bnd-math.h"), "bnd-math.h");
-    lib.installHeader(b.path("src/bnd-core.h"), "bnd-core.h");
+    lib.installHeader(b.path("include/bnd-core.h"), "bnd-core.h");
 
     return lib;
 }

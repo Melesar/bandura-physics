@@ -54,14 +54,13 @@ pub fn amalgamate(b: *std.Build) ![]u8 {
 
         sources[@intFromEnum(Headers.bandura)] = try readFile(arena, iop, includeDir, "bandura.h");
         sources[@intFromEnum(Headers.bnd_math)] = try readFile(arena, iop, includeDir, "bnd-math.h");
+        sources[@intFromEnum(Headers.bnd_core)] = try readFile(arena, iop, includeDir, "bnd-core.h");
         sources[@intFromEnum(Headers.profiler)] = try readFile(arena, iop, includeDir, "profiler.h");
     }
 
     {
         const srcDir = try cwd.openDir(iop, "src", .{ .iterate = true });
         defer srcDir.close(iop);
-
-        sources[@intFromEnum(Headers.bnd_core)] = try readFile(arena, iop, srcDir, "bnd-core.h");
 
         fileCount += try readSourceFiles(sources[fileCount..MaxFileCount], arena, srcDir, iop);
     }
@@ -78,10 +77,6 @@ pub fn amalgamate(b: *std.Build) ![]u8 {
         defer set.deinit();
 
         try collectStdIncludes(&set, sources[@intFromEnum(Headers.count)..fileCount], &output, b.allocator);
-
-        try output.appendSlice(b.allocator, "\n#if defined(BND_PROFILING)\n\n");
-        try collectStdIncludes(&set, sources[@intFromEnum(Headers.profiler) .. @intFromEnum(Headers.profiler) + 1], &output, b.allocator);
-        try output.appendSlice(b.allocator, "#endif\n");
     }
 
     try writeBanduraHeader(sources[@intFromEnum(Headers.bandura)], &output, b.allocator);
