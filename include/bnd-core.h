@@ -333,6 +333,14 @@ typedef struct {
 } simplex;
 
 typedef struct {
+  uint8_t *buffer;
+  uint64_t capacity;
+  uint64_t offset;
+
+  bnd_allocator allocator;
+} bnd_arena;
+
+typedef struct {
   bnd_body_handle src_body_a, src_body_b;
   bnd_body_handle dst_body_a, dst_body_b;
   bnd_result_u32 iterations_count_result;
@@ -386,6 +394,7 @@ struct bnd_world_t {
   epa_polytope epa_polytope;
   collision_matrix matrix;
 
+  bnd_arena arena;
   epa_debug_status *epa_debug;
 
   shapes_bracket shape_brackets[BRACKET_COUNT];
@@ -451,13 +460,6 @@ typedef struct {
   bnd_debug_draw_epa_support_fn draw_support;
 } bnd_debug_draw_epa_callbacks;
 
-typedef struct {
-  uint8_t *buffer;
-  uint64_t capacity;
-  uint64_t offset;
-
-  bnd_allocator allocator;
-} bnd_arena;
 
 typedef support_point (*support_func)(const shape_context *, bnd_v3);
 

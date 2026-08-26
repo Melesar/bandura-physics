@@ -251,6 +251,8 @@ static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allo
   ALLOC(world->dynamics.inv_intertias, matrices);
   ALLOC(world->dynamics.motion_avgs, floats);
 
+  INVOKE(arena_init(allocator, config.memory.internal_allocation_budget, &world->arena))
+
   world->matrix.matrix[0] = 1;
   for(count_t i = 1; i < MAX_COLLISION_LAYERS; ++i) {
     world->matrix.matrix[i] = 0;
