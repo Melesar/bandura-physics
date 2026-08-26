@@ -234,13 +234,14 @@ typedef struct {
  * @note The buffers may grow above these capacities during simulation or as a result of body addition.
  */
 typedef struct {
-  uint32_t dynamics_capacity;  /**< Initial dynamic-body capacity. */
-  uint32_t statics_capacity;   /**< Initial static-body capacity. */
-  uint32_t contacts_capacity;  /**< Initial contact capacity. */
-  uint32_t joints_capacity;    /**< Initial joint capacity. */
-  uint32_t meshes_capacity;    /**< Initial imported-mesh capacity. */
-  uint32_t events_capacity;    /**< Initial event capacity. */
-  uint32_t materials_capacity; /**< Initial material capacity. */
+  uint32_t dynamics_capacity;            /**< Initial dynamic-body capacity. */
+  uint32_t statics_capacity;             /**< Initial static-body capacity. */
+  uint32_t contacts_capacity;            /**< Initial contact capacity. */
+  uint32_t joints_capacity;              /**< Initial joint capacity. */
+  uint32_t meshes_capacity;              /**< Initial imported-mesh capacity. */
+  uint32_t events_capacity;              /**< Initial event capacity. */
+  uint32_t materials_capacity;           /**< Initial material capacity. */
+  uint64_t internal_allocation_budget;   /**< How much memory the engine can allocate internally */
 } bnd_config_memory;
 
 /** Parameters controlling integration, damping, contacts, and sleeping. */

@@ -202,6 +202,7 @@ bnd_config bnd_default_config(void) {
       .meshes_capacity = 32,
       .events_capacity = 128,
       .materials_capacity = 8,
+      .internal_allocation_budget = 8 << 10, // 8 Kb
     },
     .advanced = {
       .max_gjk_iterations = 100,
@@ -335,5 +336,42 @@ void bnd_teardown(bnd_world *world) {
 
 count_t ephemeral_body_index(const common_data *data) {
   return data->capacity;
+}
+
+bnd_error arena_init(bnd_allocator allocator, uint64_t capacity, bnd_arena *arena) {
+  ALLOC_BUFFER1(arena->buffer, capacity);
+  arena->capacity = capacity;
+  arena->allocator = allocator;
+  arena->offset = 0;
+
+  return OK;
+}
+
+bnd_result_ptr arena_alloc(bnd_arena *arena, uint64_t alignment, uint64_t size) {
+  uint64_t new_offset = AlignTo(arena->offset, alignment);
+  if (new_offset + size > arena->capacity) {
+    if (arena->allocator.realloc == NULL) {
+      return (bnd_result_ptr)  { (bnd_error) { BND_ERROR_NO_SPACE_AVAILABLE, "Internal allocation buffer is full" }, NULL };
+    }
+
+    uint64_t new_capacity = arena->capacity;
+    while(new_offset + size > new_capacity) {
+      new_capacity <<= 1;
+    }
+
+    arena->buffer = arena->allocator.realloc(arena->buffer, 1, arena->capacity, new_capacity);
+    if (arena->buffer == NULL) {
+      return (bnd_result_ptr)  { (bnd_error) { BND_ERROR_OUT_OF_MEMORY, "Allocator.realloc returned null" }, NULL };
+    }
+  }
+
+  uint8_t *value = arena->buffer + new_offset;
+  arena->offset = new_offset + size;
+  
+  return BND_RESULT_OK(ptr, value);
+}
+
+void arena_reset(bnd_arena *arena) {
+  arena->offset = 0;
 }
 

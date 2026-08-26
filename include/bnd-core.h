@@ -443,15 +443,29 @@ typedef void (*bnd_debug_draw_epa_face_fn)(bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_deb
 typedef void (*bnd_debug_draw_epa_normal_fn)(bnd_v3 origin, bnd_v3 unit_normal, bnd_debug_epa_flags flags, void *user_data);
 typedef void (*bnd_debug_draw_epa_support_fn)(bnd_v3 point, void *user_data);
 
+#define AlignTo(offset, alignment) ((offset) + (alignment) - 1) & ~((alignment) - 1)
+
 typedef struct {
   bnd_debug_draw_epa_face_fn draw_face;
   bnd_debug_draw_epa_normal_fn draw_normal;
   bnd_debug_draw_epa_support_fn draw_support;
 } bnd_debug_draw_epa_callbacks;
 
+typedef struct {
+  uint8_t *buffer;
+  uint64_t capacity;
+  uint64_t offset;
+
+  bnd_allocator allocator;
+} bnd_arena;
+
 typedef support_point (*support_func)(const shape_context *, bnd_v3);
 
 bnd_allocator         bnd_default_allocator(void);
+
+bnd_error             arena_init(bnd_allocator allocator, uint64_t capacity, bnd_arena *arena);
+bnd_result_ptr        arena_alloc(bnd_arena *arena, uint64_t alignment, uint64_t size);
+void                  arena_reset(bnd_arena *arena);
 
 bnd_body_handle       make_body_handle(const bnd_world *world, bnd_body_type type, count_t index);
 count_t               handle_to_inner_index(const bnd_world *world, bnd_body_handle handle);
