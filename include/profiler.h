@@ -12,8 +12,8 @@
 #define PROFILER_FRAME_START
 #define PROFILER_FRAME_END
 
-#define PROFILER_REPORT_METRIC_INT(name, val)
-#define PROFILER_REPORT_METRIC_FLOAT(name, val)
+#define PROFILER_REPORT_METRIC_INT(name, val) (void)(name); (void) (val)
+#define PROFILER_REPORT_METRIC_FLOAT(name, val) (void)(name); (void) (val)
 
 #else
 

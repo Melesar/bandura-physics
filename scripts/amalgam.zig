@@ -85,7 +85,7 @@ pub fn amalgamate(b: *std.Build) ![]u8 {
     }
 
     try writeBanduraHeader(sources[@intFromEnum(Headers.bandura)], &output, b.allocator);
-    try writeHeaderFile(sources[@intFromEnum(Headers.profiler)], &output, b.allocator);
+    try writeProfilerHeader(sources[@intFromEnum(Headers.profiler)], &output, b.allocator);
     try writeHeaderFile(sources[@intFromEnum(Headers.bnd_core)], &output, b.allocator);
     try writeHeaderFile(sources[@intFromEnum(Headers.bnd_math)], &output, b.allocator);
 
@@ -217,8 +217,10 @@ fn writeBanduraHeader(source: SourceFile, output: *ArrayList, allocator: Allocat
     }
 }
 
-fn writeProfilerHeader(source: SourceFile, writer: *Writer) !void {
+fn writeProfilerHeader(source: SourceFile, output: *ArrayList, allocator: Allocator) !void {
     var lineStart: u64 = 0;
+
+    try fileHeaderStart(output, allocator, "profiler.h");
 
     _ = readLine(&lineStart, source.contents);
     _ = readLine(&lineStart, source.contents);
@@ -235,8 +237,8 @@ fn writeProfilerHeader(source: SourceFile, writer: *Writer) !void {
             continue;
         }
 
-        _ = try writer.write(line);
-        _ = try writer.writeByte('\n');
+        _ = try output.appendSlice(allocator, line);
+        _ = try output.append(allocator, '\n');
     }
 }
 
