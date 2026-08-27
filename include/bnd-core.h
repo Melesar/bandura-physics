@@ -341,6 +341,11 @@ typedef struct {
 } bnd_arena;
 
 typedef struct {
+  bnd_arena *arena;
+  uint64_t offset;
+} bnd_arena_stack_frame;
+
+typedef struct {
   bnd_body_handle src_body_a, src_body_b;
   bnd_body_handle dst_body_a, dst_body_b;
   bnd_result_u32 iterations_count_result;
@@ -391,7 +396,6 @@ struct bnd_world_t {
   events_storage events;
   contacts_cache contacts_cache;
   body_materials materials;
-  epa_polytope epa_polytope;
   collision_matrix matrix;
 
   bnd_arena arena;
@@ -467,6 +471,8 @@ bnd_allocator         bnd_default_allocator(void);
 
 bnd_error             arena_init(bnd_allocator allocator, uint64_t capacity, bnd_arena *arena);
 bnd_result_ptr        arena_alloc(bnd_arena *arena, uint64_t alignment, uint64_t size);
+bnd_arena_stack_frame arena_new_stack_frame(bnd_arena *arena);
+void                  arena_release_stack_frame(bnd_arena_stack_frame frame);
 void                  arena_reset(bnd_arena *arena);
 
 bnd_body_handle       make_body_handle(const bnd_world *world, bnd_body_type type, count_t index);
@@ -532,8 +538,6 @@ bnd_quat              integrate_rotation_midpoint(bnd_quat rotation, bnd_v3 angu
 bool                  gjk_check_intersection(const bnd_world *world, const collision_detection_context *ctx, simplex *simplex);
 
 uint32_t              polytope_memory_size(uint16_t max_nodes);
-bnd_error             epa_init(bnd_world *world);
-void                  epa_teardown(bnd_world *world);
 count_t               epa_get_contact(bnd_world *world, const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact);
 body_support          support(const collision_detection_context *ctx, bnd_v3 direction);
 

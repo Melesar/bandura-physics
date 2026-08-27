@@ -44,7 +44,7 @@ struct {
 
 uint8_t *clay_memory;
 
-void *arena_alloc(uint32_t size) {
+void *ui_arena_alloc(uint32_t size) {
   uint8_t *buffer = custom_arena.memory + custom_arena.pointer;
   custom_arena.pointer += size;
   return buffer;
@@ -86,7 +86,7 @@ static Clay_String clay_from_string(const char *label) {
 static Clay_String clay_icon_string(GuiIconName icon) {
   const char *s = GuiIconText(icon, NULL);
   uint32_t len = strlen(s);
-  char *buffer = arena_alloc(memory_size_aligned(len + 1));
+  char *buffer = ui_arena_alloc(memory_size_aligned(len + 1));
   strncpy(buffer, s, len);
   buffer[len] = 0;
 
@@ -98,7 +98,7 @@ static Clay_String clay_string_concat(const char *a, const char *b) {
   uint32_t len_b = strlen(b);
 
   uint32_t required_length = memory_size_aligned(len_a + len_b + 2);
-  char *s = arena_alloc(required_length);
+  char *s = ui_arena_alloc(required_length);
 
   strncpy(s, a, len_a);
   s[len_a] = '_';
@@ -141,7 +141,7 @@ static bool clay_is_clicked() {
 static char *clay_to_string(Clay_StringSlice slice) {
   uint32_t required_size = memory_size_aligned(slice.length + 1);
 
-  char *string = arena_alloc(required_size);
+  char *string = ui_arena_alloc(required_size);
   strncpy(string, slice.chars, slice.length);
   string[slice.length] = 0;
 
@@ -345,7 +345,7 @@ static void ui_prefix_label(const char *label) {
 }
 
 void ui_label_v3(const char *label, bnd_v3 value) {
-  char *v = arena_alloc(80); // Allocate more to keep the arena 8-bytes aligned
+  char *v = ui_arena_alloc(80); // Allocate more to keep the arena 8-bytes aligned
   snprintf(v, 80, "(%.2f, %.2f, %.2f)", value.x, value.y, value.z);
   Clay_String vs = {.chars = v, .length = strlen(v), .isStaticallyAllocated = false};
 
@@ -358,7 +358,7 @@ void ui_label_bool(const char *label, bool value) {
 }
 
 void ui_label_float(char *label, float value) {
-  char *v = arena_alloc(80);
+  char *v = ui_arena_alloc(80);
   snprintf(v, 80, "%.2f", value);
   Clay_String vs = {.chars = v, .length = strlen(v), .isStaticallyAllocated = false};
 
@@ -368,7 +368,7 @@ void ui_label_float(char *label, float value) {
 void ui_label_string(char *label, char *value) { ui_value_label(label, clay_from_string(value)); }
 
 void ui_label_int(const char *label, uint32_t value) {
-  char *v = arena_alloc(80);
+  char *v = ui_arena_alloc(80);
   snprintf(v, 80, "%d", value);
   Clay_String vs = {.chars = v, .length = strlen(v), .isStaticallyAllocated = false};
 
@@ -387,7 +387,7 @@ void ui_label_matrix(const char *label, bnd_m3 value) {
       for (uint32_t i = 0; i < 3; ++i) {
         CLAY(CLAY_SIDI(clay_string_concat(label, "row"), i + 1), {.layout = {.childGap = 5}}) {
           for (uint32_t j = 0; j < 3; ++j) {
-            char *s = arena_alloc(32);
+            char *s = ui_arena_alloc(32);
             snprintf(s, 32, "%.2f", rows[i][j]);
 
             CLAY_TEXT(clay_from_string(s), {.textColor = clay_element_color(LABEL, TEXT, STATE_NORMAL)});
@@ -493,7 +493,7 @@ bool ui_dropdown(const char *label, char **values, uint32_t values_count, uint32
 }
 
 void ui_value_int(const char *label, int *value, int min_value, int max_value) {
-  custom_element *element = arena_alloc(sizeof(custom_element));
+  custom_element *element = ui_arena_alloc(sizeof(custom_element));
   element->type = ELEMENT_INPUT_INT;
   element->input_int.value = value;
   element->input_int.min_value = min_value;
@@ -518,7 +518,7 @@ void ui_value_int(const char *label, int *value, int min_value, int max_value) {
 }
 
 void ui_value_float(const char *label, float *value, float min_value, float max_value) {
-  custom_element *element = arena_alloc(sizeof(custom_element));
+  custom_element *element = ui_arena_alloc(sizeof(custom_element));
   element->type = ELEMENT_INPUT_FLOAT;
   element->input_float.value = value;
   element->input_float.min_value = min_value;
@@ -544,7 +544,7 @@ void ui_value_float(const char *label, float *value, float min_value, float max_
              .custom = {.customData = element},
          });
 
-    char *value_text = arena_alloc(128);
+    char *value_text = ui_arena_alloc(128);
     snprintf(value_text, 128, "%.2f", *value);
     CLAY_TEXT(clay_from_string(value_text), {
                                                 .textColor = clay_element_color(LABEL, TEXT, STATE_NORMAL),
@@ -568,7 +568,7 @@ void ui_label_stat(const char *label, float value) {
        }) {
     CLAY_TEXT(clay_from_string(label), {.textColor = clay_element_color(LABEL, TEXT, STATE_NORMAL)});
 
-    char *value_text = arena_alloc(16);
+    char *value_text = ui_arena_alloc(16);
     snprintf(value_text, 16, "%d", (int)value);
 
     CLAY_TEXT(clay_from_string(value_text), {.textColor = clay_color_from_ray(LIME)});

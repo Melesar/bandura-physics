@@ -110,7 +110,7 @@ count_t bnd_required_memory(const bnd_config *config) {
       + blocks_count * sizeof(uint64_t);
   }
 
-  count_t polytope_size = polytope_memory_size(config->advanced.epa_max_nodes);
+  count_t arena_size = config->memory.internal_allocation_budget;
 
   count_t cache_hash_table_capacity = 1;
   while (cache_hash_table_capacity < config->advanced.contacts_cache.hash_table_capacity) {
@@ -128,7 +128,7 @@ count_t bnd_required_memory(const bnd_config *config) {
     + config->memory.events_capacity * event_size
     + config->memory.materials_capacity * material_size
     + shapes_size
-    + polytope_size
+    + arena_size
     + contacts_cache_size;
 
   // Alignment
@@ -269,7 +269,6 @@ static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allo
   INVOKE(shapes_init(world))
   INVOKE(meshes_init(world))
   INVOKE(events_init(world))
-  INVOKE(epa_init(world))
   INVOKE(materials_init(world))
 
   world->epa_debug = NULL;
@@ -330,8 +329,8 @@ void bnd_teardown(bnd_world *world) {
   contacts_teardown(world);
   meshes_teardown(world);
   events_teardown(world);
-  epa_teardown(world);
 
+  world->allocator.free(world->arena.buffer, world->arena.capacity);
   world->allocator.free(world->materials.values, sizeof(body_material) * world->materials.capacity);
   world->allocator.free(world, sizeof(bnd_world));
 }
@@ -373,7 +372,22 @@ bnd_result_ptr arena_alloc(bnd_arena *arena, uint64_t alignment, uint64_t size) 
   return BND_RESULT_OK(ptr, value);
 }
 
+static void arena_reset_to(bnd_arena *arena, uint64_t offset) {
+  arena->offset = offset;
+}
+
+bnd_arena_stack_frame arena_new_stack_frame(bnd_arena *arena) {
+  return (bnd_arena_stack_frame) {
+    .offset = arena->offset,
+    .arena = arena,
+  };
+}
+
+void arena_release_stack_frame(bnd_arena_stack_frame frame) {
+  arena_reset_to(frame.arena, frame.offset);
+}
+
 void arena_reset(bnd_arena *arena) {
-  arena->offset = 0;
+  arena_reset_to(arena, 0);
 }
 
