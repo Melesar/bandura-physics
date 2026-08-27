@@ -35,8 +35,12 @@ pub const CompileFlags = struct {
                 try self.flags.appendSlice(self.allocator, &.{ "-g", "-O0", "-DBND_DEBUG" });
             },
 
-            .ReleaseSafe, .ReleaseFast => {
+            .ReleaseSafe => {
                 try self.flags.append(self.allocator, "-O2");
+            },
+
+            .ReleaseFast => {
+                try self.flags.append(self.allocator, "-O3");
             },
 
             .ReleaseSmall => {

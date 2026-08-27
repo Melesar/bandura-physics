@@ -77,10 +77,14 @@ pub fn amalgamate(b: *std.Build) ![]u8 {
         defer set.deinit();
 
         try collectStdIncludes(&set, sources[@intFromEnum(Headers.count)..fileCount], &output, b.allocator);
+
+        try output.appendSlice(b.allocator, "\n#if defined(BND_PROFILING)\n");
+        try collectStdIncludes(&set, sources[@intFromEnum(Headers.profiler)..(@intFromEnum(Headers.profiler) + 1)], &output, b.allocator);
+        try output.appendSlice(b.allocator, "#endif\n");
     }
 
     try writeBanduraHeader(sources[@intFromEnum(Headers.bandura)], &output, b.allocator);
-    try writeProfilerHeader(sources[@intFromEnum(Headers.profiler)], &output, b.allocator);
+    try writeHeaderFile(sources[@intFromEnum(Headers.profiler)], &output, b.allocator);
     try writeHeaderFile(sources[@intFromEnum(Headers.bnd_core)], &output, b.allocator);
     try writeHeaderFile(sources[@intFromEnum(Headers.bnd_math)], &output, b.allocator);
 
