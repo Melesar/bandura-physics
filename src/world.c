@@ -1090,8 +1090,9 @@ void bnd_simulate(bnd_world *world, float dt) {
   PROFILER_REPORT_METRIC_INT("Dynamic bodies", world->dynamics.count);
   PROFILER_REPORT_METRIC_INT("Static bodies", world->statics.count);
   PROFILER_REPORT_METRIC_INT("Total bodies", world->dynamics.count + world->statics.count);
-  PROFILER_REPORT_METRIC_INT("Max epa nodes", world->stats.max_epa_nodes);
-  PROFILER_REPORT_METRIC_INT("Max internal buffer size", world->stats.max_internal_buffer_size);
+  PROFILER_REPORT_METRIC_INT("Contacts count", world->contacts.count);
+  PROFILER_REPORT_METRIC_INT("EPA nodes", world->stats.used_epa_nodes);
+  PROFILER_REPORT_METRIC_INT("Max internal buffer size", world->arena.max_offset);
   PROFILER_REPORT_METRIC_INT("Internal buffer capacity", world->arena.capacity);
 }
 

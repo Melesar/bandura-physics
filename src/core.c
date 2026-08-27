@@ -207,7 +207,7 @@ bnd_config bnd_default_config(void) {
     .advanced = {
       .max_gjk_iterations = 100,
       .epa_tolerance = 0.01f,
-      .epa_max_nodes = 512,
+      .epa_max_nodes = 128,
       .resolution_attempts_factor = 15,
       .penetration_epsilon = 0.01f,
       .velocity_epsilon = 0.01f,
@@ -341,9 +341,11 @@ count_t ephemeral_body_index(const common_data *data) {
 
 bnd_error arena_init(bnd_allocator allocator, uint64_t capacity, bnd_arena *arena) {
   ALLOC_BUFFER1(arena->buffer, capacity);
+
   arena->capacity = capacity;
   arena->allocator = allocator;
   arena->offset = 0;
+  arena->max_offset = 0;
 
   return OK;
 }
@@ -360,14 +362,20 @@ bnd_result_ptr arena_alloc(bnd_arena *arena, uint64_t alignment, uint64_t size) 
       new_capacity <<= 1;
     }
 
-    arena->buffer = arena->allocator.realloc(arena->buffer, 1, arena->capacity, new_capacity);
-    if (arena->buffer == NULL) {
+    uint8_t *buffer = arena->allocator.realloc(arena->buffer, 1, arena->capacity, new_capacity);
+    if (buffer == NULL) {
       return (bnd_result_ptr)  { (bnd_error) { BND_ERROR_OUT_OF_MEMORY, "Allocator.realloc returned null" }, NULL };
     }
+
+    arena->buffer = buffer;
+    arena->capacity = new_capacity;
   }
 
   uint8_t *value = arena->buffer + new_offset;
   arena->offset = new_offset + size;
+  if (arena->offset > arena->max_offset) {
+    arena->max_offset = arena->offset;
+  }
   
   return BND_RESULT_OK(ptr, value);
 }

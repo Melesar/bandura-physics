@@ -336,6 +336,7 @@ typedef struct {
   uint8_t *buffer;
   uint64_t capacity;
   uint64_t offset;
+  uint64_t max_offset;
 
   bnd_allocator allocator;
 } bnd_arena;

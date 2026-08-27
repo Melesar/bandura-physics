@@ -682,10 +682,7 @@ count_t epa_get_contact(bnd_world *world, const collision_detection_context *ctx
   }
 
   finish:
-  if (polytope->node_count > world->stats.max_epa_nodes) {
-    world->stats.max_epa_nodes = polytope->node_count;
-  }
-
+  world->stats.used_epa_nodes = polytope->node_count;
   arena_release_stack_frame(stack_frame);
   PROFILER_FUNCTION_END
   return attempts;
