@@ -286,12 +286,12 @@ typedef struct {
 
 /** Counters collected during simulation. */
 typedef struct {
+  uint64_t max_internal_buffer_size;         /**< Maximum size of the internal memory buffer */
   uint32_t body_count;                       /**< Total body count. */
   uint32_t contacts_count;                   /**< Contacts generated in the latest simulation. */
   uint32_t incomplete_resolutions;           /**< Solver passes that did not converge. */
   uint32_t incomplete_collision_detections;  /**< Collision tests that exceeded their budget. */
   uint32_t world_age;                        /**< Number of completed simulation steps. */
-  uint32_t max_internal_buffer_size;         /**< Maximum size of the internal memory buffer */
   uint16_t used_epa_nodes;                   /**< Nodes used for collision detection */
 } bnd_world_stats;
 
@@ -421,7 +421,7 @@ BNDAPI bool bnd_check_version(int major, int minor, int patch);
 /** Return a configuration populated with the engine's default values. */
 BNDAPI bnd_config bnd_default_config(void);
 /** Return the number of bytes required for a world with @p config. */
-BNDAPI uint32_t bnd_required_memory(const bnd_config *config);
+BNDAPI uint64_t bnd_required_memory(const bnd_config *config);
 
 /** Create a world using the default allocator. */
 BNDAPI bnd_world *bnd_init(bnd_config config);
