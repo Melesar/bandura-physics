@@ -63,10 +63,10 @@ bnd_allocator bnd_default_allocator(void) {
   };
 }
 
-count_t bnd_required_memory(const bnd_config *config) {
-  count_t size = sizeof(bnd_world);
+uint64_t bnd_required_memory(const bnd_config *config) {
+  uint64_t size = sizeof(bnd_world);
 
-  count_t common_size = sizeof(bnd_v3)
+  uint64_t common_size = sizeof(bnd_v3)
     + sizeof(bnd_quat)
     + sizeof(body_shapes)
     + sizeof(bnd_aabb)
@@ -80,7 +80,7 @@ count_t bnd_required_memory(const bnd_config *config) {
     + sizeof(outer_lookup_node)
     + sizeof(count_t);
 
-  count_t dynamic_size = common_size
+  uint64_t dynamic_size = common_size
     + 4 * sizeof(bnd_v3)
     + sizeof(float)
     + 2 * sizeof(bnd_v3)
@@ -89,19 +89,19 @@ count_t bnd_required_memory(const bnd_config *config) {
     + sizeof(bnd_m3)
     + sizeof(float);
 
-  count_t contact_size = sizeof(contact);
-  count_t joint_size = sizeof(bnd_joint) + sizeof(count_t);
-  count_t mesh_size = sizeof(bnd_v3) * DEFAULT_VERTEX_PER_MESH
+  uint64_t contact_size = sizeof(contact);
+  uint64_t joint_size = sizeof(bnd_joint) + sizeof(count_t);
+  uint64_t mesh_size = sizeof(bnd_v3) * DEFAULT_VERTEX_PER_MESH
     + sizeof(uint32_t) * DEFAULT_FACE_PER_MESH * 3
     + sizeof(submesh)
     + sizeof(bnd_mesh)
     + sizeof(bnd_m3)
     + sizeof(float)
     + sizeof(bnd_aabb);
-  count_t material_size = sizeof(body_material);
+  uint64_t material_size = sizeof(body_material);
 
-  count_t event_size = sizeof(bnd_event) + sizeof(count_t);
-  count_t shapes_size = 0;
+  uint64_t event_size = sizeof(bnd_event) + sizeof(count_t);
+  uint64_t shapes_size = 0;
   for (count_t i = 0; i < BRACKET_COUNT; ++i) {
     count_t blocks_count, shapes_count, bracket_capacity;
     shapes_get_bracket_properties(config, i, &blocks_count, &shapes_count, &bracket_capacity);
@@ -110,14 +110,14 @@ count_t bnd_required_memory(const bnd_config *config) {
       + blocks_count * sizeof(uint64_t);
   }
 
-  count_t arena_size = config->memory.internal_allocation_budget;
+  uint64_t arena_size = config->memory.internal_allocation_budget;
 
-  count_t cache_hash_table_capacity = 1;
+  uint64_t cache_hash_table_capacity = 1;
   while (cache_hash_table_capacity < config->advanced.contacts_cache.hash_table_capacity) {
     cache_hash_table_capacity *= 2;
   }
 
-  count_t contacts_cache_size = cache_hash_table_capacity * sizeof(uint32_t)
+  uint64_t contacts_cache_size = cache_hash_table_capacity * sizeof(uint32_t)
     + config->advanced.contacts_cache.buffer_capacity * sizeof(cache_entry);
 
   size += (config->memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT) * dynamic_size
