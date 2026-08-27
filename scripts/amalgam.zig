@@ -54,14 +54,13 @@ pub fn amalgamate(b: *std.Build) ![]u8 {
 
         sources[@intFromEnum(Headers.bandura)] = try readFile(arena, iop, includeDir, "bandura.h");
         sources[@intFromEnum(Headers.bnd_math)] = try readFile(arena, iop, includeDir, "bnd-math.h");
+        sources[@intFromEnum(Headers.bnd_core)] = try readFile(arena, iop, includeDir, "bnd-core.h");
         sources[@intFromEnum(Headers.profiler)] = try readFile(arena, iop, includeDir, "profiler.h");
     }
 
     {
         const srcDir = try cwd.openDir(iop, "src", .{ .iterate = true });
         defer srcDir.close(iop);
-
-        sources[@intFromEnum(Headers.bnd_core)] = try readFile(arena, iop, srcDir, "bnd-core.h");
 
         fileCount += try readSourceFiles(sources[fileCount..MaxFileCount], arena, srcDir, iop);
     }
@@ -79,8 +78,8 @@ pub fn amalgamate(b: *std.Build) ![]u8 {
 
         try collectStdIncludes(&set, sources[@intFromEnum(Headers.count)..fileCount], &output, b.allocator);
 
-        try output.appendSlice(b.allocator, "\n#if defined(BND_PROFILING)\n\n");
-        try collectStdIncludes(&set, sources[@intFromEnum(Headers.profiler) .. @intFromEnum(Headers.profiler) + 1], &output, b.allocator);
+        try output.appendSlice(b.allocator, "\n#if defined(BND_PROFILING)\n");
+        try collectStdIncludes(&set, sources[@intFromEnum(Headers.profiler)..(@intFromEnum(Headers.profiler) + 1)], &output, b.allocator);
         try output.appendSlice(b.allocator, "#endif\n");
     }
 
@@ -217,8 +216,10 @@ fn writeBanduraHeader(source: SourceFile, output: *ArrayList, allocator: Allocat
     }
 }
 
-fn writeProfilerHeader(source: SourceFile, writer: *Writer) !void {
+fn writeProfilerHeader(source: SourceFile, output: *ArrayList, allocator: Allocator) !void {
     var lineStart: u64 = 0;
+
+    try fileHeaderStart(output, allocator, "profiler.h");
 
     _ = readLine(&lineStart, source.contents);
     _ = readLine(&lineStart, source.contents);
@@ -235,8 +236,8 @@ fn writeProfilerHeader(source: SourceFile, writer: *Writer) !void {
             continue;
         }
 
-        _ = try writer.write(line);
-        _ = try writer.writeByte('\n');
+        _ = try output.appendSlice(allocator, line);
+        _ = try output.append(allocator, '\n');
     }
 }
 

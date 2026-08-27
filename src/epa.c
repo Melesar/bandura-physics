@@ -571,28 +571,36 @@ static bool epa_expand_polytope(epa_polytope *polytope, body_support p) {
   return true;
 }
 
-bnd_error epa_init(bnd_world *world) {
-  bnd_allocator allocator = world->allocator;
-  epa_polytope *polytope = &world->epa_polytope;
+static epa_polytope *init_polytope(bnd_world *world, bnd_arena *arena) {
+  uint16_t max_nodes = world->config.advanced.epa_max_nodes;
+  uint64_t nodes_size = (max_nodes + 1) * sizeof(epa_polytope_node);
+  uint64_t flags_size = polytope_flags_size(max_nodes);
+  uint64_t free_list_size = max_nodes * sizeof(uint16_t);
 
+  uint64_t total_polytope_size = sizeof(epa_polytope) + nodes_size + flags_size + free_list_size;
+  bnd_result_ptr result = arena_alloc(arena, 8, total_polytope_size);
+  if (IS_ERROR(result.error)) {
+    return NULL;
+  }
+
+  uint8_t *memory = result.value;
+
+  epa_polytope *polytope = (epa_polytope *)memory;
   memset(polytope, 0, sizeof(epa_polytope));
 
-  uint16_t max_nodes = world->config.advanced.epa_max_nodes;
-  ALLOC_BUFFER8(polytope->nodes, (max_nodes + 1) * sizeof(epa_polytope_node));
-  ALLOC_BUFFER1(polytope->flags, polytope_flags_size(max_nodes));
-  ALLOC_BUFFER2(polytope->free_list, max_nodes * sizeof(uint16_t));
+  memory += sizeof(epa_polytope);
+  polytope->nodes = (epa_polytope_node *)memory;
+
+  memory += nodes_size;
+  polytope->flags = memory;
+
+  memory += flags_size;
+  polytope->free_list = (uint16_t *)memory;
 
   polytope->max_nodes = max_nodes;
   polytope->nearest_distance = FLT_MAX;
 
-  return OK;
-}
-
-void epa_teardown(bnd_world *world) {
-  epa_polytope *polytope = &world->epa_polytope;
-  world->allocator.free(polytope->nodes, (polytope->max_nodes + 1) * sizeof(epa_polytope_node));
-  world->allocator.free(polytope->flags, polytope_flags_size(polytope->max_nodes));
-  world->allocator.free(polytope->free_list, polytope->max_nodes * sizeof(uint16_t));
+  return polytope;
 }
 
 static epa_status epa_run(epa_polytope *polytope, const collision_detection_context *ctx, body_support *support_point, float tolerance) {
@@ -642,16 +650,22 @@ static epa_status epa_run(epa_polytope *polytope, const collision_detection_cont
 count_t epa_get_contact(bnd_world *world, const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact) {
   PROFILER_FUNCTION_START
 
-  epa_polytope *polytope = &world->epa_polytope;
+  count_t attempts = 0;
+  bnd_arena_stack_frame stack_frame = arena_new_stack_frame(&world->arena);
+
+  epa_polytope *polytope = init_polytope(world, stack_frame.arena);
+  if (polytope == NULL) {
+    epa_invalid_contact(simplex->points[0], contact);
+    goto finish;
+  }
+
   body_support support_point = simplex->points[0];
   if (!polytope_from_simplex(polytope, simplex)) {
     epa_invalid_contact(support_point, contact);
-    PROFILER_FUNCTION_END
-    return 0;
+    goto finish;
   }
 
-  count_t attempts = 1;
-  for (; attempts <= EPA_MAX_ATTEMPTS; ++attempts) {
+  for (attempts = 1; attempts <= EPA_MAX_ATTEMPTS; ++attempts) {
     epa_status result = epa_run(polytope, ctx, &support_point, tolerance);
     switch(result) {
       case EPA_STATUS_OK:
@@ -659,16 +673,17 @@ count_t epa_get_contact(bnd_world *world, const collision_detection_context *ctx
 
       case EPA_STATUS_CONVERGED:
         epa_calculate_contact(polytope, contact);
-        PROFILER_FUNCTION_END
-        return attempts;
+        goto finish;
 
       default:
         epa_invalid_contact(support_point, contact);
-        PROFILER_FUNCTION_END
-        return attempts;
+        goto finish;
     }
   }
 
+  finish:
+  world->stats.used_epa_nodes = polytope->node_count;
+  arena_release_stack_frame(stack_frame);
   PROFILER_FUNCTION_END
   return attempts;
 }
@@ -732,25 +747,36 @@ static void epa_debug_render_iteration(const epa_polytope *polytope, body_suppor
 }
 
 bool epa_debug_draw(bnd_world *world, const epa_debug_status *debug_status, bnd_debug_draw_epa_callbacks callbacks, void *user_data) {
-  epa_polytope *polytope = &world->epa_polytope;
+  bnd_arena_stack_frame stack_frame = arena_new_stack_frame(&world->arena);
+
+  epa_polytope *polytope = init_polytope(world, stack_frame.arena);
+  if (polytope == NULL) {
+    arena_release_stack_frame(stack_frame);
+    return false;
+  }
+
   if (!polytope_from_simplex(polytope, &debug_status->s)) {
+    arena_release_stack_frame(stack_frame);
     return false;
   }
 
   body_support support_point = debug_status->s.points[0];
   if (debug_status->target_iteration == 0) {
     epa_debug_render_iteration(polytope, support_point, callbacks, user_data);
+    arena_release_stack_frame(stack_frame);
     return true;
   }
 
   epa_status status = EPA_STATUS_OK;
   for (int iteration = 1; iteration < EPA_MAX_ATTEMPTS; ++iteration) {
     if (iteration > debug_status->target_iteration) {
+      arena_release_stack_frame(stack_frame);
       return false;
     }
 
     status = epa_run(polytope, &debug_status->ctx, &support_point, world->config.advanced.epa_tolerance);
     if (status != EPA_STATUS_OK && status != EPA_STATUS_CONVERGED) {
+      arena_release_stack_frame(stack_frame);
       return false;
     }
 
@@ -759,10 +785,12 @@ bool epa_debug_draw(bnd_world *world, const epa_debug_status *debug_status, bnd_
       body_support next_support = support(&debug_status->ctx, direction);
 
       epa_debug_render_iteration(polytope, next_support, callbacks, user_data);
+      arena_release_stack_frame(stack_frame);
       return true;
     }
   }
 
+  arena_release_stack_frame(stack_frame);
   return false;
 }
 

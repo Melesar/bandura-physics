@@ -110,7 +110,7 @@ count_t bnd_required_memory(const bnd_config *config) {
       + blocks_count * sizeof(uint64_t);
   }
 
-  count_t polytope_size = polytope_memory_size(config->advanced.epa_max_nodes);
+  count_t arena_size = config->memory.internal_allocation_budget;
 
   count_t cache_hash_table_capacity = 1;
   while (cache_hash_table_capacity < config->advanced.contacts_cache.hash_table_capacity) {
@@ -128,7 +128,7 @@ count_t bnd_required_memory(const bnd_config *config) {
     + config->memory.events_capacity * event_size
     + config->memory.materials_capacity * material_size
     + shapes_size
-    + polytope_size
+    + arena_size
     + contacts_cache_size;
 
   // Alignment
@@ -202,11 +202,12 @@ bnd_config bnd_default_config(void) {
       .meshes_capacity = 32,
       .events_capacity = 128,
       .materials_capacity = 8,
+      .internal_allocation_budget = 8 << 10, // 8 Kb
     },
     .advanced = {
       .max_gjk_iterations = 100,
       .epa_tolerance = 0.01f,
-      .epa_max_nodes = 512,
+      .epa_max_nodes = 128,
       .resolution_attempts_factor = 15,
       .penetration_epsilon = 0.01f,
       .velocity_epsilon = 0.01f,
@@ -250,6 +251,8 @@ static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allo
   ALLOC(world->dynamics.inv_intertias, matrices);
   ALLOC(world->dynamics.motion_avgs, floats);
 
+  INVOKE(arena_init(allocator, config.memory.internal_allocation_budget, &world->arena))
+
   world->matrix.matrix[0] = 1;
   for(count_t i = 1; i < MAX_COLLISION_LAYERS; ++i) {
     world->matrix.matrix[i] = 0;
@@ -266,7 +269,6 @@ static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allo
   INVOKE(shapes_init(world))
   INVOKE(meshes_init(world))
   INVOKE(events_init(world))
-  INVOKE(epa_init(world))
   INVOKE(materials_init(world))
 
   world->epa_debug = NULL;
@@ -327,13 +329,73 @@ void bnd_teardown(bnd_world *world) {
   contacts_teardown(world);
   meshes_teardown(world);
   events_teardown(world);
-  epa_teardown(world);
 
+  world->allocator.free(world->arena.buffer, world->arena.capacity);
   world->allocator.free(world->materials.values, sizeof(body_material) * world->materials.capacity);
   world->allocator.free(world, sizeof(bnd_world));
 }
 
 count_t ephemeral_body_index(const common_data *data) {
   return data->capacity;
+}
+
+bnd_error arena_init(bnd_allocator allocator, uint64_t capacity, bnd_arena *arena) {
+  ALLOC_BUFFER1(arena->buffer, capacity);
+
+  arena->capacity = capacity;
+  arena->allocator = allocator;
+  arena->offset = 0;
+  arena->max_offset = 0;
+
+  return OK;
+}
+
+bnd_result_ptr arena_alloc(bnd_arena *arena, uint64_t alignment, uint64_t size) {
+  uint64_t new_offset = AlignTo(arena->offset, alignment);
+  if (new_offset + size > arena->capacity) {
+    if (arena->allocator.realloc == NULL) {
+      return (bnd_result_ptr)  { (bnd_error) { BND_ERROR_NO_SPACE_AVAILABLE, "Internal allocation buffer is full" }, NULL };
+    }
+
+    uint64_t new_capacity = arena->capacity;
+    while(new_offset + size > new_capacity) {
+      new_capacity <<= 1;
+    }
+
+    uint8_t *buffer = arena->allocator.realloc(arena->buffer, 1, arena->capacity, new_capacity);
+    if (buffer == NULL) {
+      return (bnd_result_ptr)  { (bnd_error) { BND_ERROR_OUT_OF_MEMORY, "Allocator.realloc returned null" }, NULL };
+    }
+
+    arena->buffer = buffer;
+    arena->capacity = new_capacity;
+  }
+
+  uint8_t *value = arena->buffer + new_offset;
+  arena->offset = new_offset + size;
+  if (arena->offset > arena->max_offset) {
+    arena->max_offset = arena->offset;
+  }
+  
+  return BND_RESULT_OK(ptr, value);
+}
+
+static void arena_reset_to(bnd_arena *arena, uint64_t offset) {
+  arena->offset = offset;
+}
+
+bnd_arena_stack_frame arena_new_stack_frame(bnd_arena *arena) {
+  return (bnd_arena_stack_frame) {
+    .offset = arena->offset,
+    .arena = arena,
+  };
+}
+
+void arena_release_stack_frame(bnd_arena_stack_frame frame) {
+  arena_reset_to(frame.arena, frame.offset);
+}
+
+void arena_reset(bnd_arena *arena) {
+  arena_reset_to(arena, 0);
 }
 
