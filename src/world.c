@@ -1083,9 +1083,16 @@ void bnd_simulate(bnd_world *world, float dt) {
 
   PROFILER_FUNCTION_END
 
+  if (world->arena.offset > world->stats.max_internal_buffer_size) {
+    world->stats.max_internal_buffer_size = world->arena.offset;
+  }
+
   PROFILER_REPORT_METRIC_INT("Dynamic bodies", world->dynamics.count);
   PROFILER_REPORT_METRIC_INT("Static bodies", world->statics.count);
   PROFILER_REPORT_METRIC_INT("Total bodies", world->dynamics.count + world->statics.count);
+  PROFILER_REPORT_METRIC_INT("Max epa nodes", world->stats.max_epa_nodes);
+  PROFILER_REPORT_METRIC_INT("Max internal buffer size", world->stats.max_internal_buffer_size);
+  PROFILER_REPORT_METRIC_INT("Internal buffer capacity", world->arena.capacity);
 }
 
 bnd_error bnd_put_to_sleep(bnd_world *world, bnd_body_handle handle) {
