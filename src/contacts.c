@@ -195,11 +195,6 @@ void contacts_generate(bnd_world *world) {
   PROFILER_FUNCTION_END
 }
 
-void contacts_reset(bnd_world *world) {
-  world->contacts.count = 0;
-  world->contacts.dynamic_count = 0;
-}
-
 bnd_error contacts_init(bnd_world *world) {
   contacts *contacts = &world->contacts;
   bnd_allocator allocator = world->allocator;
