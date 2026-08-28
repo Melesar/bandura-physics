@@ -236,8 +236,6 @@ static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allo
   const count_t floats = sizeof(float) * (config.memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT);
   const count_t matrices = sizeof(bnd_m3) * (config.memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT);
 
-  world->statics.dirty = false;
-
   ALLOC(world->dynamics.forces, vectors);
   ALLOC(world->dynamics.torques, vectors);
   ALLOC(world->dynamics.impulses, vectors);

@@ -199,6 +199,7 @@ typedef struct {
 typedef enum {
   BODY_FLAG_NONE = 0,
   BODY_FLAG_TRIGGER = 1,
+  BODY_FLAG_DIRTY = 2,
 } body_flags;
 
 #define COMMON_FIELDS                                                                                                  \
@@ -383,8 +384,6 @@ typedef struct {
 
 typedef struct {
   COMMON_FIELDS
-
-  bool dirty;
 }static_bodies;
 
 struct bnd_world_t {
@@ -491,7 +490,7 @@ void                  contacts_reset(bnd_world *world);
 bnd_error             contacts_ensure_capacity(bnd_world *world, count_t contacts_offset, count_t count);
 void                  contacts_filter_largest_surface_area(contact *contacts, count_t contact_count, count_t *selected_indices);
 void                  contacts_generate(bnd_world *world);
-void                  contacts_resolve(bnd_world *world, float dt);
+void                  resolve_constraints(bnd_world *world, float dt);
 
 bnd_error             contacts_cache_init(bnd_world *world);
 cache_entry          *contacts_cache_query(bnd_world *world, contact *contact, bnd_body_type type);

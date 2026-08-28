@@ -15,6 +15,9 @@
 
 #define INVALID_BODY_TYPE ((bnd_result_handle) { .error = (bnd_error) { .type = BND_ERROR_INVALID_BODY_TYPE, .message = "Unknown body type" } })
 
+#define BODY_DIRTY_MASK (0x0101010101010101ULL * (1ULL << BODY_FLAG_DIRTY))
+#define BODY_DIRTY_INV_MASK ~BODY_DIRTY_MASK
+
 #define ASSERT_BODY_DYNAMIC(handle) \
   if (handle.type != BND_BODY_DYNAMIC) { \
     return (bnd_error) { BND_ERROR_BODY_HANDLE_INVALID , "Operation is not valid for static bodies" }; \
@@ -190,6 +193,31 @@ static void clear_forces(bnd_world *world) {
   memset(dynamics->impulses, 0, size);
   memset(dynamics->angular_impulses, 0, size);
   memset(dynamics->accelerations, 0, size);
+}
+
+static void clear_flags(bnd_world *world) {
+  #define chunk_size sizeof(uint64_t)
+
+  common_data *bodies[] = { (common_data *)&world->dynamics, (common_data *)&world->statics };
+  for (count_t k = 0; k < 2; ++k) {
+    common_data *data = bodies[k];
+
+    count_t i = 0;
+    for (; i + chunk_size <= data->count; i += chunk_size) {
+      uint64_t flags;
+      memcpy(&flags, &data->flags[i], chunk_size);
+
+      flags &= BODY_DIRTY_INV_MASK;
+
+      memcpy(&data->flags[i], &flags, chunk_size);
+    }
+
+    for (; i < data->count; ++i) {
+      data->flags[i] &= ~BODY_FLAG_DIRTY;
+    }
+  }
+
+  #undef chunk_size
 }
 
 static void awaken_body(bnd_world *world, count_t index) {
@@ -499,7 +527,6 @@ static bnd_result_handle add_primitive_body_static(bnd_world *world, bnd_body_sh
   data->inner_lookup[index] = outer_index;
 
   world->generation += 1;
-  world->statics.dirty = true;
 
   return BND_RESULT_OK(handle, make_body_handle(world, BND_BODY_STATIC, index));
 }
@@ -575,7 +602,6 @@ bnd_result_handle bnd_add_compound_body_static(bnd_world *world, bnd_body_shape 
   data->inner_lookup[index] = outer_index;
 
   world->generation += 1;
-  world->statics.dirty = true;
 
   return BND_RESULT_OK(handle, make_body_handle(world, BND_BODY_STATIC, index));
 }
@@ -881,6 +907,7 @@ bnd_error bnd_set_position(bnd_world *world, bnd_body_handle handle, bnd_v3 posi
   common_data *data = as_common(world, handle.type);
   count_t index = handle_to_inner_index(world, handle);
   data->positions[index] = position;
+  data->flags[index] |= BODY_FLAG_DIRTY;
 
   return OK;
 }
@@ -891,6 +918,7 @@ bnd_error bnd_set_rotation(bnd_world *world, bnd_body_handle handle, bnd_quat ro
   common_data *data = as_common(world, handle.type);
   count_t index = handle_to_inner_index(world, handle);
   data->rotations[index] = rotation;
+  data->flags[index] |= BODY_FLAG_DIRTY;
 
   return OK;
 }
@@ -994,24 +1022,62 @@ bool bnd_body_next_typed(const bnd_world *world, bnd_body_enumerator_typed *enum
 }
 
 static void update_aabbs(bnd_world *world) {
+  #define chunk_size sizeof(uint64_t)
+
+  count_t i = 0; 
+
   dynamic_bodies *dynamics = &world->dynamics;
-  for (count_t i = 0; i < dynamics->awake_count; ++i) {
+  for (; i < dynamics->awake_count; ++i) {
     calculate_aabb(world, (common_data *) dynamics, i);
   }
 
-  if (!world->statics.dirty) {
-    return;
+  for (i = dynamics->awake_count; i + chunk_size <= dynamics->count; i += chunk_size) {
+    uint64_t flags;
+    memcpy(&flags, &dynamics->flags[i], chunk_size);
+
+    if ((flags & BODY_DIRTY_MASK) == 0) {
+      continue;
+    }
+
+    for (count_t j = 0; j < chunk_size; ++j) {
+      if (dynamics->flags[i + j] & BODY_FLAG_DIRTY) {
+        calculate_aabb(world, (common_data *)dynamics, i + j);
+      }
+    }
   }
 
-  common_data *statics = as_common(world, BND_BODY_STATIC);
-  for (count_t i = 0; i < statics->count; ++i) {
-    calculate_aabb(world, statics, i);
+  for (; i < dynamics->count; ++i) {
+    if (dynamics->flags[i] & BODY_FLAG_DIRTY) {
+      calculate_aabb(world, (common_data *)dynamics, i);
+    }
   }
 
-  world->statics.dirty = false;
+  common_data *statics = (common_data *)&world->statics;
+  for (i = 0; i + chunk_size <= statics->count; i += chunk_size) {
+    uint64_t flags;
+    memcpy(&flags, &statics->flags[i], chunk_size);
+
+    if ((flags & BODY_DIRTY_MASK) == 0) {
+      continue;
+    }
+
+    for (count_t j = 0; j < chunk_size; ++j) {
+      if (statics->flags[i + j] & BODY_FLAG_DIRTY) {
+        calculate_aabb(world, statics, i + j);
+      }
+    }
+  }
+
+  for (; i < statics->count; ++i) {
+    if (statics->flags[i] & BODY_FLAG_DIRTY) {
+      calculate_aabb(world, statics, i);
+    }
+  }
+  
+  #undef chunk_size
 }
 
-static void integrate_bodies(bnd_world *world, float dt) {
+static void integrate_velocities(bnd_world *world, float dt) {
   PROFILER_FUNCTION_START
 
   bnd_v3 gravity_acc = world->config.simulation.gravity;
@@ -1032,9 +1098,6 @@ static void integrate_bodies(bnd_world *world, float dt) {
     velocity = bnd_v3_add(velocity, impulse);
     velocity = bnd_v3_scale(velocity, linear_damping);
 
-    bnd_quat rotation = dynamics->rotations[i];
-    bnd_m3 base_inv_inertia = dynamics->inv_inertia_tensors[i];
-
     bnd_v3 momentum_delta = bnd_v3_scale(dynamics->torques[i], dt);
     momentum_delta = bnd_v3_add(momentum_delta, dynamics->angular_impulses[i]);
 
@@ -1042,31 +1105,47 @@ static void integrate_bodies(bnd_world *world, float dt) {
     angular_momentum = bnd_v3_add(angular_momentum, momentum_delta);
     angular_momentum = bnd_v3_scale(angular_momentum, angular_damping);
 
-    rotation = integrate_rotation_midpoint(rotation, angular_momentum, base_inv_inertia, dt);
-
     dynamics->accelerations[i] = acceleration;
     dynamics->velocities[i] = velocity;
     dynamics->angular_momenta[i] = angular_momentum;
-    dynamics->inv_intertias[i] = bnd_m3_inertia(base_inv_inertia, rotation);
-    dynamics->rotations[i] = rotation;
-    dynamics->positions[i] = bnd_v3_add(dynamics->positions[i], bnd_v3_scale(velocity, dt));
   }
 
   PROFILER_FUNCTION_END
-
 }
+
+static void integrate_positions(bnd_world *world, float dt) {
+  PROFILER_FUNCTION_START
+
+  dynamic_bodies *dynamics = &world->dynamics;
+  for (count_t i = 0; i < dynamics->awake_count; ++i) {
+    bnd_v3 velocity = dynamics->velocities[i];
+    bnd_v3 position = dynamics->positions[i];
+    bnd_quat rotation = dynamics->rotations[i];
+
+    bnd_m3 base_inv_inertia = dynamics->inv_inertia_tensors[i];
+    bnd_v3 angular_momentum = dynamics->angular_momenta[i];
+
+    rotation = integrate_rotation_midpoint(rotation, angular_momentum, base_inv_inertia, dt);
+    position = bnd_v3_add(position, bnd_v3_scale(velocity, dt));
+
+    dynamics->inv_intertias[i] = bnd_m3_inertia(base_inv_inertia, rotation);
+    dynamics->rotations[i] = rotation;
+    dynamics->positions[i] = position;
+  }
+
+  PROFILER_FUNCTION_END
+}
+
 
 void bnd_simulate(bnd_world *world, float dt) {
   PROFILER_FUNCTION_START
 
+  world->age += 1;
   world->stats.body_count = world->dynamics.count + world->statics.count;
   world->stats.world_age = world->age;
 
   arena_reset(&world->arena);
-
-  // TODO before changing the order of integration and collision detection,
-  // revisit aabb generation.
-  integrate_bodies(world, dt);
+  integrate_velocities(world, dt);
   update_aabbs(world);
   contacts_reset(world);
   events_reset(world);
@@ -1074,18 +1153,18 @@ void bnd_simulate(bnd_world *world, float dt) {
   epa_debug_capture(world);
 #endif
   contacts_generate(world);
-  contacts_resolve(world, dt);
+  resolve_constraints(world, dt);
+  integrate_positions(world, dt);
   update_awake_statuses(world, dt);
+  clear_flags(world);
   clear_forces(world);
   contacts_cache_prune(world);
-
-  world->age += 1;
-
-  PROFILER_FUNCTION_END
 
   if (world->arena.offset > world->stats.max_internal_buffer_size) {
     world->stats.max_internal_buffer_size = world->arena.offset;
   }
+
+  PROFILER_FUNCTION_END
 
   PROFILER_REPORT_METRIC_INT("Dynamic bodies", world->dynamics.count);
   PROFILER_REPORT_METRIC_INT("Static bodies", world->statics.count);
