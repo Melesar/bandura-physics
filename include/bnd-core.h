@@ -74,6 +74,23 @@ typedef struct {
 
 typedef struct {
   bnd_v3 point;
+  float depth;
+} contact_point;
+
+typedef struct {
+  count_t count;
+  bnd_v3 normal;
+  contact_point points[MAX_CONTACTS_PER_PAIR];
+} contact_manifold;
+
+typedef struct {
+  count_t outer_index_a, outer_index_b;
+  float friction, restitution;
+  contact_manifold manifold;
+} broad_phase_contact;
+
+typedef struct {
+  bnd_v3 point;
   bnd_v3 normal;
   float depth;
   count_t index_a, index_b;
@@ -131,12 +148,18 @@ typedef struct {
 } contacts_cache;
 
 typedef struct {
-  contact *values;
+  count_t *hash_table;
+  broad_phase_contact *broad_contacts;
 
-  count_t capacity;
-  count_t count;
+  count_t hash_table_capacity;
+  count_t broad_contacts_capacity;
 
   count_t dynamic_count;
+
+  // Obsolete
+  contact *values;
+  count_t capacity;
+  count_t count;
 } contacts;
 
 typedef struct {
@@ -495,6 +518,10 @@ bnd_error             contacts_cache_init(bnd_world *world);
 cache_entry          *contacts_cache_query(bnd_world *world, contact *contact, bnd_body_type type);
 void                  contacts_cache_prune(bnd_world *world);
 void                  contacts_cache_reset(bnd_world *world);
+
+uint64_t              hash_table_get_key(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b, bnd_body_type type);
+
+void                  run_broad_phase(bnd_world *world);
 
 void                  collision_detection_init(void);
 count_t               collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_type type);

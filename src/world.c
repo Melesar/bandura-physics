@@ -1148,6 +1148,7 @@ void bnd_simulate(bnd_world *world, float dt) {
   integrate_velocities(world, dt);
   update_aabbs(world);
   events_reset(world);
+  run_broad_phase(world);
 #if defined(BND_DEBUG)
   epa_debug_capture(world);
 #endif

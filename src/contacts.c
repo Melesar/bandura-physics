@@ -264,14 +264,11 @@ bnd_error contacts_cache_init(bnd_world *world) {
   return OK;
 }
 
-cache_entry *contacts_cache_query(bnd_world *world, contact *contact, bnd_body_type type) {
-  const common_data *data_a = as_common_const(world, BND_BODY_DYNAMIC);
-  const common_data *data_b = as_common_const(world, type);
-
-  uint64_t index_a = data_a->inner_lookup[contact->index_a];
-  uint64_t index_b = data_b->inner_lookup[contact->index_b];
-  uint64_t gen_a = data_a->generations[index_a];
-  uint64_t gen_b = data_b->generations[index_b];
+uint64_t hash_table_get_key(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b, bnd_body_type type) {
+  uint64_t outer_index_a = data_a->inner_lookup[index_a];
+  uint64_t outer_index_b = data_b->inner_lookup[index_b];
+  uint64_t gen_a = data_a->generations[outer_index_a];
+  uint64_t gen_b = data_b->generations[outer_index_b];
 
   // Features are stored in A and B's local spaces, so the cache key must retain their order.
   const uint64_t mask_23bit = 0x7FFFFF;
@@ -281,7 +278,15 @@ cache_entry *contacts_cache_query(bnd_world *world, contact *contact, bnd_body_t
   key |= (index_a & mask_23bit) << 31;
   key |= gen_b << 23;
   key |= index_b & mask_23bit;
+  
+  return key;
+}
 
+cache_entry *contacts_cache_query(bnd_world *world, contact *contact, bnd_body_type type) {
+  const common_data *data_a = as_common_const(world, BND_BODY_DYNAMIC);
+  const common_data *data_b = as_common_const(world, type);
+
+  uint64_t key = hash_table_get_key(data_a, data_b, contact->index_a, contact->index_b, type);
   bnd_result_u32 index = cache_table_insert(world, key);
   if (index.error.type != BND_OK) {
     return NULL;

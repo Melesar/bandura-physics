@@ -877,3 +877,21 @@ void collision_detection_init(void) {
   collision_detection_table[BND_CAPSULE][BND_PLANE] = (collision_detection_entry) { capsule_plane_collision, true, false };
   collision_detection_table[BND_MESH][BND_PLANE] = (collision_detection_entry) { mesh_plane_collision, true, false };
 }
+
+void run_broad_phase(bnd_world *world) {
+  common_data *dynamics = (common_data *)&world->dynamics;
+  common_data *statics  = (common_data *)&world->statics;
+
+  for (count_t i = 0; i < dynamics->count; ++i) {
+    for (count_t j = 0; j < i; j++) {
+      bnd_collision_mask validation_mask = layer_to_mask(dynamics->collision_layers[i]);
+      bnd_collision_mask reference_mask = world->matrix.matrix[dynamics->collision_layers[j]];
+
+      if ((reference_mask & validation_mask) == 0) {
+        continue;
+      }
+
+      bool potential_overlap = aabb_intersect(dynamics, dynamics, i, j);
+    }
+  }
+}
