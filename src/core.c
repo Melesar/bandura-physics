@@ -63,6 +63,31 @@ bnd_allocator bnd_default_allocator(void) {
   };
 }
 
+bnd_error resize_if_needed(bnd_allocator allocator, void **array, count_t element_size, uint64_t alignment, count_t count, count_t additional_count, count_t *capacity) {
+  if (count + additional_count <= *capacity) {
+    return OK;
+  }
+
+  if (allocator.realloc == NULL) {
+    return (bnd_error) { BND_ERROR_NO_SPACE_AVAILABLE, "Allocator.realloc is NULL" };
+  }
+
+  count_t new_capacity = *capacity;
+  while(new_capacity < count + additional_count) {
+    new_capacity <<= 1;
+  }
+
+  void *new_buffer = allocator.realloc(*array, alignment, *capacity * element_size, new_capacity * element_size);
+  if (new_buffer == NULL) {
+    return (bnd_error) { BND_ERROR_OUT_OF_MEMORY, "Failed to reallocate memory" };
+  }
+
+  *array = new_buffer;
+  *capacity = new_capacity;
+
+  return OK;
+}
+
 uint64_t bnd_required_memory(const bnd_config *config) {
   uint64_t size = sizeof(bnd_world);
 

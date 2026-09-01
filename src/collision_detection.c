@@ -879,11 +879,24 @@ void collision_detection_init(void) {
 }
 
 void run_broad_phase(bnd_world *world) {
+  contacts *contacts = &world->contacts;
   common_data *dynamics = (common_data *)&world->dynamics;
   common_data *statics  = (common_data *)&world->statics;
 
+  collision_detection_context ctx = { .world = world };
+  bnd_arena_stack_frame stack_frame = arena_new_stack_frame(&world->arena);
+
+  count_t new_contacts_count = 0;
+  broad_phase_contact *new_contacts_buffer = (broad_phase_contact *)&stack_frame.arena->buffer[AlignTo(world->arena.offset, ALIGNMENT_BROAD_CONTACT)];
+
   for (count_t i = 0; i < dynamics->count; ++i) {
     for (count_t j = 0; j < i; j++) {
+      ctx.data_a = dynamics;
+      ctx.data_b = dynamics;
+
+      ctx.body_a = i;
+      ctx.body_b = j;
+
       bnd_collision_mask validation_mask = layer_to_mask(dynamics->collision_layers[i]);
       bnd_collision_mask reference_mask = world->matrix.matrix[dynamics->collision_layers[j]];
 
@@ -892,6 +905,55 @@ void run_broad_phase(bnd_world *world) {
       }
 
       bool potential_overlap = aabb_intersect(dynamics, dynamics, i, j);
+
+      uint64_t key = hash_table_create_key(dynamics, dynamics, i, j, BND_BODY_DYNAMIC);
+      bool contact_exists = hash_table_has_key(&contacts->table, key);
+
+      if (potential_overlap) {
+        if (!contact_exists) {
+          bnd_result_ptr allocation = arena_alloc(stack_frame.arena, ALIGNMENT_BROAD_CONTACT, sizeof(broad_phase_contact));
+          if (IS_ERROR(allocation.error)) {
+            arena_release_stack_frame(stack_frame);
+            return;
+          }
+
+          broad_phase_contact *new_contact = allocation.value;
+          new_contact->key = key;
+          new_contact->outer_index_a = dynamics->inner_lookup[i];
+          new_contact->outer_index_b = dynamics->inner_lookup[j];
+          new_contact->status = CONTACT_NONE;
+          new_contact->friction = mix_friction(&ctx);
+          new_contact->restitution = mix_restitution(&ctx);
+          
+          new_contacts_count += 1;
+        }
+      } else {
+        if (contact_exists) {
+          count_t value_index = hash_table_remove(&contacts->table, key);
+          broad_phase_contact replacement = contacts->dynamic_broad_contacts[contacts->dynamic_count];
+          
+          hash_table_update(&contacts->table, replacement.key, value_index);
+          contacts->dynamic_broad_contacts[value_index] = replacement;
+          contacts->dynamic_count -= 1; 
+        }
+      }
     }
   }
+
+  if (new_contacts_count > 0) {
+    if (IS_ERROR(resize_if_needed(world->allocator, (void **)&contacts->dynamic_broad_contacts, sizeof(broad_phase_contact), ALIGNMENT_BROAD_CONTACT, contacts->dynamic_count, new_contacts_count, &contacts->dynamic_capacity))) {
+      arena_release_stack_frame(stack_frame);
+      return;
+    }
+
+    memcpy(contacts->dynamic_broad_contacts + contacts->dynamic_count + 1, new_contacts_buffer, new_contacts_count * sizeof(broad_phase_contact));
+
+    for (count_t i = 0; i < new_contacts_count; ++i) {
+      hash_table_insert(&contacts->table, new_contacts_buffer[i].key, contacts->dynamic_count + 1 + i);
+    }
+    
+    contacts->dynamic_count += new_contacts_count;
+  }
+
+  arena_release_stack_frame(stack_frame);
 }

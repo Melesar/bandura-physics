@@ -11,6 +11,9 @@
 #define MAX_CONTACTS_PER_PAIR 4
 #define MAX_COLLISION_LAYERS 64
 
+#define HASH_TABLE_TOMBSTONE UINT64_MAX
+#define HASH_TABLE_EMPTY 0
+
 #define OK (bnd_error){BND_OK, NULL}
 #define OOM_ERROR (bnd_error){BND_ERROR_OUT_OF_MEMORY, "Allocator.malloc failed to allocate memory"}
 
@@ -67,6 +70,13 @@
 
 typedef uint32_t count_t;
 
+typedef enum {
+  CONTACT_NONE,
+  CONTACT_BEGAN_TOUCHING,
+  CONTACT_TOUCHING,
+  CONTACT_FINISHED_TOUCHING,
+} broad_contact_status;
+
 typedef struct {
   bnd_v3 witness_a, witness_b;
   bnd_v3 normal;
@@ -84,8 +94,10 @@ typedef struct {
 } contact_manifold;
 
 typedef struct {
+  uint64_t key;
   count_t outer_index_a, outer_index_b;
   float friction, restitution;
+  broad_contact_status status;
   contact_manifold manifold;
 } broad_phase_contact;
 
@@ -148,13 +160,20 @@ typedef struct {
 } contacts_cache;
 
 typedef struct {
-  count_t *hash_table;
-  broad_phase_contact *broad_contacts;
+  uint64_t *keys;
+  count_t  *values;
 
-  count_t hash_table_capacity;
-  count_t broad_contacts_capacity;
+  count_t capacity;
+  count_t entry_count;
+} hash_table;
 
-  count_t dynamic_count;
+typedef struct {
+  hash_table table;
+  broad_phase_contact *dynamic_broad_contacts;
+  broad_phase_contact *static_broad_contacts;
+
+  count_t dynamic_count, dynamic_capacity;
+  count_t static_count, static_capacity;
 
   // Obsolete
   contact *values;
@@ -220,10 +239,22 @@ typedef struct {
 } collision_matrix;
 
 typedef enum {
+  HASH_TABLE_SLOT_EMPTY,
+  HASH_TABLE_SLOT_TAKEN,
+  HASH_TABLE_SLOT_UNAVAILABLE,
+} hash_table_slot_status;
+
+typedef enum {
+  ALIGNMENT_BROAD_CONTACT = 8,
+  ALIGNMENT_BODY_MATERIAL = 4,
+} common_alignments;
+
+typedef enum {
   BODY_FLAG_NONE = 0,
   BODY_FLAG_TRIGGER = 1,
   BODY_FLAG_DIRTY = 2,
 } body_flags;
+
 
 #define COMMON_FIELDS                                                                                                  \
   count_t capacity;                                                                                                    \
@@ -492,6 +523,8 @@ typedef support_point (*support_func)(const shape_context *, bnd_v3);
 
 bnd_allocator         bnd_default_allocator(void);
 
+bnd_error             resize_if_needed(bnd_allocator allocator, void **array, count_t element_size, uint64_t alignment, count_t count, count_t additional_count, count_t *capacity);
+
 bnd_error             arena_init(bnd_allocator allocator, uint64_t capacity, bnd_arena *arena);
 bnd_result_ptr        arena_alloc(bnd_arena *arena, uint64_t alignment, uint64_t size);
 bnd_arena_stack_frame arena_new_stack_frame(bnd_arena *arena);
@@ -519,7 +552,11 @@ cache_entry          *contacts_cache_query(bnd_world *world, contact *contact, b
 void                  contacts_cache_prune(bnd_world *world);
 void                  contacts_cache_reset(bnd_world *world);
 
-uint64_t              hash_table_get_key(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b, bnd_body_type type);
+uint64_t              hash_table_create_key(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b, bnd_body_type type);
+bool                  hash_table_has_key(const hash_table *table, uint64_t key);
+count_t               hash_table_remove(hash_table *table, uint64_t key);
+bool                  hash_table_update(hash_table *table, uint64_t key, count_t new_value);
+bool                  hash_table_insert(hash_table *table, uint64_t key, count_t value);
 
 void                  run_broad_phase(bnd_world *world);
 

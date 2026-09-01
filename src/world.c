@@ -1152,13 +1152,11 @@ void bnd_simulate(bnd_world *world, float dt) {
 #if defined(BND_DEBUG)
   epa_debug_capture(world);
 #endif
-  contacts_generate(world);
   resolve_constraints(world, dt);
   integrate_positions(world, dt);
   update_awake_statuses(world, dt);
   clear_flags(world);
   clear_forces(world);
-  contacts_cache_prune(world);
 
   if (world->arena.offset > world->stats.max_internal_buffer_size) {
     world->stats.max_internal_buffer_size = world->arena.offset;
@@ -1437,21 +1435,8 @@ bnd_material_handle  bnd_default_material(void) {
 
 bnd_result_material bnd_create_material(bnd_world *world, float bounciness, float friction) {
   count_t count = world->materials.count;
-  count_t capacity = world->materials.capacity;
-  body_material *values = world->materials.values;
 
-  if (count >= capacity) {
-    if (world->allocator.realloc == NULL) {
-      return (bnd_result_material) { { .type = BND_ERROR_NO_SPACE_AVAILABLE, "Failed to realloc materials buffer. Re-alloc function not provided" }, 0 };
-    }
-
-    count_t new_capacity = capacity << 1;
-    world->materials.values = world->allocator.realloc(values, 4, sizeof(body_material) * capacity, sizeof(body_material) * new_capacity);
-    if (world->materials.values == NULL) {
-      return (bnd_result_material) { { .type = BND_ERROR_NO_SPACE_AVAILABLE, "Failed to realloc materials buffer. Re-alloc function returned null" }, 0 };
-    }
-    world->materials.capacity = new_capacity;
-  }
+  PROPAGATE_RESULT(material, resize_if_needed(world->allocator, (void **)&world->materials.values, sizeof(body_material), ALIGNMENT_BODY_MATERIAL, count, 1, &world->materials.capacity))
 
   bnd_material_handle handle = world->materials.count++;
   body_material *material = &world->materials.values[handle];

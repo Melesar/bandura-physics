@@ -7,8 +7,6 @@
 #include <math.h>
 #include <stdbool.h>
 
-#define HASH_TABLE_TOMBSTONE UINT32_MAX
-#define HASH_TABLE_EMPTY 0
 
 typedef enum {
   SLOT_EMPTY      = 1,
@@ -78,7 +76,7 @@ static bnd_result_u32 cache_table_find_slot(bnd_world *world, uint64_t key, hash
       return BND_RESULT_ERR(u32, BND_ERROR_NOT_FOUND, "");
     }
 
-    if (index == HASH_TABLE_TOMBSTONE) {
+    if (index == (count_t) HASH_TABLE_TOMBSTONE) {
       if (search_empty && search_same_key) {
         if (first_tombstone < 0) {
           first_tombstone = i;
@@ -151,7 +149,7 @@ static bnd_result_u32 cache_table_insert(bnd_world *world, uint64_t key) {
 
   cache_entry *entry;
   count_t entry_index = cache->hash_table[hash_table_slot.value];
-  if (entry_index == HASH_TABLE_EMPTY || entry_index == HASH_TABLE_TOMBSTONE) {
+  if (entry_index == HASH_TABLE_EMPTY || entry_index == (count_t)HASH_TABLE_TOMBSTONE) {
     entry_index = ++cache->entry_count; // Prefix-increment because we want to skip 0 index
 
     entry = &cache->entries[entry_index];
@@ -264,7 +262,7 @@ bnd_error contacts_cache_init(bnd_world *world) {
   return OK;
 }
 
-uint64_t hash_table_get_key(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b, bnd_body_type type) {
+uint64_t hash_table_create_key(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b, bnd_body_type type) {
   uint64_t outer_index_a = data_a->inner_lookup[index_a];
   uint64_t outer_index_b = data_b->inner_lookup[index_b];
   uint64_t gen_a = data_a->generations[outer_index_a];
@@ -282,11 +280,122 @@ uint64_t hash_table_get_key(const common_data *data_a, const common_data *data_b
   return key;
 }
 
+bool hash_table_has_key(const hash_table *table, uint64_t key) {
+  uint64_t hash = cache_key_hash(key);
+  count_t bucket_index = hash & (table->capacity - 1);
+
+  count_t i = bucket_index;
+  do {
+    uint64_t stored_key = table->keys[i];
+    if (stored_key == key) {
+      return true;
+    }
+
+    if (stored_key == HASH_TABLE_EMPTY) {
+      return false;
+    }
+
+    i = (i + 1) & (table->capacity - 1);
+  } while (i != bucket_index);
+
+  return false;
+}
+
+static bool hash_table_find_slot(const hash_table *table, uint64_t key, hash_table_slot_flags flags, count_t *slot) {
+  uint64_t hash = cache_key_hash(key);
+  count_t hash_table_index = hash & (table->capacity - 1);
+
+  bool search_empty = flags & SLOT_EMPTY;
+  bool search_same_key = flags & SLOT_SAME_KEY;
+  int32_t first_tombstone = -1;
+
+  count_t i = hash_table_index;
+  do {
+    uint64_t stored_key = table->keys[i];
+
+    if (search_same_key && stored_key == key) {
+      *slot = i;
+      return true;
+    }
+
+    if (stored_key == HASH_TABLE_EMPTY) {
+      if (search_same_key && search_empty && first_tombstone >= 0) {
+        *slot = (count_t) first_tombstone;
+        return true;
+      }
+
+      if (search_empty) {
+        *slot = i;
+        return true;
+      }
+
+      return false;
+    }
+
+    if (stored_key == HASH_TABLE_TOMBSTONE) {
+      if (search_empty && search_same_key) {
+        if (first_tombstone < 0) {
+          first_tombstone = i;
+        }
+      } else if (search_empty) {
+        *slot = i;
+        return true;
+      }
+    }
+
+
+    i = (i + 1) & (table->capacity - 1);
+  } while(i != hash_table_index);
+
+  if (search_same_key && search_empty && first_tombstone >= 0) {
+    *slot = (count_t) first_tombstone;
+    return true;
+  }
+
+  return false;
+}
+
+count_t hash_table_remove(hash_table *table, uint64_t key) {
+  count_t slot;
+  if (hash_table_find_slot(table, key, SLOT_SAME_KEY, &slot)) {
+    table->keys[slot] = HASH_TABLE_TOMBSTONE;
+    table->entry_count -= 1;
+
+    return table->values[slot];
+  }
+
+  return 0;
+}
+
+bool hash_table_update(hash_table *table, uint64_t key, count_t new_value) {
+  count_t slot;
+  if (hash_table_find_slot(table, key, SLOT_SAME_KEY, &slot)) {
+    table->values[slot] = new_value;
+    return true;
+  }
+
+  return false;
+}
+
+bool hash_table_insert(hash_table *table, uint64_t key, count_t value) {
+  count_t slot;
+  if (hash_table_find_slot(table, key, SLOT_EMPTY, &slot)) {
+    table->keys[slot] = key;
+    table->values[slot] = value;
+    table->entry_count += 1;
+    return true;
+  } else {
+    // TODO resize
+  }
+
+  return false;
+}
+
 cache_entry *contacts_cache_query(bnd_world *world, contact *contact, bnd_body_type type) {
   const common_data *data_a = as_common_const(world, BND_BODY_DYNAMIC);
   const common_data *data_b = as_common_const(world, type);
 
-  uint64_t key = hash_table_get_key(data_a, data_b, contact->index_a, contact->index_b, type);
+  uint64_t key = hash_table_create_key(data_a, data_b, contact->index_a, contact->index_b, type);
   bnd_result_u32 index = cache_table_insert(world, key);
   if (index.error.type != BND_OK) {
     return NULL;
