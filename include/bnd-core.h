@@ -168,10 +168,13 @@ typedef struct {
 } hash_table;
 
 typedef struct {
-  hash_table table;
+  uint64_t *keys;
+  count_t  *indices;
+
   broad_phase_contact *dynamic_broad_contacts;
   broad_phase_contact *static_broad_contacts;
 
+  count_t hash_table_capacity;
   count_t dynamic_count, dynamic_capacity;
   count_t static_count, static_capacity;
 
@@ -553,12 +556,11 @@ void                  contacts_cache_prune(bnd_world *world);
 void                  contacts_cache_reset(bnd_world *world);
 
 uint64_t              hash_table_create_key(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b, bnd_body_type type);
-bool                  hash_table_has_key(const hash_table *table, uint64_t key);
-count_t               hash_table_remove(hash_table *table, uint64_t key);
-bool                  hash_table_update(hash_table *table, uint64_t key, count_t new_value);
-bool                  hash_table_insert(hash_table *table, uint64_t key, count_t value);
+bool                  hash_table_find_slot_for_key(const contacts *contacts, uint64_t key, count_t *slot);
+bool                  hash_table_find_empty_slot(const contacts *contacts, uint64_t key, count_t *slot);
+bnd_error             hash_table_resize_if_needed(bnd_world *world, count_t additional_count);
 
-void                  run_broad_phase(bnd_world *world);
+bnd_error             run_broad_phase(bnd_world *world);
 
 void                  collision_detection_init(void);
 count_t               collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_type type);

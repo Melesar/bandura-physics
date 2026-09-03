@@ -688,6 +688,7 @@ bnd_error bnd_remove_body(bnd_world *world, bnd_body_handle handle) {
 
   data->count -= 1;
 
+  // TODO remove broad phase contact with this body.
   joints_remove_stale_if_needed(world, handle);
 
   outer_lookup_node *outer_node = &data->outer_lookup[handle.index];
@@ -968,6 +969,8 @@ bnd_error bnd_set_collision_layer(bnd_world *world, bnd_body_handle handle, bnd_
 
   data->collision_layers[index] = layer;
 
+  // TODO check for stale broad phase contacts and remove them.
+
   return OK;
 }
 
@@ -1148,7 +1151,7 @@ void bnd_simulate(bnd_world *world, float dt) {
   integrate_velocities(world, dt);
   update_aabbs(world);
   events_reset(world);
-  run_broad_phase(world);
+  run_broad_phase(world); // Check for error
 #if defined(BND_DEBUG)
   epa_debug_capture(world);
 #endif

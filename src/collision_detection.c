@@ -8,6 +8,7 @@
 #include <math.h>
 #include <stdbool.h>
 #include <string.h>
+#include <assert.h>
 
 #define PROFILING_BLOCK_NAME "Contacts cache"
 
@@ -878,7 +879,7 @@ void collision_detection_init(void) {
   collision_detection_table[BND_MESH][BND_PLANE] = (collision_detection_entry) { mesh_plane_collision, true, false };
 }
 
-void run_broad_phase(bnd_world *world) {
+bnd_error run_broad_phase(bnd_world *world) {
   contacts *contacts = &world->contacts;
   common_data *dynamics = (common_data *)&world->dynamics;
   common_data *statics  = (common_data *)&world->statics;
@@ -906,15 +907,16 @@ void run_broad_phase(bnd_world *world) {
 
       bool potential_overlap = aabb_intersect(dynamics, dynamics, i, j);
 
+      count_t slot;
       uint64_t key = hash_table_create_key(dynamics, dynamics, i, j, BND_BODY_DYNAMIC);
-      bool contact_exists = hash_table_has_key(&contacts->table, key);
+      bool contact_exists = hash_table_find_slot_for_key(contacts, key, &slot);
 
       if (potential_overlap) {
         if (!contact_exists) {
           bnd_result_ptr allocation = arena_alloc(stack_frame.arena, ALIGNMENT_BROAD_CONTACT, sizeof(broad_phase_contact));
-          if (IS_ERROR(allocation.error)) {
+          if (allocation.error.type != BND_OK) {
             arena_release_stack_frame(stack_frame);
-            return;
+            return allocation.error;
           }
 
           broad_phase_contact *new_contact = allocation.value;
@@ -929,11 +931,21 @@ void run_broad_phase(bnd_world *world) {
         }
       } else {
         if (contact_exists) {
-          count_t value_index = hash_table_remove(&contacts->table, key);
-          broad_phase_contact replacement = contacts->dynamic_broad_contacts[contacts->dynamic_count];
+          count_t removed_index = contacts->indices[slot];
+          contacts->keys[slot] = HASH_TABLE_TOMBSTONE;
+
+          if (removed_index != contacts->dynamic_count) {
+            broad_phase_contact replacement = contacts->dynamic_broad_contacts[contacts->dynamic_count];
           
-          hash_table_update(&contacts->table, replacement.key, value_index);
-          contacts->dynamic_broad_contacts[value_index] = replacement;
+            count_t moved_slot;
+            if (hash_table_find_slot_for_key(contacts, replacement.key, &moved_slot)) {
+              contacts->indices[moved_slot] = removed_index;
+            } else {
+              assert(false);
+            }
+            contacts->dynamic_broad_contacts[removed_index] = replacement;
+          }
+
           contacts->dynamic_count -= 1; 
         }
       }
@@ -941,19 +953,33 @@ void run_broad_phase(bnd_world *world) {
   }
 
   if (new_contacts_count > 0) {
-    if (IS_ERROR(resize_if_needed(world->allocator, (void **)&contacts->dynamic_broad_contacts, sizeof(broad_phase_contact), ALIGNMENT_BROAD_CONTACT, contacts->dynamic_count, new_contacts_count, &contacts->dynamic_capacity))) {
+    bnd_error e = resize_if_needed(world->allocator, (void **)&contacts->dynamic_broad_contacts, sizeof(broad_phase_contact), ALIGNMENT_BROAD_CONTACT, contacts->dynamic_count, new_contacts_count, &contacts->dynamic_capacity);
+    if (IS_ERROR(e)) {
       arena_release_stack_frame(stack_frame);
-      return;
+      return e;
+    }
+
+    e = hash_table_resize_if_needed(world, new_contacts_count);
+    if (IS_ERROR(e)) {
+      arena_release_stack_frame(stack_frame);
+      return e;
     }
 
     memcpy(contacts->dynamic_broad_contacts + contacts->dynamic_count + 1, new_contacts_buffer, new_contacts_count * sizeof(broad_phase_contact));
 
+    count_t slot;
     for (count_t i = 0; i < new_contacts_count; ++i) {
-      hash_table_insert(&contacts->table, new_contacts_buffer[i].key, contacts->dynamic_count + 1 + i);
+      const broad_phase_contact *new_contact = &new_contacts_buffer[i];
+
+      if (hash_table_find_empty_slot(contacts, new_contact->key, &slot)) {
+        contacts->keys[slot] = new_contact->key;
+        contacts->indices[slot] = contacts->dynamic_count + 1 + i;
+      }
     }
     
     contacts->dynamic_count += new_contacts_count;
   }
 
   arena_release_stack_frame(stack_frame);
+  return OK;
 }

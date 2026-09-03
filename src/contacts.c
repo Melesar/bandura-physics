@@ -1,3 +1,4 @@
+#include "bandura.h"
 #include "bnd-core.h"
 #include "bnd-math.h"
 #include "profiler.h"
@@ -6,7 +7,7 @@
 #include <float.h>
 #include <math.h>
 #include <stdbool.h>
-
+#include <assert.h>
 
 typedef enum {
   SLOT_EMPTY      = 1,
@@ -268,127 +269,135 @@ uint64_t hash_table_create_key(const common_data *data_a, const common_data *dat
   uint64_t gen_a = data_a->generations[outer_index_a];
   uint64_t gen_b = data_b->generations[outer_index_b];
 
-  // Features are stored in A and B's local spaces, so the cache key must retain their order.
+  if (outer_index_b > outer_index_a) {
+    uint64_t tmp = outer_index_a;
+    outer_index_a = outer_index_b;
+    outer_index_b = tmp;
+
+    tmp = gen_a;
+    gen_a = gen_b;
+    gen_b = tmp;
+  }
+
   const uint64_t mask_23bit = 0x7FFFFF;
 
   uint64_t key = (uint64_t)type << 62;
-  key |= gen_a << 53;
-  key |= (index_a & mask_23bit) << 31;
+  key |= gen_a << 54;
+  key |= (outer_index_a & mask_23bit) << 31;
   key |= gen_b << 23;
-  key |= index_b & mask_23bit;
+  key |= outer_index_b & mask_23bit;
   
   return key;
 }
 
-bool hash_table_has_key(const hash_table *table, uint64_t key) {
+bool hash_table_find_slot_for_key(const contacts *contacts, uint64_t key, count_t *slot) {
   uint64_t hash = cache_key_hash(key);
-  count_t bucket_index = hash & (table->capacity - 1);
+  count_t bucket_index = hash & (contacts->hash_table_capacity - 1);
 
   count_t i = bucket_index;
   do {
-    uint64_t stored_key = table->keys[i];
+    uint64_t stored_key = contacts->keys[i];
     if (stored_key == key) {
-      return true;
-    }
-
-    if (stored_key == HASH_TABLE_EMPTY) {
-      return false;
-    }
-
-    i = (i + 1) & (table->capacity - 1);
-  } while (i != bucket_index);
-
-  return false;
-}
-
-static bool hash_table_find_slot(const hash_table *table, uint64_t key, hash_table_slot_flags flags, count_t *slot) {
-  uint64_t hash = cache_key_hash(key);
-  count_t hash_table_index = hash & (table->capacity - 1);
-
-  bool search_empty = flags & SLOT_EMPTY;
-  bool search_same_key = flags & SLOT_SAME_KEY;
-  int32_t first_tombstone = -1;
-
-  count_t i = hash_table_index;
-  do {
-    uint64_t stored_key = table->keys[i];
-
-    if (search_same_key && stored_key == key) {
       *slot = i;
       return true;
     }
 
     if (stored_key == HASH_TABLE_EMPTY) {
-      if (search_same_key && search_empty && first_tombstone >= 0) {
-        *slot = (count_t) first_tombstone;
-        return true;
-      }
-
-      if (search_empty) {
-        *slot = i;
-        return true;
-      }
-
       return false;
     }
 
-    if (stored_key == HASH_TABLE_TOMBSTONE) {
-      if (search_empty && search_same_key) {
-        if (first_tombstone < 0) {
-          first_tombstone = i;
-        }
-      } else if (search_empty) {
-        *slot = i;
-        return true;
-      }
+    i = (i + 1) & (contacts->hash_table_capacity - 1);
+  } while (i != bucket_index);
+
+  return false;
+}
+
+bool hash_table_find_empty_slot(const contacts *contacts, uint64_t key, count_t *slot) {
+  uint64_t hash = cache_key_hash(key);
+  count_t bucket_index = hash & (contacts->hash_table_capacity - 1);
+
+  int32_t first_tombstone = -1;
+  count_t i = bucket_index;
+  do {
+    uint64_t stored_key = contacts->keys[i];
+    if (stored_key == key) {
+      return false;
     }
 
+    if (stored_key == HASH_TABLE_EMPTY) {
+      if (first_tombstone >= 0) {
+        *slot = (count_t) first_tombstone;
+      } else {
+        *slot = i;
+      }
 
-    i = (i + 1) & (table->capacity - 1);
-  } while(i != hash_table_index);
+      return true;
+    }
 
-  if (search_same_key && search_empty && first_tombstone >= 0) {
-    *slot = (count_t) first_tombstone;
+    if (stored_key == HASH_TABLE_TOMBSTONE && first_tombstone < 0) {
+      first_tombstone = i;
+    }
+
+    i = (i + 1) & (contacts->hash_table_capacity - 1);
+  } while (i != bucket_index);
+
+  if (first_tombstone >= 0) {
+    *slot = first_tombstone;
     return true;
   }
 
   return false;
 }
 
-count_t hash_table_remove(hash_table *table, uint64_t key) {
-  count_t slot;
-  if (hash_table_find_slot(table, key, SLOT_SAME_KEY, &slot)) {
-    table->keys[slot] = HASH_TABLE_TOMBSTONE;
-    table->entry_count -= 1;
+bnd_error hash_table_resize_if_needed(bnd_world *world, count_t additional_count) {
+  contacts *contacts = &world->contacts;
 
-    return table->values[slot];
+  const count_t initial_capacity = contacts->hash_table_capacity;
+  const float threshold_factor = 0.75f;
+
+  float threshold_capacity = initial_capacity * threshold_factor;
+  float intended_count = (float)(contacts->dynamic_count + contacts->static_count + additional_count);
+
+  if (threshold_capacity > intended_count) {
+    return OK;
+  } 
+
+  if (world->allocator.realloc == NULL) {
+    return (bnd_error) { BND_ERROR_NO_SPACE_AVAILABLE, "Not enough space for contacts and Allocator.realloc is null" };
   }
 
-  return 0;
-}
-
-bool hash_table_update(hash_table *table, uint64_t key, count_t new_value) {
-  count_t slot;
-  if (hash_table_find_slot(table, key, SLOT_SAME_KEY, &slot)) {
-    table->values[slot] = new_value;
-    return true;
+  count_t new_capacity = contacts->hash_table_capacity;
+  while (new_capacity * threshold_factor < intended_count) {
+    new_capacity <<= 1;
   }
 
-  return false;
-}
+  REALLOC_BUFFER8(contacts->keys, world->allocator, sizeof(uint64_t), initial_capacity, new_capacity);
+  REALLOC_BUFFER4(contacts->indices, world->allocator, sizeof(count_t), initial_capacity, new_capacity);
 
-bool hash_table_insert(hash_table *table, uint64_t key, count_t value) {
+  contacts->hash_table_capacity = new_capacity;
+
+  memset(contacts->keys, 0, sizeof(uint64_t) * new_capacity);
+  memset(contacts->indices, 0, sizeof(count_t) * new_capacity);
+
   count_t slot;
-  if (hash_table_find_slot(table, key, SLOT_EMPTY, &slot)) {
-    table->keys[slot] = key;
-    table->values[slot] = value;
-    table->entry_count += 1;
-    return true;
-  } else {
-    // TODO resize
+  count_t counts[] = { contacts->dynamic_count, contacts->static_count };
+  broad_phase_contact *arrays[] = { contacts->dynamic_broad_contacts, contacts->static_broad_contacts };
+
+  for (count_t k = 0; k < 2; ++k) {
+    for (count_t i = 1; i <= counts[k]; ++i) {
+      const broad_phase_contact *c = &arrays[k][i];
+
+      if (hash_table_find_empty_slot(contacts, c->key, &slot)) {
+        contacts->keys[slot] = c->key;
+        contacts->indices[slot] = i;
+      } else {
+        // Should not be the case, since we've just cleared and resized the table
+        assert(false);
+      }
+    }
   }
 
-  return false;
+  return OK;
 }
 
 cache_entry *contacts_cache_query(bnd_world *world, contact *contact, bnd_body_type type) {
