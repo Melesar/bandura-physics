@@ -269,7 +269,7 @@ uint64_t hash_table_create_key(const common_data *data_a, const common_data *dat
   uint64_t gen_a = data_a->generations[outer_index_a];
   uint64_t gen_b = data_b->generations[outer_index_b];
 
-  if (outer_index_b > outer_index_a) {
+  if (type == BND_BODY_DYNAMIC && outer_index_b > outer_index_a) {
     uint64_t tmp = outer_index_a;
     outer_index_a = outer_index_b;
     outer_index_b = tmp;
