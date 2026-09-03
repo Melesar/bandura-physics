@@ -1243,7 +1243,6 @@ void bnd_reset_world(bnd_world *world) {
   contacts_reset(world);
   shapes_reset(world);
   joints_reset(world);
-  contacts_cache_reset(world);
 }
 
 static void swap_bodies(bnd_world *world, bnd_body_type type, count_t index_a, count_t index_b) {

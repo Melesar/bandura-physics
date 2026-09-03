@@ -85,6 +85,7 @@ typedef struct {
 typedef struct {
   bnd_v3 point;
   float depth;
+  contact_features features;
 } contact_point;
 
 typedef struct {
@@ -561,6 +562,7 @@ bool                  hash_table_find_empty_slot(const contacts *contacts, uint6
 bnd_error             hash_table_resize_if_needed(bnd_world *world, count_t additional_count);
 
 bnd_error             run_broad_phase(bnd_world *world);
+bnd_error             run_narrow_phase(bnd_world *world);
 
 void                  collision_detection_init(void);
 count_t               collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_type type);

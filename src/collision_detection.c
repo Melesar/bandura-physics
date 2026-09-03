@@ -12,7 +12,7 @@
 
 #define PROFILING_BLOCK_NAME "Contacts cache"
 
-typedef count_t (*collision_detection_func)(bnd_world *world, const collision_detection_context *ctx);
+typedef contact_manifold (*collision_detection_func)(bnd_world *world, const collision_detection_context *ctx);
 
 typedef struct {
   collision_detection_func func;
@@ -44,17 +44,6 @@ static collision_detection_context ctx_inverse(collision_detection_context ctx) 
     .shape_a = ctx.shape_b,
     .shape_b = ctx.shape_a,
   };
-}
-
-static contact *new_contact(const collision_detection_context *ctx, count_t offset) {
-  contact *c = &ctx->world->contacts.values[ctx->contacts_offset + offset];
-  c->index_a = ctx->body_a;
-  c->index_b = ctx->body_b;
-  c->friction = mix_friction(ctx);
-  c->restitution = mix_restitution(ctx);
-  c->from_cache = false;
-
-  return c;
 }
 
 static bnd_v3 body_center_ex(bnd_v3 shape_offset, bnd_quat global_rotation, bnd_v3 body_position) {
@@ -213,7 +202,9 @@ body_support support(const collision_detection_context *ctx, bnd_v3 direction) {
   return result;
 }
 
-static count_t sphere_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
+static contact_manifold sphere_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
+  contact_manifold result = {0};
+
   bnd_v3 center_a = body_a_center(ctx);
   bnd_v3 center_b = body_b_center(ctx);
 
@@ -224,27 +215,21 @@ static count_t sphere_sphere_collision(bnd_world *world, const collision_detecti
   float distance = bnd_v3_len(offset);
   float penetration = distance - radius_a - radius_b;
   if (penetration > 0) {
-    return 0;
+    return result;
   }
 
-  bnd_v3 normal = distance > EPSILON ? bnd_v3_scale(offset, 1 / distance) : bnd_v3_up();
+  result.count = 1;
+  result.normal = distance > EPSILON ? bnd_v3_scale(offset, 1 / distance) : bnd_v3_up();
 
-  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts_offset, 1))) {
-    return 0;
-  }
-
-  contact *c = new_contact(ctx, 0);
-  c->point = bnd_v3_add(center_b, bnd_v3_scale(normal, radius_b + penetration));
-  c->normal = normal;
+  contact_point *c = &result.points[0];
+  c->point = bnd_v3_add(center_b, bnd_v3_scale(result.normal, radius_b + penetration));
   c->depth = -penetration;
 
-  return 1;
+  return result;
 }
 
-static count_t capsule_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
-  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts_offset, 1))) {
-    return 0;
-  }
+static contact_manifold capsule_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
+  contact_manifold result = {0};
 
   bnd_v3 capsule_center = body_a_center(ctx);
   bnd_quat capsule_rotation = body_a_rotation(ctx);
@@ -261,26 +246,24 @@ static count_t capsule_sphere_collision(bnd_world *world, const collision_detect
     float horizontal_distance = bnd_v3_len(horizontal_offset);
 
     if (horizontal_distance < capsule_radius) {
-      contact *c = new_contact(ctx, 0);
-      c->point = bnd_v3_add(capsule_center, bnd_v3_rotate(local_sphere_center, capsule_rotation));
-      c->normal = horizontal_distance > EPSILON
+      result.count = 1;
+      result.normal = horizontal_distance > EPSILON
         ? bnd_v3_normalize(bnd_v3_rotate(bnd_v3_negate(horizontal_offset), capsule_rotation))
         : bnd_v3_rotate(bnd_v3_right(), capsule_rotation);
-      c->depth = capsule_radius - horizontal_distance + sphere_radius;
 
-      return 1;
+      contact_point *c = &result.points[0];
+      c->point = bnd_v3_add(capsule_center, bnd_v3_rotate(local_sphere_center, capsule_rotation));
+      c->depth = capsule_radius - horizontal_distance + sphere_radius;
     } else if (horizontal_distance < capsule_radius + sphere_radius) {
       bnd_v3 closest = bnd_v3_scale(horizontal_offset, capsule_radius / horizontal_distance);
       closest.y = local_sphere_center.y;
 
-      contact *c = new_contact(ctx, 0);
-      c->point = bnd_v3_add(capsule_center, bnd_v3_rotate(closest, capsule_rotation));
-      c->normal = bnd_v3_normalize(bnd_v3_rotate(bnd_v3_negate(horizontal_offset), capsule_rotation));
-      c->depth = sphere_radius - horizontal_distance + capsule_radius;
+      result.count = 1;
+      result.normal = bnd_v3_normalize(bnd_v3_rotate(bnd_v3_negate(horizontal_offset), capsule_rotation));
 
-      return 1;
-    } else {
-      return 0;
+      contact_point *c = &result.points[0];
+      c->point = bnd_v3_add(capsule_center, bnd_v3_rotate(closest, capsule_rotation));
+      c->depth = sphere_radius - horizontal_distance + capsule_radius;
     }
   } else {
     bnd_v3 local_caps[] = {
@@ -293,31 +276,32 @@ static count_t capsule_sphere_collision(bnd_world *world, const collision_detect
 
     float cap_distance = bnd_v3_len(cap_offset);
     if (cap_distance < capsule_radius) {
-      contact *c = new_contact(ctx, 0);
-      c->point = bnd_v3_add(capsule_center, bnd_v3_rotate(local_sphere_center, capsule_rotation));
-      c->normal = cap_distance > EPSILON
+      result.count = 1;
+      result.normal = cap_distance > EPSILON
         ? bnd_v3_normalize(bnd_v3_rotate(bnd_v3_negate(cap_offset), capsule_rotation))
         : bnd_v3_rotate(bnd_v3_up(), capsule_rotation);
-      c->depth = capsule_radius - cap_distance + sphere_radius;
 
-      return 1;
+      contact_point *c = &result.points[0];
+      c->point = bnd_v3_add(capsule_center, bnd_v3_rotate(local_sphere_center, capsule_rotation));
+      c->depth = capsule_radius - cap_distance + sphere_radius;
     } else if (cap_distance < capsule_radius + sphere_radius) {
       bnd_v3 closest = bnd_v3_scale(cap_offset, capsule_radius / cap_distance);
       closest = bnd_v3_add(cap, closest);
 
-      contact *c = new_contact(ctx, 0);
-      c->point = bnd_v3_add(capsule_center, bnd_v3_rotate(closest, capsule_rotation));
-      c->normal = bnd_v3_normalize(bnd_v3_rotate(bnd_v3_negate(cap_offset), capsule_rotation));
-      c->depth = sphere_radius - cap_distance + capsule_radius;
+      result.count = 1;
+      result.normal = bnd_v3_normalize(bnd_v3_rotate(bnd_v3_negate(cap_offset), capsule_rotation));
 
-      return 1;
-    } else {
-      return 0;
+      contact_point *c = &result.points[0];
+      c->point = bnd_v3_add(capsule_center, bnd_v3_rotate(closest, capsule_rotation));
+      c->depth = sphere_radius - cap_distance + capsule_radius;
     }
   }
+
+  return result;
 }
 
-static count_t box_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
+static contact_manifold box_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
+  contact_manifold result = {0};
   bnd_v3 half_extents = bnd_v3_scale(ctx->shape_a.value.box.size, 0.5);
   bnd_v3 box_center = body_a_center(ctx);
   bnd_quat box_rotation = body_a_rotation(ctx);
@@ -335,7 +319,7 @@ static count_t box_sphere_collision(bnd_world *world, const collision_detection_
 
   float distancesqr = bnd_v3_distancesqr(closest, local_sphere_center);
   if (distancesqr > r * r) {
-    return 0;
+    return result;
   }
 
   float *s = (float *)&half_extents;
@@ -367,21 +351,19 @@ static count_t box_sphere_collision(bnd_world *world, const collision_detection_
     memcpy(&local_normal, &diff, sizeof(bnd_v3));
   }
 
-  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts_offset, 1))) {
-    return 0;
-  }
+  bnd_v3 normal;
+  memcpy(&normal, local_normal, sizeof(normal));
 
-  contact *contact = new_contact(ctx, 0);
-  memcpy(&contact->normal, local_normal, sizeof(bnd_v3));
+  result.count = 1;
+  result.normal = bnd_v3_rotate(normal, box_rotation);
+  result.points[0].point = bnd_v3_add(box_center, bnd_v3_rotate(closest, box_rotation));
+  result.points[0].depth = depth;
 
-  contact->point = bnd_v3_add(box_center, bnd_v3_rotate(closest, box_rotation));
-  contact->normal = bnd_v3_rotate(contact->normal, box_rotation);
-  contact->depth = depth;
-
-  return 1;
+  return result;
 }
 
-static count_t box_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
+static contact_manifold box_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
+  contact_manifold result = {0};
   bnd_quat box_rotation = ctx->data_a->rotations[ctx->body_a];
   bnd_quat shape_rotation = ctx->shape_a.rotation;
 
@@ -396,11 +378,6 @@ static count_t box_plane_collision(bnd_world *world, const collision_detection_c
 
   const count_t max_contacts = 4;
 
-  bnd_error e = contacts_ensure_capacity(world, ctx->contacts_offset, max_contacts);
-  if (IS_ERROR(e)) {
-    return 0;
-  }
-
   count_t contact_count = 0;
   for (count_t i = 0; i < 8 && contact_count < max_contacts; ++i) {
     bnd_v3 corner = bnd_v3_add(box_center, bnd_v3_rotate(bnd_v3_rotate(corners[i], shape_rotation), box_rotation));
@@ -409,18 +386,20 @@ static count_t box_plane_collision(bnd_world *world, const collision_detection_c
       continue;
     }
 
-    contact *c = new_contact(ctx, contact_count);
-    c->normal = plane_normal;
+    contact_point *c = &result.points[contact_count];
     c->point = bnd_v3_add(corner, bnd_v3_scale(plane_normal, -0.5f * distance));
     c->depth = -distance;
 
     contact_count += 1;
   }
 
-  return contact_count;
+  result.normal = plane_normal;
+  result.count = contact_count;
+  return result;
 }
 
-static count_t sphere_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
+static contact_manifold sphere_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
+  contact_manifold result = {0};
   bnd_v3 sphere_center = body_a_center(ctx);
   float sphere_radius = ctx->shape_a.value.sphere.radius;
 
@@ -429,22 +408,18 @@ static count_t sphere_plane_collision(bnd_world *world, const collision_detectio
 
   float plane_sphere_distance = bnd_v3_dot(bnd_v3_sub(sphere_center, plane_point), plane_normal);
   if (plane_sphere_distance > sphere_radius) {
-    return 0;
+    return result;
   }
 
-  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts_offset, 1))) {
-    return 0;
-  }
-
-  contact *contact = new_contact(ctx, 0);
-  contact->normal = plane_normal;
-  contact->point = bnd_v3_add(sphere_center, bnd_v3_scale(plane_normal, -plane_sphere_distance));
-  contact->depth = sphere_radius - plane_sphere_distance;
-
-  return 1;
+  result.count = 1;
+  result.normal = plane_normal;
+  result.points[0].point = bnd_v3_add(sphere_center, bnd_v3_scale(plane_normal, -plane_sphere_distance));
+  result.points[0].depth = sphere_radius - plane_sphere_distance;
+  return result;
 }
 
-static count_t capsule_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
+static contact_manifold capsule_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
+  contact_manifold result = {0};
   bnd_v3 capsule_center = body_a_center(ctx);
   float capsule_radius = ctx->shape_a.value.capsule.radius;
   float capsule_height = ctx->shape_a.value.capsule.height;
@@ -467,22 +442,20 @@ static count_t capsule_plane_collision(bnd_world *world, const collision_detecti
       continue;
     }
 
-    if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts_offset + contact_count, 1))) {
-      return contact_count;
-    }
-
-    contact *c = new_contact(ctx, contact_count);
+    contact_point *c = &result.points[contact_count];
     c->point = bnd_v3_add(points[i], bnd_v3_scale(plane_normal, -d));
-    c->normal = plane_normal;
     c->depth = capsule_radius - d;
 
     contact_count += 1;
   }
 
-  return contact_count;
+  result.normal = plane_normal;
+  result.count = contact_count;
+  return result;
 }
 
-static count_t mesh_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
+static contact_manifold mesh_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
+  contact_manifold result = {0};
   bnd_v3 plane_point = ctx->data_b->positions[ctx->body_b];
   bnd_v3 plane_normal = ctx->shape_b.value.plane.normal;
 
@@ -519,7 +492,7 @@ static count_t mesh_plane_collision(bnd_world *world, const collision_detection_
   }
 
   if (min_dot > 0) {
-    return 0;
+    return result;
   }
 
   bnd_v3 point = meshes->verticies[collision_vertex];
@@ -527,32 +500,31 @@ static count_t mesh_plane_collision(bnd_world *world, const collision_detection_
   point = bnd_v3_add(point, mesh_center);
   point = bnd_v3_add(point, bnd_v3_scale(plane_normal, -min_dot)); // Project the deepest vertex back on the plane.
 
-  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts_offset, 1))) {
-    return 0;
-  }
-
-  contact *c = new_contact(ctx, 0);
-  c->point = point;
-  c->normal = plane_normal;
-  c->depth = -min_dot;
-
-  return 1;
+  result.count = 1;
+  result.normal = plane_normal;
+  result.points[0].point = point;
+  result.points[0].depth = -min_dot;
+  return result;
 }
 
-static count_t polytope_polytope_collision(bnd_world *world, const collision_detection_context *ctx) {
+static contact_manifold polytope_polytope_collision(bnd_world *world, const collision_detection_context *ctx) {
+  contact_manifold result = {0};
   simplex s;
   if (!gjk_check_intersection(world, ctx, &s)) {
-    return 0;
+    return result;
   }
 
-  if (IS_ERROR(contacts_ensure_capacity(world, ctx->contacts_offset, 1))) {
-    return 0;
+  contact c = {0};
+  if (epa_get_contact(world, ctx, &s, world->config.advanced.epa_tolerance, &c) == 0) {
+    return result;
   }
 
-  contact *c = new_contact(ctx, 0);
-  epa_get_contact(world, ctx, &s, world->config.advanced.epa_tolerance, c);
-
-  return 1;
+  result.count = 1;
+  result.normal = c.normal;
+  result.points[0].point = c.point;
+  result.points[0].depth = c.depth;
+  result.points[0].features = c.features;
+  return result;
 }
 
 bnd_error collision_detection_epa_context(const bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, collision_detection_context *ctx) {
@@ -616,267 +588,315 @@ bnd_error collision_detection_epa_context(const bnd_world *world, bnd_body_handl
   return OK;
 }
 
-count_t collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_type type) {
-  const common_data *dynamics = as_common_const(world, BND_BODY_DYNAMIC);
-  const common_data *data_b = as_common_const(world, type);
+// count_t collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_type type) {
+//   const common_data *dynamics = as_common_const(world, BND_BODY_DYNAMIC);
+//   const common_data *data_b = as_common_const(world, type);
 
-  collision_detection_context ctx = {
-    .world = world,
-    .data_a = dynamics,
-    .data_b = data_b,
-  };
+//   collision_detection_context ctx = {
+//     .world = world,
+//     .data_a = dynamics,
+//     .data_b = data_b,
+//   };
 
-  count_t count = 0;
+//   count_t count = 0;
 
-  for (count_t i = 0; i < dynamics->count; ++i) {
-    count_t until = type == BND_BODY_DYNAMIC ? i : data_b->count;
-    for (count_t j = 0; j < until; ++j) {
-      bnd_collision_mask validation_mask = layer_to_mask(dynamics->collision_layers[i]);
-      bnd_collision_mask reference_mask = world->matrix.matrix[data_b->collision_layers[j]];
-      if ((reference_mask & validation_mask) == 0) {
-        continue;
-      }
+//   for (count_t i = 0; i < dynamics->count; ++i) {
+//     count_t until = type == BND_BODY_DYNAMIC ? i : data_b->count;
+//     for (count_t j = 0; j < until; ++j) {
+//       bnd_collision_mask validation_mask = layer_to_mask(dynamics->collision_layers[i]);
+//       bnd_collision_mask reference_mask = world->matrix.matrix[data_b->collision_layers[j]];
+//       if ((reference_mask & validation_mask) == 0) {
+//         continue;
+//       }
 
-      if (!aabb_intersect(dynamics, data_b, i, j)) {
-        continue;
-      }
+//       if (!aabb_intersect(dynamics, data_b, i, j)) {
+//         continue;
+//       }
 
-      ctx.body_a = i;
-      ctx.body_b = j;
+//       ctx.body_a = i;
+//       ctx.body_b = j;
 
-      body_shapes shapes_a = dynamics->shapes[i];
-      body_shapes shapes_b = data_b->shapes[j];
+//       body_shapes shapes_a = dynamics->shapes[i];
+//       body_shapes shapes_b = data_b->shapes[j];
 
-      uint64_t cached_contacts_mask = 0;
-      count_t pair_contacts_count = 0;
-      count_t pair_offset = contacts_offset + count;
+//       uint64_t cached_contacts_mask = 0;
+//       count_t pair_contacts_count = 0;
+//       count_t pair_offset = contacts_offset + count;
 
-      for (count_t sa = 0; sa < shapes_a.count; ++sa) {
-        bnd_body_shape shape_a = shapes_get(world, shapes_a)[sa];
-        ctx.shape_a = shape_a;
+//       for (count_t sa = 0; sa < shapes_a.count; ++sa) {
+//         bnd_body_shape shape_a = shapes_get(world, shapes_a)[sa];
+//         ctx.shape_a = shape_a;
 
-        for (count_t sb = 0; sb < shapes_b.count; ++sb) {
-          bnd_body_shape shape_b = shapes_get(world, shapes_b)[sb];
-          count_t shape_offset = pair_offset + pair_contacts_count;
+//         for (count_t sb = 0; sb < shapes_b.count; ++sb) {
+//           bnd_body_shape shape_b = shapes_get(world, shapes_b)[sb];
+//           count_t shape_offset = pair_offset + pair_contacts_count;
 
-          ctx.shape_b = shape_b;
-          ctx.contacts_offset = shape_offset;
+//           ctx.shape_b = shape_b;
+//           ctx.contacts_offset = shape_offset;
 
-          collision_detection_entry entry = collision_detection_table[shape_a.type][shape_b.type];
-          if (entry.func == NULL) {
-            continue;
-          }
+//           collision_detection_entry entry = collision_detection_table[shape_a.type][shape_b.type];
+//           if (entry.func == NULL) {
+//             continue;
+//           }
 
-          collision_detection_context context = entry.primary ? ctx : ctx_inverse(ctx);
-          count_t shape_contacts_count = entry.func(world, &context);
+//           collision_detection_context context = entry.primary ? ctx : ctx_inverse(ctx);
+//           contact_manifold manifold = entry.func(world, &context);
+//           count_t shape_contacts_count = manifold.count;
 
-          if (!entry.primary) {
-            for (count_t k = 0; k < shape_contacts_count; ++k) {
-              contact *c = &world->contacts.values[shape_offset + k];
-              c->index_a = ctx.body_a;
-              c->index_b = ctx.body_b;
-              c->normal = bnd_v3_negate(c->normal);
+//           if (shape_contacts_count > 0 && IS_ERROR(contacts_ensure_capacity(world, shape_offset, shape_contacts_count))) {
+//             continue;
+//           }
 
-              if (entry.use_cache) {
-                bnd_v3 tmp_witness = c->features.witness_a;
-                c->features.witness_a = c->features.witness_b;
-                c->features.witness_b = tmp_witness;
-                c->features.normal = bnd_v3_negate(c->features.normal);
-              }
-            }
-          }
+//           for (count_t k = 0; k < shape_contacts_count; ++k) {
+//             contact *c = new_contact(&context, k);
+//             c->point = manifold.points[k].point;
+//             c->normal = manifold.normal;
+//             c->depth = manifold.points[k].depth;
+//             c->features = manifold.points[k].features;
+//           }
 
-          if (entry.use_cache) {
-            uint64_t mask = (1 << shape_contacts_count) - 1;
-            cached_contacts_mask |= mask << pair_contacts_count;
-          }
+//           if (!entry.primary) {
+//             for (count_t k = 0; k < shape_contacts_count; ++k) {
+//               contact *c = &world->contacts.values[shape_offset + k];
+//               c->index_a = ctx.body_a;
+//               c->index_b = ctx.body_b;
+//               c->normal = bnd_v3_negate(c->normal);
 
-          pair_contacts_count += shape_contacts_count;
-        }
-      }
+//               if (entry.use_cache) {
+//                 bnd_v3 tmp_witness = c->features.witness_a;
+//                 c->features.witness_a = c->features.witness_b;
+//                 c->features.witness_b = tmp_witness;
+//                 c->features.normal = bnd_v3_negate(c->features.normal);
+//               }
+//             }
+//           }
 
-      bool is_trigger = data_b->flags[j] & BODY_FLAG_TRIGGER;
-      if (is_trigger && pair_contacts_count > 0) {
-        // It's not ideal to process triggers here, since we've already done a lot of useless work.
-        // This is going to change with the introduction of contact islands.
+//           if (entry.use_cache) {
+//             uint64_t mask = (1 << shape_contacts_count) - 1;
+//             cached_contacts_mask |= mask << pair_contacts_count;
+//           }
 
-        if (events_subscribed((const common_data *)dynamics, i, BND_EVENT_TRIGGER)) {
-          events_push(world, (common_data *)dynamics, i, (bnd_event) {
-            .type = BND_EVENT_TRIGGER,
-            .trigger = { .other = make_body_handle(world, type, j) }
-          });
-        }
+//           pair_contacts_count += shape_contacts_count;
+//         }
+//       }
 
-        if (events_subscribed(data_b, j, BND_EVENT_TRIGGER)) {
-          events_push(world, (common_data *)data_b, j, (bnd_event) {
-            .type = BND_EVENT_TRIGGER,
-            .trigger = { .other = make_body_handle(world, BND_BODY_DYNAMIC, i) }
-          });
-        }
+//       bool is_trigger = data_b->flags[j] & BODY_FLAG_TRIGGER;
+//       if (is_trigger && pair_contacts_count > 0) {
+//         // It's not ideal to process triggers here, since we've already done a lot of useless work.
+//         // This is going to change with the introduction of contact islands.
 
-        break;
-      }
+//         if (events_subscribed((const common_data *)dynamics, i, BND_EVENT_TRIGGER)) {
+//           events_push(world, (common_data *)dynamics, i, (bnd_event) {
+//             .type = BND_EVENT_TRIGGER,
+//             .trigger = { .other = make_body_handle(world, type, j) }
+//           });
+//         }
 
-      count_t filtered_contact_indices[MAX_CONTACTS_PER_PAIR] = {0};
-      if (cached_contacts_mask == 0) {
-        if (pair_contacts_count > MAX_CONTACTS_PER_PAIR) {
-          contacts_filter_largest_surface_area(world->contacts.values + pair_offset, pair_contacts_count, filtered_contact_indices);
-          pair_contacts_count = MAX_CONTACTS_PER_PAIR;
-        }
+//         if (events_subscribed(data_b, j, BND_EVENT_TRIGGER)) {
+//           events_push(world, (common_data *)data_b, j, (bnd_event) {
+//             .type = BND_EVENT_TRIGGER,
+//             .trigger = { .other = make_body_handle(world, BND_BODY_DYNAMIC, i) }
+//           });
+//         }
 
-        count += pair_contacts_count;
-        continue;
-      }
+//         break;
+//       }
 
-      PROFILER_BLOCK_START(PROFILING_BLOCK_NAME);
+//       count_t filtered_contact_indices[MAX_CONTACTS_PER_PAIR] = {0};
+//       if (cached_contacts_mask == 0) {
+//         if (pair_contacts_count > MAX_CONTACTS_PER_PAIR) {
+//           contacts_filter_largest_surface_area(world->contacts.values + pair_offset, pair_contacts_count, filtered_contact_indices);
+//           pair_contacts_count = MAX_CONTACTS_PER_PAIR;
+//         }
 
-      cache_entry *cached_entry = contacts_cache_query(world, world->contacts.values + pair_offset, type);
-      if (cached_entry == NULL) {
-        PROFILER_BLOCK_END;
-        continue;
-      }
+//         count += pair_contacts_count;
+//         continue;
+//       }
 
-      float distance_threshold = world->config.advanced.contacts_cache.feature_distance_threshold;
-      float distance_threshold_sqr = distance_threshold * distance_threshold;
-      float separation_threshold = world->config.advanced.contacts_cache.separation_threshold;
+//       PROFILER_BLOCK_START(PROFILING_BLOCK_NAME);
 
-      bnd_v3 position_a = ctx.data_a->positions[ctx.body_a];
-      bnd_v3 position_b = ctx.data_b->positions[ctx.body_b];
-      bnd_quat rotation_a = ctx.data_a->rotations[ctx.body_a];
-      bnd_quat rotation_b = ctx.data_b->rotations[ctx.body_b];
+//       cache_entry *cached_entry = contacts_cache_query(world, world->contacts.values + pair_offset, type);
+//       if (cached_entry == NULL) {
+//         PROFILER_BLOCK_END;
+//         continue;
+//       }
 
-      uint8_t picked_features = 0;
-      for (count_t k = 0; k < pair_contacts_count; ++k) {
-        if ((cached_contacts_mask & (UINT64_C(1) << k)) == 0) {
-          continue;
-        }
+//       float distance_threshold = world->config.advanced.contacts_cache.feature_distance_threshold;
+//       float distance_threshold_sqr = distance_threshold * distance_threshold;
+//       float separation_threshold = world->config.advanced.contacts_cache.separation_threshold;
 
-        contact *c = &world->contacts.values[pair_offset + k];
-        contact_features *features = &c->features;
+//       bnd_v3 position_a = ctx.data_a->positions[ctx.body_a];
+//       bnd_v3 position_b = ctx.data_b->positions[ctx.body_b];
+//       bnd_quat rotation_a = ctx.data_a->rotations[ctx.body_a];
+//       bnd_quat rotation_b = ctx.data_b->rotations[ctx.body_b];
 
-        bnd_quat inv_rotation_a = bnd_quat_invert(rotation_a);
-        bnd_quat inv_rotation_b = bnd_quat_invert(rotation_b);
-        features->witness_a = bnd_v3_rotate(bnd_v3_sub(features->witness_a, position_a), inv_rotation_a);
-        features->witness_b = bnd_v3_rotate(bnd_v3_sub(features->witness_b, position_b), inv_rotation_b);
-        features->normal = bnd_v3_rotate(features->normal, inv_rotation_a);
+//       uint8_t picked_features = 0;
+//       for (count_t k = 0; k < pair_contacts_count; ++k) {
+//         if ((cached_contacts_mask & (UINT64_C(1) << k)) == 0) {
+//           continue;
+//         }
 
-        count_t matched_slot = cached_entry->feature_count;
-        for (count_t h = 0; h < cached_entry->feature_count; ++h) {
-          const contact_features *cached_features = &cached_entry->features[h];
+//         contact *c = &world->contacts.values[pair_offset + k];
+//         contact_features *features = &c->features;
 
-          float distance_a_sqr = bnd_v3_distancesqr(cached_features->witness_a, features->witness_a);
-          float distance_b_sqr = bnd_v3_distancesqr(cached_features->witness_b, features->witness_b);
+//         bnd_quat inv_rotation_a = bnd_quat_invert(rotation_a);
+//         bnd_quat inv_rotation_b = bnd_quat_invert(rotation_b);
+//         features->witness_a = bnd_v3_rotate(bnd_v3_sub(features->witness_a, position_a), inv_rotation_a);
+//         features->witness_b = bnd_v3_rotate(bnd_v3_sub(features->witness_b, position_b), inv_rotation_b);
+//         features->normal = bnd_v3_rotate(features->normal, inv_rotation_a);
 
-          if (distance_a_sqr <= distance_threshold_sqr && distance_b_sqr <= distance_threshold_sqr) {
-            matched_slot = h;
-            break;
-          }
-        }
+//         count_t matched_slot = cached_entry->feature_count;
+//         for (count_t h = 0; h < cached_entry->feature_count; ++h) {
+//           const contact_features *cached_features = &cached_entry->features[h];
 
-        count_t feature_count = cached_entry->feature_count;
-        if (matched_slot < feature_count) {
-          cached_entry->features[matched_slot] = *features;
-          picked_features |= 1 << matched_slot;
-        } else if (cached_entry->feature_count < MAX_CONTACTS_PER_PAIR) {
-          cached_entry->features[feature_count] = *features;
-          cached_entry->feature_count += 1;
+//           float distance_a_sqr = bnd_v3_distancesqr(cached_features->witness_a, features->witness_a);
+//           float distance_b_sqr = bnd_v3_distancesqr(cached_features->witness_b, features->witness_b);
 
-          picked_features |= 1 << feature_count;
-        }
-      }
+//           if (distance_a_sqr <= distance_threshold_sqr && distance_b_sqr <= distance_threshold_sqr) {
+//             matched_slot = h;
+//             break;
+//           }
+//         }
 
-      count_t fresh_contacts_count = pair_contacts_count;
-      count_t contacts_from_cache = 0;
-      for (count_t h = 0; h < cached_entry->feature_count; ++h) {
-        if (picked_features & (1 << h)) {
-          continue;
-        }
+//         count_t feature_count = cached_entry->feature_count;
+//         if (matched_slot < feature_count) {
+//           cached_entry->features[matched_slot] = *features;
+//           picked_features |= 1 << matched_slot;
+//         } else if (cached_entry->feature_count < MAX_CONTACTS_PER_PAIR) {
+//           cached_entry->features[feature_count] = *features;
+//           cached_entry->feature_count += 1;
 
-        const contact_features *cached_features = &cached_entry->features[h];
+//           picked_features |= 1 << feature_count;
+//         }
+//       }
 
-        bnd_v3 witness_a_world = bnd_v3_add(bnd_v3_rotate(cached_features->witness_a, rotation_a), position_a);
-        bnd_v3 witness_b_world = bnd_v3_add(bnd_v3_rotate(cached_features->witness_b, rotation_b), position_b);
-        bnd_v3 normal_world = bnd_v3_rotate(cached_features->normal, rotation_a);
+//       count_t fresh_contacts_count = pair_contacts_count;
+//       count_t contacts_from_cache = 0;
+//       for (count_t h = 0; h < cached_entry->feature_count; ++h) {
+//         if (picked_features & (1 << h)) {
+//           continue;
+//         }
 
-        float separation = bnd_v3_dot(bnd_v3_sub(witness_a_world, witness_b_world), normal_world);
-        if (separation > separation_threshold) {
-          continue;
-        }
+//         const contact_features *cached_features = &cached_entry->features[h];
 
-        count_t contact_offset = pair_offset + fresh_contacts_count + contacts_from_cache;
-        if (IS_ERROR(contacts_ensure_capacity(world, contact_offset, 1))) {
-          break;
-        }
+//         bnd_v3 witness_a_world = bnd_v3_add(bnd_v3_rotate(cached_features->witness_a, rotation_a), position_a);
+//         bnd_v3 witness_b_world = bnd_v3_add(bnd_v3_rotate(cached_features->witness_b, rotation_b), position_b);
+//         bnd_v3 normal_world = bnd_v3_rotate(cached_features->normal, rotation_a);
 
-        contact *c = &world->contacts.values[contact_offset];
-        c->index_a = ctx.body_a;
-        c->index_b = ctx.body_b;
-        c->point = bnd_v3_scale(bnd_v3_add(witness_a_world, witness_b_world), 0.5f);
-        c->normal = normal_world;
-        c->depth = -separation;
-        c->features = *cached_features;
-        c->restitution = mix_restitution(&ctx);
-        c->friction = mix_friction(&ctx);
+//         float separation = bnd_v3_dot(bnd_v3_sub(witness_a_world, witness_b_world), normal_world);
+//         if (separation > separation_threshold) {
+//           continue;
+//         }
 
-        contacts_from_cache += 1;
-      }
+//         count_t contact_offset = pair_offset + fresh_contacts_count + contacts_from_cache;
+//         if (IS_ERROR(contacts_ensure_capacity(world, contact_offset, 1))) {
+//           break;
+//         }
 
-      pair_contacts_count += contacts_from_cache;
+//         contact *c = &world->contacts.values[contact_offset];
+//         c->index_a = ctx.body_a;
+//         c->index_b = ctx.body_b;
+//         c->point = bnd_v3_scale(bnd_v3_add(witness_a_world, witness_b_world), 0.5f);
+//         c->normal = normal_world;
+//         c->depth = -separation;
+//         c->features = *cached_features;
+//         c->restitution = mix_restitution(&ctx);
+//         c->friction = mix_friction(&ctx);
 
-      if (pair_contacts_count > MAX_CONTACTS_PER_PAIR) {
-        contacts_filter_largest_surface_area(world->contacts.values + pair_offset, pair_contacts_count, filtered_contact_indices);
+//         contacts_from_cache += 1;
+//       }
 
-        count_t feature_count = 0;
-        for (count_t k = 0; k < MAX_CONTACTS_PER_PAIR; ++k) {
-          contact *c = &world->contacts.values[pair_offset + k];
-          count_t original_contact_index = filtered_contact_indices[k];
+//       pair_contacts_count += contacts_from_cache;
 
-          bool fresh_cashable = original_contact_index < fresh_contacts_count && cached_contacts_mask & ((uint64_t)1 << original_contact_index);
-          bool from_cache = original_contact_index >= fresh_contacts_count;
-          if (fresh_cashable || from_cache) {
-            cached_entry->features[feature_count++] = c->features;
-          }
-        }
+//       if (pair_contacts_count > MAX_CONTACTS_PER_PAIR) {
+//         contacts_filter_largest_surface_area(world->contacts.values + pair_offset, pair_contacts_count, filtered_contact_indices);
 
-        cached_entry->feature_count = feature_count;
-        pair_contacts_count = MAX_CONTACTS_PER_PAIR;
-      }
+//         count_t feature_count = 0;
+//         for (count_t k = 0; k < MAX_CONTACTS_PER_PAIR; ++k) {
+//           contact *c = &world->contacts.values[pair_offset + k];
+//           count_t original_contact_index = filtered_contact_indices[k];
 
-      count += pair_contacts_count;
+//           bool fresh_cashable = original_contact_index < fresh_contacts_count && cached_contacts_mask & ((uint64_t)1 << original_contact_index);
+//           bool from_cache = original_contact_index >= fresh_contacts_count;
+//           if (fresh_cashable || from_cache) {
+//             cached_entry->features[feature_count++] = c->features;
+//           }
+//         }
 
-      PROFILER_BLOCK_END;
-    }
-  }
+//         cached_entry->feature_count = feature_count;
+//         pair_contacts_count = MAX_CONTACTS_PER_PAIR;
+//       }
 
-  return count;
-}
+//       count += pair_contacts_count;
+
+//       PROFILER_BLOCK_END;
+//     }
+//   }
+
+//   return count;
+// }
 
 void collision_detection_init(void) {
   memset(collision_detection_table, 0, sizeof(collision_detection_table));
 
-  collision_detection_table[BND_SPHERE][BND_SPHERE] = (collision_detection_entry) { sphere_sphere_collision, true, false };
-  collision_detection_table[BND_BOX][BND_BOX] = (collision_detection_entry) { polytope_polytope_collision, true, true };
+  collision_detection_table[BND_SPHERE][BND_SPHERE]   = (collision_detection_entry) { sphere_sphere_collision, true, false };
+  collision_detection_table[BND_BOX][BND_BOX]         = (collision_detection_entry) { polytope_polytope_collision, true, true };
   collision_detection_table[BND_CAPSULE][BND_CAPSULE] = (collision_detection_entry) { polytope_polytope_collision, true, false };
-  collision_detection_table[BND_MESH][BND_MESH] = (collision_detection_entry) { polytope_polytope_collision, true, true };
+  collision_detection_table[BND_MESH][BND_MESH]       = (collision_detection_entry) { polytope_polytope_collision, true, true };
 
-  collision_detection_table[BND_BOX][BND_SPHERE] = (collision_detection_entry) { box_sphere_collision, true, false };
-  collision_detection_table[BND_SPHERE][BND_BOX] = (collision_detection_entry) { box_sphere_collision, false, false };
-  collision_detection_table[BND_BOX][BND_CAPSULE] = (collision_detection_entry) { polytope_polytope_collision, true, true };
-  collision_detection_table[BND_CAPSULE][BND_BOX] = (collision_detection_entry) { polytope_polytope_collision, false, true };
-  collision_detection_table[BND_CAPSULE][BND_SPHERE] = (collision_detection_entry) { capsule_sphere_collision, true, false };
-  collision_detection_table[BND_SPHERE][BND_CAPSULE] = (collision_detection_entry) { capsule_sphere_collision, false, false };
+  collision_detection_table[BND_BOX][BND_SPHERE]      = (collision_detection_entry) { box_sphere_collision, true, false };
+  collision_detection_table[BND_SPHERE][BND_BOX]      = (collision_detection_entry) { box_sphere_collision, false, false };
+  collision_detection_table[BND_BOX][BND_CAPSULE]     = (collision_detection_entry) { polytope_polytope_collision, true, true };
+  collision_detection_table[BND_CAPSULE][BND_BOX]     = (collision_detection_entry) { polytope_polytope_collision, false, true };
+  collision_detection_table[BND_CAPSULE][BND_SPHERE]  = (collision_detection_entry) { capsule_sphere_collision, true, false };
+  collision_detection_table[BND_SPHERE][BND_CAPSULE]  = (collision_detection_entry) { capsule_sphere_collision, false, false };
 
-  collision_detection_table[BND_MESH][BND_BOX] = (collision_detection_entry) { polytope_polytope_collision, true, true };
-  collision_detection_table[BND_BOX][BND_MESH] = (collision_detection_entry) { polytope_polytope_collision, false, true };
-  collision_detection_table[BND_MESH][BND_SPHERE] = (collision_detection_entry) { polytope_polytope_collision, true, false };
-  collision_detection_table[BND_SPHERE][BND_MESH] = (collision_detection_entry) { polytope_polytope_collision, false, false };
-  collision_detection_table[BND_MESH][BND_CAPSULE] = (collision_detection_entry) { polytope_polytope_collision, true, false };
-  collision_detection_table[BND_CAPSULE][BND_MESH] = (collision_detection_entry) { polytope_polytope_collision, false, false };
+  collision_detection_table[BND_MESH][BND_BOX]        = (collision_detection_entry) { polytope_polytope_collision, true, true };
+  collision_detection_table[BND_BOX][BND_MESH]        = (collision_detection_entry) { polytope_polytope_collision, false, true };
+  collision_detection_table[BND_MESH][BND_SPHERE]     = (collision_detection_entry) { polytope_polytope_collision, true, false };
+  collision_detection_table[BND_SPHERE][BND_MESH]     = (collision_detection_entry) { polytope_polytope_collision, false, false };
+  collision_detection_table[BND_MESH][BND_CAPSULE]    = (collision_detection_entry) { polytope_polytope_collision, true, false };
+  collision_detection_table[BND_CAPSULE][BND_MESH]    = (collision_detection_entry) { polytope_polytope_collision, false, false };
 
-  collision_detection_table[BND_BOX][BND_PLANE] = (collision_detection_entry) { box_plane_collision, true, false };
-  collision_detection_table[BND_SPHERE][BND_PLANE] = (collision_detection_entry) { sphere_plane_collision, true, false };
-  collision_detection_table[BND_CAPSULE][BND_PLANE] = (collision_detection_entry) { capsule_plane_collision, true, false };
-  collision_detection_table[BND_MESH][BND_PLANE] = (collision_detection_entry) { mesh_plane_collision, true, false };
+  collision_detection_table[BND_BOX][BND_PLANE]       = (collision_detection_entry) { box_plane_collision, true, false };
+  collision_detection_table[BND_SPHERE][BND_PLANE]    = (collision_detection_entry) { sphere_plane_collision, true, false };
+  collision_detection_table[BND_CAPSULE][BND_PLANE]   = (collision_detection_entry) { capsule_plane_collision, true, false };
+  collision_detection_table[BND_MESH][BND_PLANE]      = (collision_detection_entry) { mesh_plane_collision, true, false };
+}
+
+bnd_error run_narrow_phase(bnd_world *world) {
+  contacts *contacts = &world->contacts;
+
+  collision_detection_context ctx = { .world = world, .data_a = (common_data *)&world->dynamics };
+  ctx.data_b = (common_data *)&world->statics;
+
+  for (count_t i = 0; i < contacts->static_count; ++i) {
+    broad_phase_contact *bc = &contacts->static_broad_contacts[i];
+
+    ctx.body_a = world->dynamics.outer_lookup[bc->outer_index_a].index;
+    ctx.body_b = world->statics.outer_lookup[bc->outer_index_b].index;
+
+    body_shapes shapes_a = world->dynamics.shapes[ctx.body_a];
+    body_shapes shapes_b = world->statics.shapes[ctx.body_b];
+
+    bnd_body_shape *shapes_buffer_a = shapes_get(world, shapes_a);
+    bnd_body_shape *shapes_buffer_b = shapes_get(world, shapes_b);
+
+    for (count_t sa = 0; sa < shapes_a.count; ++sa) {
+      ctx.shape_a = shapes_buffer_a[sa];
+      for (count_t sb = 0; sb < shapes_b.count; ++sb) {
+        ctx.shape_b = shapes_buffer_b[sb];
+
+        collision_detection_entry entry = collision_detection_table[ctx.shape_a.type][ctx.shape_b.type];
+        if (entry.func == NULL) {
+          continue;
+        }
+
+        collision_detection_context context = entry.primary ? ctx : ctx_inverse(ctx);
+      }
+    }
+  }
+  return OK;
 }
 
 static bnd_error run_broad_phase_typed(bnd_world *world, bnd_body_type type) {
@@ -980,6 +1000,8 @@ static bnd_error run_broad_phase_typed(bnd_world *world, bnd_body_type type) {
       if (hash_table_find_empty_slot(contacts, new_contact->key, &slot)) {
         contacts->keys[slot] = new_contact->key;
         contacts->indices[slot] = *broad_contacts_count + 1 + i;
+      } else {
+        assert(false);
       }
     }
     
