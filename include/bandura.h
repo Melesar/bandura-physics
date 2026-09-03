@@ -241,6 +241,7 @@ typedef struct {
   uint32_t meshes_capacity;              /**< Initial imported-mesh capacity. */
   uint32_t events_capacity;              /**< Initial event capacity. */
   uint32_t materials_capacity;           /**< Initial material capacity. */
+  uint32_t hash_table_capacity;          /**< Initial capacity of the broad-phase hash table */
   uint64_t internal_allocation_budget;   /**< How much memory the engine can allocate internally */
 } bnd_config_memory;
 

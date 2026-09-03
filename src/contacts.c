@@ -167,6 +167,15 @@ static bnd_result_u32 cache_table_insert(bnd_world *world, uint64_t key) {
   return BND_RESULT_OK(u32, entry_index);
 }
 
+void contacts_reset(bnd_world *world) {
+  contacts *contacts = &world->contacts;
+
+  contacts->dynamic_count = 0;
+  contacts->static_count = 0;
+
+  memset(contacts->keys, 0, sizeof(broad_phase_contact) * contacts->hash_table_capacity);
+}
+
 void contacts_cache_reset(bnd_world *world) {
   contacts_cache *cache = &world->contacts_cache;
   cache->entry_count = 0;
@@ -198,24 +207,42 @@ bnd_error contacts_init(bnd_world *world) {
   contacts *contacts = &world->contacts;
   bnd_allocator allocator = world->allocator;
 
-  ALLOC_BUFFER4(contacts->values, world->config.memory.contacts_capacity * sizeof(contact));
+  count_t hash_table_capacity = world->config.memory.hash_table_capacity;
+  ALLOC_BUFFER8(contacts->keys, sizeof(uint64_t) * hash_table_capacity);
+  ALLOC_BUFFER4(contacts->indices, sizeof(count_t) * hash_table_capacity);
 
-  contacts->capacity = world->config.memory.contacts_capacity;
-  contacts->count = 0;
+  count_t dynamic_capacity, static_capacity;
+  count_t contacts_capacity = world->config.memory.contacts_capacity;
+  if (contacts_capacity & 1) {
+    dynamic_capacity = (contacts_capacity >> 1) + 2;
+    static_capacity = (contacts_capacity >> 1) + 1;
+  } else {
+    dynamic_capacity = (contacts_capacity >> 1) + 1;
+    static_capacity = dynamic_capacity + 1;
+  }
+
+  ALLOC_BUFFER8(contacts->dynamic_broad_contacts, sizeof(broad_phase_contact) * dynamic_capacity);
+  ALLOC_BUFFER8(contacts->static_broad_contacts,  sizeof(broad_phase_contact) * static_capacity);
+
+  contacts->hash_table_capacity = hash_table_capacity;
+  contacts->dynamic_capacity = dynamic_capacity;
+  contacts->static_capacity = static_capacity;
+
   contacts->dynamic_count = 0;
+  contacts->static_count = 0;
 
   collision_detection_init();
-  PROPAGATE_ERROR(contacts_cache_init(world));
 
   return OK;
 }
 
 void contacts_teardown(bnd_world *world) {
-  world->allocator.free(world->contacts.values, world->contacts.capacity * sizeof(contact));
+  contacts *contacts = &world->contacts;
+  world->allocator.free(contacts->keys, contacts->hash_table_capacity * sizeof(uint64_t));
+  world->allocator.free(contacts->indices, contacts->hash_table_capacity * sizeof(count_t));
 
-  contacts_cache *cache = &world->contacts_cache;
-  world->allocator.free(cache->hash_table, cache->hash_table_capacity * sizeof(count_t));
-  world->allocator.free(cache->entries, cache->buffer_capacity * sizeof(cache_entry));
+  world->allocator.free(contacts->dynamic_broad_contacts, contacts->dynamic_capacity * sizeof(broad_phase_contact));
+  world->allocator.free(contacts->static_broad_contacts, contacts->static_capacity * sizeof(broad_phase_contact));
 }
 
 bnd_error contacts_ensure_capacity(bnd_world *world, count_t contacts_offset, count_t additional_count) {
@@ -411,38 +438,6 @@ cache_entry *contacts_cache_query(bnd_world *world, contact *contact, bnd_body_t
   }
 
   return &world->contacts_cache.entries[index.value];
-}
-
-void contacts_cache_prune(bnd_world *world) {
-  PROFILER_FUNCTION_START
-
-  contacts_cache *cache = &world->contacts_cache;
-  cache_entry *entries = cache->entries;
-  int32_t entry_count = (int32_t) cache->entry_count;
-
-  for (int32_t i = entry_count; i > 0; --i) {
-    count_t age = world->age - entries[i].access_time;
-
-    if (age < world->config.advanced.contacts_cache.max_age) {
-      continue;
-    }
-
-    bnd_result_u32 current_slot_index = cache_table_find_slot(world, entries[i].key, SLOT_SAME_KEY);
-    if (current_slot_index.error.type == BND_OK) {
-      cache->hash_table[current_slot_index.value] = HASH_TABLE_TOMBSTONE;
-    }
-
-    bnd_result_u32 replacement_slot_index = cache_table_find_slot(world, entries[entry_count].key, SLOT_SAME_KEY);
-    if (replacement_slot_index.error.type == BND_OK) {
-      cache->hash_table[replacement_slot_index.value] = i;
-    }
-
-    entries[i] = entries[entry_count--];
-  }
-
-  world->contacts_cache.entry_count = entry_count;
-
-  PROFILER_FUNCTION_END
 }
 
 static float cross_2d(bnd_v3 a, bnd_v3 b, bnd_v3 c) {

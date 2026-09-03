@@ -544,6 +544,7 @@ common_data          *as_common(bnd_world *world, bnd_body_type type);
 const common_data    *as_common_const(const bnd_world *world, bnd_body_type type);
 
 bnd_error             contacts_init(bnd_world *world);
+void                  contacts_reset(bnd_world *world);
 void                  contacts_teardown(bnd_world *world);
 bnd_error             contacts_ensure_capacity(bnd_world *world, count_t contacts_offset, count_t count);
 void                  contacts_filter_largest_surface_area(contact *contacts, count_t contact_count, count_t *selected_indices);
@@ -552,7 +553,6 @@ void                  resolve_constraints(bnd_world *world, float dt);
 
 bnd_error             contacts_cache_init(bnd_world *world);
 cache_entry          *contacts_cache_query(bnd_world *world, contact *contact, bnd_body_type type);
-void                  contacts_cache_prune(bnd_world *world);
 void                  contacts_cache_reset(bnd_world *world);
 
 uint64_t              hash_table_create_key(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b, bnd_body_type type);

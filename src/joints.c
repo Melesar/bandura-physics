@@ -3,7 +3,7 @@
 
 #include <string.h>
 
-static bnd_error resize_if_needed(bnd_allocator allocator, joints *joints) {
+static bnd_error joints_resize_if_needed(bnd_allocator allocator, joints *joints) {
   if (joints->count < joints->capacity) {
     return OK;
   }
@@ -40,7 +40,7 @@ bnd_result_u32 bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_
 
   joints *joints = &world->joints;
 
-  PROPAGATE_RESULT(u32, resize_if_needed(world->allocator, joints));
+  PROPAGATE_RESULT(u32, joints_resize_if_needed(world->allocator, joints));
 
   count_t last_index = joints->count++;
   bool is_dynamic = body_b.type == BND_BODY_DYNAMIC;

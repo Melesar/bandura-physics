@@ -114,7 +114,6 @@ uint64_t bnd_required_memory(const bnd_config *config) {
     + sizeof(bnd_m3)
     + sizeof(float);
 
-  uint64_t contact_size = sizeof(contact);
   uint64_t joint_size = sizeof(bnd_joint) + sizeof(count_t);
   uint64_t mesh_size = sizeof(bnd_v3) * DEFAULT_VERTEX_PER_MESH
     + sizeof(uint32_t) * DEFAULT_FACE_PER_MESH * 3
@@ -135,29 +134,25 @@ uint64_t bnd_required_memory(const bnd_config *config) {
       + blocks_count * sizeof(uint64_t);
   }
 
+  uint64_t contacts_size =
+    sizeof(uint64_t)            * config->memory.hash_table_capacity +
+    sizeof(count_t)             * config->memory.hash_table_capacity +
+    sizeof(broad_phase_contact) * config->memory.contacts_capacity;
+
   uint64_t arena_size = config->memory.internal_allocation_budget;
-
-  uint64_t cache_hash_table_capacity = 1;
-  while (cache_hash_table_capacity < config->advanced.contacts_cache.hash_table_capacity) {
-    cache_hash_table_capacity *= 2;
-  }
-
-  uint64_t contacts_cache_size = cache_hash_table_capacity * sizeof(uint32_t)
-    + config->advanced.contacts_cache.buffer_capacity * sizeof(cache_entry);
 
   size += (config->memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT) * dynamic_size
     + (config->memory.statics_capacity + EPHEMERAL_BODIES_COUNT) * common_size
-    + config->memory.contacts_capacity * contact_size
     + config->memory.joints_capacity * joint_size
     + config->memory.meshes_capacity * mesh_size
     + config->memory.events_capacity * event_size
     + config->memory.materials_capacity * material_size
+    + contacts_size
     + shapes_size
-    + arena_size
-    + contacts_cache_size;
+    + arena_size;
 
   // Alignment
-  size += 9 * 7; // 8-bytes for world, shapes slots, EPA polytope, custom data and the cache entries buffer
+  size += 10 * 7; // 8-bytes for world, shapes slots, EPA polytope, custom data and the broad phase contacts
   size += 46 * 3; // 4-bytes for the rest of the buffers
 
   return size;
@@ -227,6 +222,7 @@ bnd_config bnd_default_config(void) {
       .meshes_capacity = 32,
       .events_capacity = 128,
       .materials_capacity = 8,
+      .hash_table_capacity = 512,
       .internal_allocation_budget = 8 << 10, // 8 Kb
     },
     .advanced = {

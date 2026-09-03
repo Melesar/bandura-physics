@@ -81,7 +81,7 @@ int main(int argc, char **argv) {
 
   scenario_configure(&program_config, &config);
 
-  SetTraceLogLevel(LOG_NONE);
+  SetTraceLogLevel(LOG_DEBUG);
   InitWindow(screen_width, screen_height, program_config.window_title);
   SetWindowState(FLAG_WINDOW_RESIZABLE);
   SetExitKey(KEY_F10);

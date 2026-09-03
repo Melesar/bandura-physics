@@ -76,7 +76,7 @@ pub fn collectSources(b: *std.Build, directory: []const u8) ![]const []const u8 
     var iter = dir.iterate();
     while (try iter.next(io)) |entry| {
         if (entry.kind != .file) continue;
-        if (std.mem.lastIndexOf(u8, entry.name, ".c") == null) continue;
+        if (!std.mem.endsWith(u8, entry.name, ".c")) continue;
 
         try sources.append(b.allocator, b.pathJoin(&.{ directory, entry.name }));
     }
