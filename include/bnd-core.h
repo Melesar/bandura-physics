@@ -178,7 +178,7 @@ typedef struct {
   broad_phase_contact *contacts;
   count_t count, capacity;
 
-  count_t first;
+  count_t first, last;
   count_t free_list;
 } broad_contacts_set;
 
@@ -540,6 +540,7 @@ typedef support_point (*support_func)(const shape_context *, bnd_v3);
 bnd_allocator         bnd_default_allocator(void);
 
 bnd_error             resize_if_needed(bnd_allocator allocator, void **array, count_t element_size, uint64_t alignment, count_t count, count_t additional_count, count_t *capacity);
+bnd_error             resize_force(bnd_allocator allocator, void **array, count_t element_size, uint64_t alignment, count_t capacity_factor, count_t *capacity);
 
 bnd_error             arena_init(bnd_allocator allocator, uint64_t capacity, bnd_arena *arena);
 bnd_result_ptr        arena_alloc(bnd_arena *arena, uint64_t alignment, uint64_t size);
