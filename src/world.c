@@ -122,6 +122,32 @@ static bnd_v3 rotated_box_half_extents(bnd_m3 rotation_matrix, bnd_v3 local_half
   return half_extents;
 }
 
+bnd_v3 bounding_box_extents(const bnd_world *world, bnd_shape_type type, bnd_shape shape, bnd_quat rotation) {
+  bnd_m3 rotation_matrix;
+  bnd_v3 half_extents;
+  switch (type) {
+    case BND_BOX:
+      rotation_matrix = quat_as_matrix(rotation);
+      return rotated_box_half_extents(rotation_matrix, bnd_v3_scale(shape.box.size, 0.5f));
+
+    case BND_SPHERE:
+      return bnd_v3_scale(bnd_v3_one(), shape.sphere.radius);
+
+    case BND_CAPSULE:
+      rotation_matrix = quat_as_matrix(rotation);
+      half_extents = (bnd_v3){ shape.capsule.radius, 0.5f * shape.capsule.height + shape.capsule.radius, shape.capsule.radius };
+      return rotated_box_half_extents(rotation_matrix, half_extents);
+
+    case BND_MESH:
+      rotation_matrix = quat_as_matrix(rotation);
+      half_extents = world->meshes.aabbs[shape.mesh].half_extents;
+      return rotated_box_half_extents(rotation_matrix, half_extents);
+
+    default:
+      return (bnd_v3){FLT_MAX, FLT_MAX, FLT_MAX};
+  }
+}
+
 static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
   bnd_v3 position = data->positions[index];
   bnd_quat rotation = data->rotations[index];
@@ -137,39 +163,8 @@ static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
     bnd_quat shape_rotation = bnd_quat_mul(rotation, shape.rotation);
     bnd_v3 shape_center = bnd_v3_add(position, bnd_v3_rotate(shape.offset, rotation));
 
-    bnd_m3 rotation_matrix;
     bnd_v3 shape_min, shape_max;
-    bnd_v3 half_extents;
-    bnd_aabb local_aabb;
-    switch (shape.type) {
-      case BND_BOX:
-        rotation_matrix = quat_as_matrix(shape_rotation);
-        half_extents = rotated_box_half_extents(rotation_matrix, bnd_v3_scale(shape.value.box.size, 0.5f));
-        break;
-
-      case BND_SPHERE:
-        half_extents = bnd_v3_scale(bnd_v3_one(), shape.value.sphere.radius);
-        break;
-
-      case BND_CAPSULE:
-        rotation_matrix = quat_as_matrix(shape_rotation);
-        local_aabb = (bnd_aabb) {
-          .center = shape_center,
-          .half_extents = { shape.value.capsule.radius, 0.5f * shape.value.capsule.height + shape.value.capsule.radius, shape.value.capsule.radius }
-        };
-        half_extents = rotated_box_half_extents(rotation_matrix, local_aabb.half_extents);
-        break;
-
-      case BND_MESH:
-        rotation_matrix = quat_as_matrix(shape_rotation);
-        local_aabb = world->meshes.aabbs[shape.value.mesh];
-        half_extents = rotated_box_half_extents(rotation_matrix, local_aabb.half_extents);
-        break;
-
-      default:
-        half_extents = (bnd_v3){FLT_MAX, FLT_MAX, FLT_MAX};
-        break;
-    }
+    bnd_v3 half_extents = bounding_box_extents(world, shape.type, shape.value, shape_rotation);
 
     shape_min = bnd_v3_add(shape_center, bnd_v3_negate(half_extents));
     shape_max = bnd_v3_add(shape_center, half_extents);
@@ -975,21 +970,8 @@ bnd_error bnd_set_collision_layer(bnd_world *world, bnd_body_handle handle, bnd_
 }
 
 count_t bnd_get_contacts(const bnd_world *world, bnd_contact *contacts, count_t max_contacts) {
-  count_t count = world->contacts.count < max_contacts ? world->contacts.count : max_contacts;
-  for (count_t i = 0; i < count; ++i) {
-    contact full_contact = world->contacts.values[i];
-    bnd_body_type type = i < world->contacts.dynamic_count ? BND_BODY_DYNAMIC : BND_BODY_STATIC;
-
-    contacts[i] = (bnd_contact){
-      .point = full_contact.point,
-      .normal = full_contact.normal,
-      .depth = full_contact.depth,
-      .body_a = make_body_handle(world, BND_BODY_DYNAMIC, full_contact.index_a),
-      .body_b = make_body_handle(world, type, full_contact.index_b)
-    };
-  }
-
-  return count;
+  // TODO
+  return 0;
 }
 
 

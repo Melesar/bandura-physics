@@ -96,8 +96,14 @@ typedef struct {
 
 typedef struct {
   uint64_t key;
-  count_t outer_index_a, outer_index_b;
+  count_t body_a, body_b;
+  count_t shape_a, shape_b;
+
+  count_t next;
+  count_t next_body;
+
   float friction, restitution;
+
   broad_contact_status status;
   contact_manifold manifold;
 } broad_phase_contact;
@@ -169,15 +175,21 @@ typedef struct {
 } hash_table;
 
 typedef struct {
+  broad_phase_contact *contacts;
+  count_t count, capacity;
+
+  count_t first;
+  count_t free_list;
+} broad_contacts_set;
+
+typedef struct {
   uint64_t *keys;
   count_t  *indices;
-
-  broad_phase_contact *dynamic_broad_contacts;
-  broad_phase_contact *static_broad_contacts;
-
   count_t hash_table_capacity;
-  count_t dynamic_count, dynamic_capacity;
-  count_t static_count, static_capacity;
+  count_t hash_table_entry_count;
+
+  broad_contacts_set dynamics;
+  broad_contacts_set statics;
 
   // Obsolete
   contact *values;
@@ -616,10 +628,11 @@ bool                  epa_debug_draw(bnd_world *world, const epa_debug_status *d
 
 float                 sqr_distance_to_triangle(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_v3 *closest);
 float                 sqr_distance_to_line_segment(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 *closest);
-bool                  aabb_intersect(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b);
+bool                  body_aabb_intersect(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b);
 
 bnd_v3                body_center(const shape_context *ctx);
 bnd_quat              body_rotation(const shape_context *ctx);
+bnd_v3                bounding_box_extents(const bnd_world *world, bnd_shape_type type, bnd_shape shape, bnd_quat rotation);
 
 bnd_m3                quat_as_matrix(bnd_quat q);
 

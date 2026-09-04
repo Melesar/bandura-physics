@@ -78,10 +78,7 @@ bnd_quat body_rotation(const shape_context *ctx) {
   return bnd_quat_mul(ctx->data->rotations[ctx->index], ctx->shape.rotation);
 }
 
-bool aabb_intersect(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b) {
-  const bnd_aabb *a = &data_a->aabbs[index_a];
-  const bnd_aabb *b = &data_b->aabbs[index_b];
-
+static bool aabb_intersect(const bnd_aabb *a, const bnd_aabb *b) {
   if (fabsf(a->center.x - b->center.x) > a->half_extents.x + b->half_extents.x) {
     return false;
   }
@@ -95,6 +92,13 @@ bool aabb_intersect(const common_data *data_a, const common_data *data_b, count_
   }
 
   return true;
+}
+
+bool body_aabb_intersect(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b) {
+  const bnd_aabb *a = &data_a->aabbs[index_a];
+  const bnd_aabb *b = &data_b->aabbs[index_b];
+
+  return aabb_intersect(a, b);
 }
 
 static support_point sphere_support(const shape_context *ctx, bnd_v3 direction) {
@@ -870,11 +874,11 @@ bnd_error run_narrow_phase(bnd_world *world) {
   collision_detection_context ctx = { .world = world, .data_a = (common_data *)&world->dynamics };
   ctx.data_b = (common_data *)&world->statics;
 
-  for (count_t i = 0; i < contacts->static_count; ++i) {
-    broad_phase_contact *bc = &contacts->static_broad_contacts[i];
+  for (count_t i = 0; i < contacts->statics.count; ++i) {
+    broad_phase_contact *bc = &contacts->statics.contacts[i];
 
-    ctx.body_a = world->dynamics.outer_lookup[bc->outer_index_a].index;
-    ctx.body_b = world->statics.outer_lookup[bc->outer_index_b].index;
+    ctx.body_a = world->dynamics.outer_lookup[bc->body_a].index;
+    ctx.body_b = world->statics.outer_lookup[bc->body_b].index;
 
     body_shapes shapes_a = world->dynamics.shapes[ctx.body_a];
     body_shapes shapes_b = world->statics.shapes[ctx.body_b];
@@ -893,27 +897,22 @@ bnd_error run_narrow_phase(bnd_world *world) {
         }
 
         collision_detection_context context = entry.primary ? ctx : ctx_inverse(ctx);
+
+        contact_manifold old_manifold = bc->manifold;
+        contact_manifold manifold = entry.func(world, &context);
       }
     }
   }
   return OK;
 }
 
-static bnd_error run_broad_phase_typed(bnd_world *world, bnd_body_type type) {
+static bnd_error run_broad_phase_typed(bnd_world *world, broad_contacts_set *contact_set, bnd_body_type type) {
   collision_detection_context ctx = { .world = world };
-  bnd_arena_stack_frame stack_frame = arena_new_stack_frame(&world->arena);
 
   contacts *contacts = &world->contacts;
 
   common_data *data_a = (common_data *) &world->dynamics;
   common_data *data_b = (common_data *) as_common(world, type);
-
-  broad_phase_contact **broad_contacts = type == BND_BODY_DYNAMIC ? &contacts->dynamic_broad_contacts : &contacts->static_broad_contacts;
-  count_t *broad_contacts_count        = type == BND_BODY_DYNAMIC ? &contacts->dynamic_count          : &contacts->static_count;
-  count_t *broad_contacts_capacity     = type == BND_BODY_DYNAMIC ? &contacts->dynamic_capacity       : &contacts->static_capacity;
-
-  count_t new_contacts_count = 0;
-  broad_phase_contact *new_contacts_buffer = (broad_phase_contact *)&stack_frame.arena->buffer[AlignTo(world->arena.offset, ALIGNMENT_BROAD_CONTACT)];
 
   for (count_t i = 0; i < data_a->count; ++i) {
     count_t until = type == BND_BODY_DYNAMIC ? i : data_b->count;
@@ -931,97 +930,63 @@ static bnd_error run_broad_phase_typed(bnd_world *world, bnd_body_type type) {
         continue;
       }
 
-      bool potential_overlap = aabb_intersect(data_a, data_b, i, j);
+      bool potential_overlap = body_aabb_intersect(data_a, data_b, i, j);
 
       count_t slot;
       uint64_t key = hash_table_create_key(data_a, data_b, i, j, type);
       bool contact_exists = hash_table_find_slot_for_key(contacts, key, &slot);
 
       if (potential_overlap) {
-        if (!contact_exists) {
-          bnd_result_ptr allocation = arena_alloc(stack_frame.arena, ALIGNMENT_BROAD_CONTACT, sizeof(broad_phase_contact));
-          if (allocation.error.type != BND_OK) {
-            arena_release_stack_frame(stack_frame);
-            return allocation.error;
-          }
+        body_shapes shapes_a = data_a->shapes[i];
+        body_shapes shapes_b = data_b->shapes[j];
 
-          broad_phase_contact *new_contact = allocation.value;
-          new_contact->key = key;
-          new_contact->outer_index_a = data_a->inner_lookup[i];
-          new_contact->outer_index_b = data_b->inner_lookup[j];
-          new_contact->status = CONTACT_NONE;
-          new_contact->friction = mix_friction(&ctx);
-          new_contact->restitution = mix_restitution(&ctx);
-          
-          new_contacts_count += 1;
-        }
-      } else {
-        if (contact_exists) {
-          count_t removed_index = contacts->indices[slot];
-          contacts->keys[slot] = HASH_TABLE_TOMBSTONE;
+        bnd_body_shape *shapes_buffer_a = shapes_get(world, shapes_a);
+        bnd_body_shape *shapes_buffer_b = shapes_get(world, shapes_b);
 
-          if (removed_index != *broad_contacts_count) {
-            broad_phase_contact replacement = (*broad_contacts)[*broad_contacts_count];
-          
-            count_t moved_slot;
-            if (hash_table_find_slot_for_key(contacts, replacement.key, &moved_slot)) {
-              contacts->indices[moved_slot] = removed_index;
+        for (count_t sa = 0; sa < shapes_a.count; ++sa) {
+          ctx.shape_a = shapes_buffer_a[sa];
+          for (count_t sb = 0; sb < shapes_b.count; ++sb) {
+            ctx.shape_b = shapes_buffer_b[sb];
+            
+            bnd_aabb a = {
+              .center = body_a_center(&ctx),
+              .half_extents = bounding_box_extents(world, ctx.shape_a.type, ctx.shape_a.value, body_a_rotation(&ctx))
+            };
+
+            bnd_aabb b = {
+              .center = body_b_center(&ctx),
+              .half_extents = bounding_box_extents(world, ctx.shape_b.type, ctx.shape_b.value, body_b_rotation(&ctx)),
+            };
+
+            if (aabb_intersect(&a, &b)) {
+              if (contact_exists) {
+                broad_phase_contact *c = &contact_set->contacts[contacts->indices[slot]];
+              } else {
+                
+              }
             } else {
-              assert(false);
+              
             }
-            (*broad_contacts)[removed_index] = replacement;
           }
-
-          *broad_contacts_count -= 1; 
         }
+      } else if (!potential_overlap && contact_exists) {
       }
     }
   }
 
-  if (new_contacts_count > 0) {
-    bnd_error e = resize_if_needed(world->allocator, (void **)broad_contacts, sizeof(broad_phase_contact), ALIGNMENT_BROAD_CONTACT, *broad_contacts_count, new_contacts_count, broad_contacts_capacity);
-    if (IS_ERROR(e)) {
-      arena_release_stack_frame(stack_frame);
-      return e;
-    }
-
-    e = hash_table_resize_if_needed(world, new_contacts_count);
-    if (IS_ERROR(e)) {
-      arena_release_stack_frame(stack_frame);
-      return e;
-    }
-
-    memcpy(*broad_contacts + *broad_contacts_count + 1, new_contacts_buffer, new_contacts_count * sizeof(broad_phase_contact));
-
-    count_t slot;
-    for (count_t i = 0; i < new_contacts_count; ++i) {
-      const broad_phase_contact *new_contact = &new_contacts_buffer[i];
-
-      if (hash_table_find_empty_slot(contacts, new_contact->key, &slot)) {
-        contacts->keys[slot] = new_contact->key;
-        contacts->indices[slot] = *broad_contacts_count + 1 + i;
-      } else {
-        assert(false);
-      }
-    }
-    
-    *broad_contacts_count += new_contacts_count;
-  }
-
-  arena_release_stack_frame(stack_frame);
   return OK;
 }
 
 bnd_error run_broad_phase(bnd_world *world) {
   PROFILER_FUNCTION_START
   
-  bnd_error e = run_broad_phase_typed(world, BND_BODY_DYNAMIC);
+  bnd_error e = run_broad_phase_typed(world, &world->contacts.dynamics, BND_BODY_DYNAMIC);
   if (IS_ERROR(e)) {
     PROFILER_FUNCTION_END
     return e;
   }
 
-  e = run_broad_phase_typed(world, BND_BODY_STATIC);
+  e = run_broad_phase_typed(world, &world->contacts.statics, BND_BODY_STATIC);
   if (IS_ERROR(e)) {
     PROFILER_FUNCTION_END
     return e;

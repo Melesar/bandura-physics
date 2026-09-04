@@ -170,8 +170,8 @@ static bnd_result_u32 cache_table_insert(bnd_world *world, uint64_t key) {
 void contacts_reset(bnd_world *world) {
   contacts *contacts = &world->contacts;
 
-  contacts->dynamic_count = 0;
-  contacts->static_count = 0;
+  contacts->dynamics.count = 0;
+  contacts->statics.count = 0;
 
   memset(contacts->keys, 0, sizeof(broad_phase_contact) * contacts->hash_table_capacity);
 }
@@ -197,7 +197,7 @@ void contacts_generate(bnd_world *world) {
   static_count += joints_generate_contacts(world, static_offset + static_count, BND_BODY_STATIC);
 
   world->contacts.count = dynamic_count + static_count;
-  world->contacts.dynamic_count = dynamic_count;
+  world->contacts.dynamics.count = dynamic_count;
   world->stats.contacts_count = world->contacts.count;
 
   PROFILER_FUNCTION_END
@@ -221,15 +221,15 @@ bnd_error contacts_init(bnd_world *world) {
     static_capacity = dynamic_capacity + 1;
   }
 
-  ALLOC_BUFFER8(contacts->dynamic_broad_contacts, sizeof(broad_phase_contact) * dynamic_capacity);
-  ALLOC_BUFFER8(contacts->static_broad_contacts,  sizeof(broad_phase_contact) * static_capacity);
+  ALLOC_BUFFER8(contacts->dynamics.contacts, sizeof(broad_phase_contact) * dynamic_capacity);
+  ALLOC_BUFFER8(contacts->statics.contacts,  sizeof(broad_phase_contact) * static_capacity);
 
   contacts->hash_table_capacity = hash_table_capacity;
-  contacts->dynamic_capacity = dynamic_capacity;
-  contacts->static_capacity = static_capacity;
+  contacts->dynamics.capacity= dynamic_capacity;
+  contacts->statics.capacity= static_capacity;
 
-  contacts->dynamic_count = 0;
-  contacts->static_count = 0;
+  contacts->dynamics.count = 0;
+  contacts->statics.count = 0;
 
   collision_detection_init();
 
@@ -241,8 +241,8 @@ void contacts_teardown(bnd_world *world) {
   world->allocator.free(contacts->keys, contacts->hash_table_capacity * sizeof(uint64_t));
   world->allocator.free(contacts->indices, contacts->hash_table_capacity * sizeof(count_t));
 
-  world->allocator.free(contacts->dynamic_broad_contacts, contacts->dynamic_capacity * sizeof(broad_phase_contact));
-  world->allocator.free(contacts->static_broad_contacts, contacts->static_capacity * sizeof(broad_phase_contact));
+  world->allocator.free(contacts->dynamics.contacts, contacts->dynamics.capacity * sizeof(broad_phase_contact));
+  world->allocator.free(contacts->statics.contacts, contacts->statics.capacity * sizeof(broad_phase_contact));
 }
 
 bnd_error contacts_ensure_capacity(bnd_world *world, count_t contacts_offset, count_t additional_count) {
@@ -383,7 +383,7 @@ bnd_error hash_table_resize_if_needed(bnd_world *world, count_t additional_count
   const float threshold_factor = 0.75f;
 
   float threshold_capacity = initial_capacity * threshold_factor;
-  float intended_count = (float)(contacts->dynamic_count + contacts->static_count + additional_count);
+  float intended_count = (float)(contacts->hash_table_entry_count + additional_count);
 
   if (threshold_capacity > intended_count) {
     return OK;
@@ -407,8 +407,8 @@ bnd_error hash_table_resize_if_needed(bnd_world *world, count_t additional_count
   memset(contacts->indices, 0, sizeof(count_t) * new_capacity);
 
   count_t slot;
-  count_t counts[] = { contacts->dynamic_count, contacts->static_count };
-  broad_phase_contact *arrays[] = { contacts->dynamic_broad_contacts, contacts->static_broad_contacts };
+  count_t counts[] = { contacts->dynamics.count, contacts->statics.count };
+  broad_phase_contact *arrays[] = { contacts->dynamics.contacts, contacts->statics.contacts };
 
   for (count_t k = 0; k < 2; ++k) {
     for (count_t i = 1; i <= counts[k]; ++i) {
