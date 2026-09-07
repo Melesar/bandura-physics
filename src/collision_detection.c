@@ -1020,6 +1020,42 @@ static void remove_body_contact(bnd_world *world, count_t hash_slot, broad_conta
   }
 }
 
+static void remove_all_shape_contacts(bnd_world *world, count_t hash_slot, broad_contacts_set *contacts) {
+  world->contacts.keys[hash_slot] = HASH_TABLE_TOMBSTONE;
+  world->contacts.hash_table_entry_count -= 1;
+
+  count_t contact_index = world->contacts.indices[hash_slot];
+  broad_phase_contact *c = &contacts->contacts[contact_index];
+
+  if (contacts->first == contact_index) {
+    contacts->first = c->next_body;
+
+    if (contacts->last == contact_index) {
+      // At this point both will be UINT32_MAX
+      contacts->last = c->next_body;
+    }
+  } else {
+    count_t prev_index = contacts->first;
+    broad_phase_contact *prev_contact = &contacts->contacts[prev_index];
+
+    while(prev_index != contact_index) {
+      prev_index = prev_contact->next_body;
+      prev_contact = &contacts->contacts[prev_index];
+    }
+
+    prev_contact->next_body = c->next_body;
+
+    if (contacts->last == contact_index) {
+      contacts->last = prev_index;
+    }
+  }
+
+  do {
+    free_list_append(contacts, c, contact_index);
+    contact_index = c->next;
+  } while (contact_index != UINT32_MAX);
+}
+
 static void init_contact(broad_phase_contact *contact, uint64_t key, const collision_detection_context *ctx, count_t shape_a, count_t shape_b) {
   contact->key = key;
   contact->body_a = ctx->body_a;
@@ -1134,6 +1170,7 @@ static bnd_error run_broad_phase_typed(bnd_world *world, broad_contacts_set *con
           }
         }
       } else if (!potential_overlap && body_contact_exists) {
+        remove_all_shape_contacts(world, slot, contact_set);
       }
     }
   }
