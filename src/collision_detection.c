@@ -875,8 +875,9 @@ bnd_error run_narrow_phase(bnd_world *world) {
 static bool find_existing_shapes_contact(bnd_world *world, count_t hash_slot, broad_contacts_set *contacts, count_t shape_a, count_t shape_b, broad_phase_contact **contact, broad_phase_contact **prev_contact, count_t *contact_index, count_t *prev_contact_index) {
   count_t index = world->contacts.indices[hash_slot];
   broad_phase_contact *c = &contacts->contacts[index];
-  broad_phase_contact *prev = NULL;
 
+  *prev_contact = NULL;
+  *prev_contact_index = UINT32_MAX;
   if (c->shape_a == shape_a && c->shape_b == shape_b) {
     // Shapes contact in question is a root body contact. Now find the previous body contact.
     *contact = c;
@@ -892,6 +893,7 @@ static bool find_existing_shapes_contact(bnd_world *world, count_t hash_slot, br
     return true;
   }
 
+  broad_phase_contact *prev = NULL;
   do {
     if (c->next == UINT32_MAX) {
       return false;
@@ -911,22 +913,111 @@ static bool find_existing_shapes_contact(bnd_world *world, count_t hash_slot, br
   return true;
 }
 
-static bnd_error create_shapes_contact(bnd_world *world, count_t hash_slot, broad_contacts_set *contacts,  broad_phase_contact **new_contact, broad_phase_contact **prev_contact, count_t *new_index) {
-  if (contacts->count == contacts->capacity && contacts->free_list == UINT32_MAX) {
+static void free_list_append(broad_contacts_set *contacts, broad_phase_contact *contact, count_t index) {
+  count_t current_head = contacts->free_list;
+  contacts->free_list = index;
+  contact->next = current_head;
+}
+
+static bool free_list_pop(broad_contacts_set *contacts, count_t *index) {
+  if (contacts->free_list == UINT32_MAX) {
+    return false;
+  }
+
+  *index = contacts->free_list;
+  contacts->free_list = contacts->contacts[contacts->free_list].next;
+
+  return true;
+}
+
+static bnd_error new_contact_index(bnd_world *world, broad_contacts_set *contacts, count_t *index) {
+  if (contacts->next > contacts->capacity && contacts->free_list == UINT32_MAX) {
     PROPAGATE_ERROR(resize_force(world->allocator, (void **)&contacts->contacts, sizeof(broad_phase_contact), ALIGNMENT_BROAD_CONTACT, 2, &contacts->capacity));
   }
 
+  if (!free_list_pop(contacts, index)) {
+    *index = contacts->next++;
+  }
+
+  return OK;
+}
+
+static bnd_error create_shapes_contact(bnd_world *world, count_t hash_slot, broad_contacts_set *contacts,  broad_phase_contact **new_contact) {
   count_t index = world->contacts.indices[hash_slot];
   broad_phase_contact *c = &contacts->contacts[index];
-  
+
+  while (c->next != UINT32_MAX) {
+    index = c->next;
+    c = &contacts->contacts[index];
+  }
+
+  PROPAGATE_ERROR(new_contact_index(world, contacts, &index));
+
+  c->next = index;
+
+  *new_contact = &contacts->contacts[index];
+
+  return OK;
 }
 
-static bnd_error create_body_contact(bnd_world *world, uint64_t hash_key, broad_contacts_set *contacts, broad_phase_contact **new_contact, broad_phase_contact **prev_contact, count_t *new_index) {
-  
+static bnd_error create_body_contact(bnd_world *world, uint64_t hash_key, broad_contacts_set *contacts, broad_phase_contact **new_contact) {
+  count_t slot, contact_index;
+
+  PROPAGATE_ERROR(new_contact_index(world, contacts, &contact_index))
+  PROPAGATE_ERROR(hash_table_resize_if_needed(world, 1))
+
+  assert(hash_table_find_empty_slot(&world->contacts, hash_key, &slot));
+  world->contacts.keys[slot] = hash_key;
+  world->contacts.indices[slot] = contact_index;
+  world->contacts.hash_table_entry_count += 1;
+
+  if (contacts->last != UINT32_MAX) {
+    broad_phase_contact *last_contact = &contacts->contacts[contacts->last];
+    last_contact->next_body = contact_index;
+  }
+
+  contacts->last = contact_index;
+
+  if (contacts->first == UINT32_MAX) {
+    contacts->first = contact_index;
+  }
+
+  *new_contact = &contacts->contacts[contact_index];
+
+  return OK;
 }
 
-static void append_to_free_list(broad_contacts_set *contacts, broad_phase_contact *contact, count_t index) {
-  
+static void remove_body_contact(bnd_world *world, count_t hash_slot, broad_contacts_set *contacts, broad_phase_contact *contact, broad_phase_contact *prev_contact, count_t index, count_t prev_index) {
+  if (contact->next == UINT32_MAX) {
+    // Body contact has no attached shape contacts. Remove it altogether.
+    world->contacts.keys[hash_slot] = HASH_TABLE_TOMBSTONE;
+    world->contacts.hash_table_entry_count -= 1;
+
+    if (prev_contact) {
+      prev_contact->next_body = contact->next_body;
+    } else {
+      contacts->first = contact->next_body;
+    }
+
+    if (contacts->last == index) {
+      contacts->last = prev_index;
+    }
+  } else {
+    // Make the next attached shape contact the new body contact.
+    broad_phase_contact *next_contact = &contacts->contacts[contact->next];
+    next_contact->next_body = contact->next_body;
+    if (prev_contact) {
+      prev_contact->next_body = contact->next;
+    } else {
+      contacts->first = contact->next;
+    }
+
+    if (contacts->last == index) {
+      contacts->last = contact->next;
+    }
+
+    world->contacts.indices[hash_slot] = contact->next;
+  }
 }
 
 static void init_contact(broad_phase_contact *contact, uint64_t key, const collision_detection_context *ctx, count_t shape_a, count_t shape_b) {
@@ -1011,44 +1102,33 @@ static bnd_error run_broad_phase_typed(bnd_world *world, broad_contacts_set *con
               if (body_contact_exists) {
                 if (find_existing_shapes_contact(world, slot, contact_set, sa, sb, &shapes_contact, &prev_contact, &contact_index, &prev_contact_index)) {
                   // Shapes potentially overlap, there is a root contact for the bodies, but not for the shapes.
-                  PROPAGATE_ERROR(create_shapes_contact(world, slot, contact_set, &shapes_contact, &prev_contact, &contact_index));
+                  PROPAGATE_ERROR(create_shapes_contact(world, slot, contact_set, &shapes_contact));
                   init_contact(shapes_contact, key, &ctx, sa, sb);
-                  prev_contact->next = contact_index;
                 } else {
                   // Shapes potentially overlap and there is already a contact - do nothing.
                 }
               } else { 
                 // Shapes potentially overlap but there is not even a body contact. 
-                PROPAGATE_ERROR(create_body_contact(world, key, contact_set, &shapes_contact, &prev_contact, &contact_index));
+                PROPAGATE_ERROR(create_body_contact(world, key, contact_set, &shapes_contact));
                 init_contact(shapes_contact, key, &ctx, sa, sb);
-                prev_contact->next_body = contact_index;
               }
             } else { 
               // Shapes cannot overlap at all.
-              if (find_existing_shapes_contact(world, slot, contact_set, sa, sb, &shapes_contact, &prev_contact, &contact_index, &prev_contact_index)) {
-                // Should remove the existing contact.
-                append_to_free_list(contact_set, shapes_contact, contact_index);
-
-                if (prev_contact) {
-                  if (contact_set->last == contact_index) {
-                    contact_set->last = prev_contact_index;
-                  }
-
-                  if (prev_contact->key == key) {
-                    prev_contact->next = shapes_contact->next;
+              if (body_contact_exists) {
+                if (find_existing_shapes_contact(world, slot, contact_set, sa, sb, &shapes_contact, &prev_contact, &contact_index, &prev_contact_index)) {
+                  // Should remove the existing contact.
+                  if (prev_contact == NULL || shapes_contact->key != prev_contact->key) {
+                    // Prev contact is for a different body or doesn't exist. That means that current contact is a root body contact.
+                    remove_body_contact(world, slot, contact_set, shapes_contact, prev_contact, contact_index, prev_contact_index);
                   } else {
-                    prev_contact->next_body = shapes_contact->next_body;
+                    // Simply remove one of the shape contacts.
+                    prev_contact->next = shapes_contact->next;
                   }
-                } else  {
-                  if (contact_set->first == contact_index) {
-                    contact_set->first = shapes_contact->next;
-                  }
-                  if (contact_set->last == contact_index) {
-                    contact_set->last = shapes_contact->next;
-                  }
+
+                  free_list_append(contact_set, shapes_contact, contact_index);
+                } else {
+                  // No overlap and no contact - all good.
                 }
-              } else {
-                // No overlap and no contact - all good.
               }
             }
           }

@@ -176,9 +176,9 @@ typedef struct {
 
 typedef struct {
   broad_phase_contact *contacts;
-  count_t count, capacity;
+  count_t capacity;
 
-  count_t first, last;
+  count_t first, last, next;
   count_t free_list;
 } broad_contacts_set;
 

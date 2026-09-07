@@ -170,8 +170,8 @@ static bnd_result_u32 cache_table_insert(bnd_world *world, uint64_t key) {
 void contacts_reset(bnd_world *world) {
   contacts *contacts = &world->contacts;
 
-  contacts->dynamics.count = 0;
-  contacts->statics.count = 0;
+  contacts->dynamics.next = 1;
+  contacts->statics.next = 1;
 
   memset(contacts->keys, 0, sizeof(broad_phase_contact) * contacts->hash_table_capacity);
 }
@@ -197,7 +197,7 @@ void contacts_generate(bnd_world *world) {
   static_count += joints_generate_contacts(world, static_offset + static_count, BND_BODY_STATIC);
 
   world->contacts.count = dynamic_count + static_count;
-  world->contacts.dynamics.count = dynamic_count;
+  world->contacts.dynamics.next = dynamic_count;
   world->stats.contacts_count = world->contacts.count;
 
   PROFILER_FUNCTION_END
@@ -228,8 +228,8 @@ bnd_error contacts_init(bnd_world *world) {
   contacts->dynamics.capacity= dynamic_capacity;
   contacts->statics.capacity= static_capacity;
 
-  contacts->dynamics.count = 0;
-  contacts->statics.count = 0;
+  contacts->dynamics.next = 1;
+  contacts->statics.next = 1;
 
   collision_detection_init();
 
@@ -407,20 +407,20 @@ bnd_error hash_table_resize_if_needed(bnd_world *world, count_t additional_count
   memset(contacts->indices, 0, sizeof(count_t) * new_capacity);
 
   count_t slot;
-  count_t counts[] = { contacts->dynamics.count, contacts->statics.count };
-  broad_phase_contact *arrays[] = { contacts->dynamics.contacts, contacts->statics.contacts };
+  broad_contacts_set *contact_sets[] = { &contacts->dynamics, &contacts->statics };
 
   for (count_t k = 0; k < 2; ++k) {
-    for (count_t i = 1; i <= counts[k]; ++i) {
-      const broad_phase_contact *c = &arrays[k][i];
+    broad_contacts_set *set = contact_sets[k];
+    count_t index = set->first;
 
-      if (hash_table_find_empty_slot(contacts, c->key, &slot)) {
-        contacts->keys[slot] = c->key;
-        contacts->indices[slot] = i;
-      } else {
-        // Should not be the case, since we've just cleared and resized the table
-        assert(false);
-      }
+    while (index != UINT32_MAX) {
+      const broad_phase_contact *c = &set->contacts[index];
+
+      assert(hash_table_find_empty_slot(contacts, c->key, &slot));
+      contacts->keys[slot] = c->key;
+      contacts->indices[slot] = index;
+
+      index = c->next_body;
     }
   }
 
