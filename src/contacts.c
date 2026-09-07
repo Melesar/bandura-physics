@@ -170,10 +170,14 @@ static bnd_result_u32 cache_table_insert(bnd_world *world, uint64_t key) {
 void contacts_reset(bnd_world *world) {
   contacts *contacts = &world->contacts;
 
-  contacts->dynamics.next = 1;
-  contacts->statics.next = 1;
+  broad_contacts_set *sets[] = { &contacts->dynamics, &contacts->statics };
+  for (count_t k = 0; k < 2; ++k) {
+    sets[k]->first = sets[k]->last = sets[k]->free_list = UINT32_MAX;
+    sets[k]->next = 0;
+  }
 
-  memset(contacts->keys, 0, sizeof(broad_phase_contact) * contacts->hash_table_capacity);
+  memset(contacts->keys, 0, sizeof(uint64_t) * contacts->hash_table_capacity);
+  contacts->hash_table_entry_count = 0;
 }
 
 void contacts_cache_reset(bnd_world *world) {
@@ -182,54 +186,44 @@ void contacts_cache_reset(bnd_world *world) {
   memset(cache->hash_table, 0, cache->hash_table_capacity * sizeof(uint32_t));
 }
 
-void contacts_generate(bnd_world *world) {
-  PROFILER_FUNCTION_START
-
-  count_t dynamic_count = collisions_detect(world, 0, BND_BODY_DYNAMIC);
-  emit_collision_events(world, world->contacts.values, dynamic_count, BND_BODY_DYNAMIC);
-
-  dynamic_count += joints_generate_contacts(world, dynamic_count, BND_BODY_DYNAMIC);
-
-  const count_t static_offset = dynamic_count;
-  count_t static_count = collisions_detect(world, static_offset, BND_BODY_STATIC);
-  emit_collision_events(world, world->contacts.values + static_offset, static_count, BND_BODY_STATIC);
-
-  static_count += joints_generate_contacts(world, static_offset + static_count, BND_BODY_STATIC);
-
-  world->contacts.count = dynamic_count + static_count;
-  world->contacts.dynamics.next = dynamic_count;
-  world->stats.contacts_count = world->contacts.count;
-
-  PROFILER_FUNCTION_END
-}
-
 bnd_error contacts_init(bnd_world *world) {
   contacts *contacts = &world->contacts;
   bnd_allocator allocator = world->allocator;
 
   count_t hash_table_capacity = world->config.memory.hash_table_capacity;
+  if (hash_table_capacity == 0 || hash_table_capacity & (hash_table_capacity - 1)) {
+    // TODO make sure these conditions are false before proceeding. Watch out for reported memory value though.
+  }
+
   ALLOC_BUFFER8(contacts->keys, sizeof(uint64_t) * hash_table_capacity);
   ALLOC_BUFFER4(contacts->indices, sizeof(count_t) * hash_table_capacity);
+
+  memset(contacts->keys, 0, sizeof(uint64_t) * hash_table_capacity);
+  contacts->hash_table_entry_count = 0;
 
   count_t dynamic_capacity, static_capacity;
   count_t contacts_capacity = world->config.memory.contacts_capacity;
   if (contacts_capacity & 1) {
-    dynamic_capacity = (contacts_capacity >> 1) + 2;
-    static_capacity = (contacts_capacity >> 1) + 1;
-  } else {
     dynamic_capacity = (contacts_capacity >> 1) + 1;
-    static_capacity = dynamic_capacity + 1;
+    static_capacity = (contacts_capacity >> 1);
+  } else {
+    dynamic_capacity = contacts_capacity >> 1;
+    static_capacity = dynamic_capacity;
   }
 
   ALLOC_BUFFER8(contacts->dynamics.contacts, sizeof(broad_phase_contact) * dynamic_capacity);
   ALLOC_BUFFER8(contacts->statics.contacts,  sizeof(broad_phase_contact) * static_capacity);
 
   contacts->hash_table_capacity = hash_table_capacity;
-  contacts->dynamics.capacity= dynamic_capacity;
-  contacts->statics.capacity= static_capacity;
+  contacts->dynamics.capacity = dynamic_capacity;
+  contacts->statics.capacity = static_capacity;
 
-  contacts->dynamics.next = 1;
-  contacts->statics.next = 1;
+  broad_contacts_set *sets[] = { &contacts->dynamics, &contacts->statics };
+  for (count_t k = 0; k < 2; ++k) {
+    sets[k]->first = sets[k]->last = sets[k]->free_list = UINT32_MAX;
+    sets[k]->next = 0;
+  }
+
 
   collision_detection_init();
 
@@ -308,7 +302,8 @@ uint64_t hash_table_create_key(const common_data *data_a, const common_data *dat
 
   const uint64_t mask_23bit = 0x7FFFFF;
 
-  uint64_t key = (uint64_t)type << 62;
+  uint64_t key = 0x8000000000000000; // 63-rd bit set. This indicates a valid (alive) key.
+  key |= (uint64_t)type << 62;
   key |= gen_a << 54;
   key |= (outer_index_a & mask_23bit) << 31;
   key |= gen_b << 23;
