@@ -1,4 +1,3 @@
-#include "bandura.h"
 #include "bnd-core.h"
 #include "bnd-math.h"
 
@@ -207,6 +206,8 @@ body_support support(const collision_detection_context *ctx, bnd_v3 direction) {
 }
 
 static contact_manifold sphere_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
+  (void) world;
+  
   contact_manifold result = {0};
 
   bnd_v3 center_a = body_a_center(ctx);
@@ -233,6 +234,8 @@ static contact_manifold sphere_sphere_collision(bnd_world *world, const collisio
 }
 
 static contact_manifold capsule_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
+  (void) world;
+  
   contact_manifold result = {0};
 
   bnd_v3 capsule_center = body_a_center(ctx);
@@ -305,6 +308,8 @@ static contact_manifold capsule_sphere_collision(bnd_world *world, const collisi
 }
 
 static contact_manifold box_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
+  (void) world;
+  
   contact_manifold result = {0};
   bnd_v3 half_extents = bnd_v3_scale(ctx->shape_a.value.box.size, 0.5);
   bnd_v3 box_center = body_a_center(ctx);
@@ -367,6 +372,8 @@ static contact_manifold box_sphere_collision(bnd_world *world, const collision_d
 }
 
 static contact_manifold box_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
+  (void) world;
+  
   contact_manifold result = {0};
   bnd_quat box_rotation = ctx->data_a->rotations[ctx->body_a];
   bnd_quat shape_rotation = ctx->shape_a.rotation;
@@ -403,6 +410,8 @@ static contact_manifold box_plane_collision(bnd_world *world, const collision_de
 }
 
 static contact_manifold sphere_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
+  (void) world;
+  
   contact_manifold result = {0};
   bnd_v3 sphere_center = body_a_center(ctx);
   float sphere_radius = ctx->shape_a.value.sphere.radius;
@@ -423,6 +432,8 @@ static contact_manifold sphere_plane_collision(bnd_world *world, const collision
 }
 
 static contact_manifold capsule_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
+  (void) world;
+  
   contact_manifold result = {0};
   bnd_v3 capsule_center = body_a_center(ctx);
   float capsule_radius = ctx->shape_a.value.capsule.radius;
@@ -869,7 +880,48 @@ void collision_detection_init(void) {
 }
 
 bnd_error run_narrow_phase(bnd_world *world) {
-  return OK;  
+  broad_contacts_set *sets[] = { &world->contacts.dynamics, &world->contacts.statics };
+  for (count_t k = 0; k < 2; ++k) {
+    broad_contacts_set *contacts = sets[k];
+
+    count_t body_contact_index = contacts->first;
+    while (body_contact_index != UINT32_MAX) {
+      broad_phase_contact *body_contact = &contacts->contacts[body_contact_index];
+
+      count_t shape_contact_index = body_contact_index;
+      while (shape_contact_index != UINT32_MAX) {
+        broad_phase_contact *shape_contact = &contacts->contacts[shape_contact_index];
+
+        common_data *data_a = (common_data *)&world->dynamics;
+        common_data *data_b = k == 0 ? (common_data *)&world->dynamics : (common_data *)&world->statics;
+
+        bnd_body_shape *shapes_a = shapes_get(world, data_a->shapes[shape_contact->body_a]);
+        bnd_body_shape *shapes_b = shapes_get(world, data_b->shapes[shape_contact->body_b]);
+        collision_detection_context ctx = {
+          world,
+          data_a,
+          data_b,
+          0,
+          shape_contact->body_a,
+          shape_contact->body_b,
+          shapes_a[shape_contact->shape_a],
+          shapes_b[shape_contact->shape_b],
+        };
+
+        collision_detection_entry entry = collision_detection_table[ctx.shape_a.type][ctx.shape_b.type];
+        collision_detection_context context = entry.primary ? ctx : ctx_inverse(ctx);
+
+        contact_manifold prev_manifold = shape_contact->manifold;
+        contact_manifold new_manifold = entry.func(world, &context);
+
+        shape_contact_index = shape_contact->next;
+      }
+
+      body_contact_index = body_contact->next_body;
+    }
+  }
+
+  return OK;
 }
 
 static bool find_existing_shapes_contact(bnd_world *world, count_t hash_slot, broad_contacts_set *contacts, count_t shape_a, count_t shape_b, broad_phase_contact **contact, broad_phase_contact **prev_contact, count_t *contact_index, count_t *prev_contact_index) {
