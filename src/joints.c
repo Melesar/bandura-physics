@@ -1,5 +1,4 @@
 #include "bnd-core.h"
-#include "bnd-math.h"
 
 #include <string.h>
 
@@ -146,57 +145,6 @@ void joints_remove_stale_if_needed(bnd_world *world, bnd_body_handle removed_bod
 
   joints->dynamic_count = new_dynamic_count;
   joints->count = write;
-}
-
-count_t joints_generate_contacts(bnd_world *world, count_t contacts_offset, bnd_body_type type) {
-  const joints *joints = &world->joints;
-
-  const count_t start = type == BND_BODY_DYNAMIC ? 0 : joints->dynamic_count;
-  const count_t end = type == BND_BODY_DYNAMIC ? joints->dynamic_count : joints->count;
-  const count_t max_count = end - start;
-
-  if (IS_ERROR(contacts_ensure_capacity(world, contacts_offset, max_count))) {
-    return 0;
-  }
-
-  contact *contacts = world->contacts.values;
-
-  count_t spawned_count = 0;
-  for (count_t i = start; i < end; ++i) {
-    bnd_joint j = joints->values[i];
-
-    const common_data *data[2];
-    data[0] = as_common(world, BND_BODY_DYNAMIC);
-    data[1] = as_common(world, type);
-
-    bnd_v3 world_points[2];
-    count_t indices[2];
-    for (count_t k = 0; k < 2; ++k) {
-      count_t index = handle_to_inner_index(world, j.bodies[k]);
-      world_points[k] = bnd_v3_rotate(j.relative_contact_positions[k], data[k]->rotations[index]);
-      world_points[k] = bnd_v3_add(world_points[k], data[k]->positions[index]);
-      indices[k] = index;
-    }
-
-    bnd_v3 offset = bnd_v3_sub(world_points[1], world_points[0]);
-    float distance = bnd_v3_len(offset);
-    if (distance <= j.max_error) {
-      continue;
-    }
-
-    contact *contact = contacts + contacts_offset + spawned_count;
-    contact->index_a = indices[0];
-    contact->index_b = indices[1];
-    contact->point = bnd_v3_scale(bnd_v3_add(world_points[0], world_points[1]), 0.5f);
-    contact->normal = bnd_v3_scale(offset, 1.0f / distance);
-    contact->depth = distance - j.max_error;
-    contact->friction = 1.0f;
-    contact->restitution = 0.0f;
-
-    spawned_count += 1;
-  }
-
-  return spawned_count;
 }
 
 bnd_error joints_init(bnd_world *world) {
