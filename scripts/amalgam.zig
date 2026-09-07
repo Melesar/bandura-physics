@@ -264,6 +264,7 @@ fn writeHeaderFile(source: SourceFile, output: *ArrayList, allocator: Allocator)
 
 fn writeSourceFile(source: SourceFile, output: *ArrayList, allocator: Allocator) !void {
     var startPos: u64 = 0;
+    // TODO ignore BND_TESTS
     try writeFile(source.contents, &startPos, source.name, output, allocator);
 }
 
