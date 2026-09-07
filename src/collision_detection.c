@@ -1209,3 +1209,309 @@ bnd_error run_broad_phase(bnd_world *world) {
   PROFILER_FUNCTION_END
   return OK;
 }
+
+#if defined(BND_TESTS)
+
+#include "library_testing.h"
+#include "testing.h"
+
+static count_t broad_phase_inner_index(const bnd_world *world, bnd_body_handle handle);
+
+static void broad_phase_refresh(bnd_world *world) {
+  expect_ok(run_broad_phase(world));
+}
+
+static void broad_phase_move_body(bnd_world *world, bnd_body_handle handle, bnd_v3 position) {
+  bnd_result_v3 old_position = bnd_get_position(world, handle);
+  expect_ok(old_position.error);
+  expect_ok(bnd_set_position(world, handle, position));
+
+  common_data *data = (common_data *) as_common(world, handle.type);
+  count_t index = broad_phase_inner_index(world, handle);
+  data->aabbs[index].center = bnd_v3_add(data->aabbs[index].center, bnd_v3_sub(position, old_position.value));
+}
+
+static count_t broad_phase_inner_index(const bnd_world *world, bnd_body_handle handle) {
+  const common_data *data = as_common_const(world, handle.type);
+  return data->outer_lookup[handle.index].index;
+}
+
+static broad_contacts_set *broad_phase_set(bnd_world *world, bnd_body_type type) {
+  return type == BND_BODY_DYNAMIC ? &world->contacts.dynamics : &world->contacts.statics;
+}
+
+static broad_phase_contact *broad_phase_contact_for_pair(bnd_world *world, bnd_body_handle a, bnd_body_handle b, bnd_body_type type) {
+  common_data *data_a = (common_data *) &world->dynamics;
+  common_data *data_b = (common_data *) as_common(world, type);
+  count_t index_a = broad_phase_inner_index(world, a);
+  count_t index_b = broad_phase_inner_index(world, b);
+  uint64_t key = hash_table_create_key(data_a, data_b, index_a, index_b, type);
+  count_t slot;
+
+  if (!hash_table_find_slot_for_key(&world->contacts, key, &slot)) {
+    return NULL;
+  }
+
+  return &broad_phase_set(world, type)->contacts[world->contacts.indices[slot]];
+}
+
+static count_t broad_phase_chain_count(const broad_contacts_set *set, count_t root_index) {
+  count_t count = 0;
+  count_t index = root_index;
+  while (index != UINT32_MAX) {
+    count += 1;
+    index = set->contacts[index].next;
+  }
+  return count;
+}
+
+static count_t broad_phase_root_count(const broad_contacts_set *set) {
+  count_t count = 0;
+  for (count_t index = set->first; index != UINT32_MAX; index = set->contacts[index].next_body) {
+    count += 1;
+  }
+  return count;
+}
+
+static count_t broad_phase_free_count(const broad_contacts_set *set) {
+  count_t count = 0;
+  for (count_t index = set->free_list; index != UINT32_MAX; index = set->contacts[index].next) {
+    count += 1;
+  }
+  return count;
+}
+
+static void broad_phase_assert_set_links(const broad_contacts_set *set) {
+  count_t roots = 0;
+  count_t shape_entries = 0;
+  count_t previous = UINT32_MAX;
+
+  for (count_t index = set->first; index != UINT32_MAX; index = set->contacts[index].next_body) {
+    const broad_phase_contact *root = &set->contacts[index];
+    assert(index != UINT32_MAX);
+    assert(root->next_body == UINT32_MAX || set->contacts[root->next_body].key != 0);
+    assert(root->key & UINT64_C(0x8000000000000000));
+    assert(previous == UINT32_MAX || set->contacts[previous].next_body == index);
+    shape_entries += broad_phase_chain_count(set, index);
+    previous = index;
+    roots += 1;
+  }
+
+  assert((roots == 0) == (set->first == UINT32_MAX && set->last == UINT32_MAX));
+  assert((roots > 0) == (set->last != UINT32_MAX));
+  assert(set->next >= shape_entries + broad_phase_free_count(set));
+}
+
+static void test_broad_phase_creates_and_deduplicates_contacts(void) {
+  bnd_world *world = test_world();
+  bnd_body_handle a = add_dynamic_sphere(world, 1.0f);
+  bnd_body_handle b = add_dynamic_sphere(world, 1.0f);
+
+  broad_phase_refresh(world);
+
+  broad_contacts_set *set = &world->contacts.dynamics;
+  assert(world->contacts.hash_table_entry_count == 1);
+  assert(broad_phase_root_count(set) == 1);
+  assert(set->first == set->last);
+  assert(set->next == 1);
+  assert(set->free_list == UINT32_MAX);
+
+  broad_phase_contact *contact = broad_phase_contact_for_pair(world, a, b, BND_BODY_DYNAMIC);
+  assert(contact != NULL);
+  assert(contact->shape_a == 0 && contact->shape_b == 0);
+  assert(contact->next == UINT32_MAX && contact->next_body == UINT32_MAX);
+  assert(contact->key & UINT64_C(0x8000000000000000));
+
+  count_t first = set->first;
+  broad_phase_refresh(world);
+  assert(world->contacts.hash_table_entry_count == 1);
+  assert(set->first == first && set->next == 1);
+  broad_phase_assert_set_links(set);
+
+  bnd_teardown(world);
+}
+
+static void test_broad_phase_keeps_dynamic_and_static_sets_independent(void) {
+  bnd_world *world = test_world();
+  bnd_body_handle dynamic_a = add_dynamic_sphere(world, 1.0f);
+  bnd_body_handle dynamic_b = add_dynamic_sphere(world, 1.0f);
+  bnd_body_handle static_body = add_static_sphere(world, 1.0f);
+
+  broad_phase_refresh(world);
+
+  assert(broad_phase_root_count(&world->contacts.dynamics) == 1);
+  assert(broad_phase_root_count(&world->contacts.statics) == 2);
+  assert(world->contacts.hash_table_entry_count == 3);
+  assert(broad_phase_contact_for_pair(world, dynamic_a, dynamic_b, BND_BODY_DYNAMIC) != NULL);
+  assert(broad_phase_contact_for_pair(world, dynamic_a, static_body, BND_BODY_STATIC) != NULL);
+  broad_phase_assert_set_links(&world->contacts.dynamics);
+  broad_phase_assert_set_links(&world->contacts.statics);
+
+  bnd_teardown(world);
+}
+
+static void test_broad_phase_uses_shape_aabbs_and_inclusive_boundaries(void) {
+  bnd_world *world = test_world();
+  bnd_body_shape dynamic_shapes[] = {
+    { .type = BND_SPHERE, .value.sphere = { .radius = 1.0f }, .offset = {-5, 0, 0}, .rotation = bnd_quat_identity() },
+    { .type = BND_SPHERE, .value.sphere = { .radius = 1.0f }, .offset = { 5, 0, 0}, .rotation = bnd_quat_identity() },
+  };
+  float masses[] = {1.0f, 1.0f};
+  bnd_body_handle dynamic = bnd_add_compound_body_dynamic(world, dynamic_shapes, masses, 2).value;
+  bnd_body_handle static_body = add_static_sphere(world, 1.0f);
+
+  broad_phase_refresh(world);
+  assert(broad_phase_contact_for_pair(world, dynamic, static_body, BND_BODY_STATIC) == NULL);
+
+  broad_phase_move_body(world, static_body, (bnd_v3){-3, 0, 0});
+  broad_phase_refresh(world);
+  broad_phase_contact *contact = broad_phase_contact_for_pair(world, dynamic, static_body, BND_BODY_STATIC);
+  assert(contact != NULL);
+  assert(contact->shape_a == 0 && contact->shape_b == 0);
+
+  bnd_body_handle boundary_dynamic = add_dynamic_sphere(world, 1.0f);
+  bnd_body_handle boundary_static = add_static_sphere(world, 1.0f);
+  broad_phase_refresh(world);
+
+  /* Two unit spheres at distance two touch and must be retained. */
+  broad_phase_move_body(world, boundary_static, (bnd_v3){2, 0, 0});
+  broad_phase_refresh(world);
+  assert(broad_phase_contact_for_pair(world, boundary_dynamic, boundary_static, BND_BODY_STATIC) != NULL);
+
+  bnd_teardown(world);
+}
+
+static void test_broad_phase_promotes_root_and_removes_final_shape_contact(void) {
+  bnd_world *world = test_world();
+  bnd_body_shape one_shape[] = {
+    { .type = BND_SPHERE, .value.sphere = { .radius = 1.0f }, .offset = bnd_v3_zero(), .rotation = bnd_quat_identity() },
+  };
+  bnd_body_shape two_shapes[] = {
+    { .type = BND_SPHERE, .value.sphere = { .radius = 1.0f }, .offset = {-1, 0, 0}, .rotation = bnd_quat_identity() },
+    { .type = BND_SPHERE, .value.sphere = { .radius = 1.0f }, .offset = { 1, 0, 0}, .rotation = bnd_quat_identity() },
+  };
+  float mass[] = {1.0f};
+  bnd_body_handle dynamic = bnd_add_compound_body_dynamic(world, one_shape, mass, 1).value;
+  bnd_body_handle static_body = bnd_add_compound_body_static(world, two_shapes, 2).value;
+
+  broad_phase_refresh(world);
+  broad_phase_contact *root = broad_phase_contact_for_pair(world, dynamic, static_body, BND_BODY_STATIC);
+  assert(root != NULL);
+  assert(broad_phase_chain_count(&world->contacts.statics, (count_t)(root - world->contacts.statics.contacts)) == 2);
+  assert(root->shape_a == 0 && root->shape_b == 0);
+
+  broad_phase_move_body(world, static_body, (bnd_v3){-2, 0, 0});
+  broad_phase_refresh(world);
+  root = broad_phase_contact_for_pair(world, dynamic, static_body, BND_BODY_STATIC);
+  assert(root != NULL);
+  assert(root->shape_a == 0 && root->shape_b == 1);
+  assert(root->next == UINT32_MAX);
+  assert(world->contacts.hash_table_entry_count == 1);
+  broad_phase_assert_set_links(&world->contacts.statics);
+
+  broad_phase_move_body(world, static_body, (bnd_v3){5, 0, 0});
+  broad_phase_refresh(world);
+  assert(broad_phase_contact_for_pair(world, dynamic, static_body, BND_BODY_STATIC) == NULL);
+  assert(world->contacts.hash_table_entry_count == 0);
+  assert(world->contacts.statics.first == UINT32_MAX);
+  assert(world->contacts.statics.last == UINT32_MAX);
+  assert(broad_phase_free_count(&world->contacts.statics) == 2);
+
+  bnd_teardown(world);
+}
+
+static void test_broad_phase_repairs_body_list_when_middle_pair_is_removed(void) {
+  bnd_world *world = test_world();
+  bnd_body_handle bodies[6];
+  for (count_t i = 0; i < 6; ++i) {
+    bodies[i] = add_dynamic_sphere(world, 1.0f);
+    broad_phase_move_body(world, bodies[i], (bnd_v3){(float)(i / 2) * 10.0f, 0, 0});
+  }
+
+  broad_phase_refresh(world);
+  broad_contacts_set *set = &world->contacts.dynamics;
+  assert(broad_phase_root_count(set) == 3);
+  assert(world->contacts.hash_table_entry_count == 3);
+
+  broad_phase_move_body(world, bodies[2], (bnd_v3){100, 0, 0});
+  broad_phase_move_body(world, bodies[3], (bnd_v3){110, 0, 0});
+  broad_phase_refresh(world);
+  assert(broad_phase_root_count(set) == 2);
+  assert(world->contacts.hash_table_entry_count == 2);
+  assert(set->first != UINT32_MAX && set->last != UINT32_MAX);
+  assert(set->first != set->last);
+  assert(set->contacts[set->first].next_body == set->last);
+  assert(set->contacts[set->last].next_body == UINT32_MAX);
+  broad_phase_assert_set_links(set);
+
+  bnd_teardown(world);
+}
+
+static void test_broad_phase_reuses_contacts_and_resizes_storage(void) {
+  bnd_config config = test_config();
+  config.memory.contacts_capacity = 2;
+  config.memory.hash_table_capacity = 2;
+  config.memory.dynamics_capacity = 8;
+  bnd_world *world = bnd_init(config);
+  assert(world != NULL);
+
+  bnd_body_handle bodies[4];
+  for (count_t i = 0; i < 4; ++i) {
+    bodies[i] = add_dynamic_sphere(world, 1.0f);
+    broad_phase_move_body(world, bodies[i], (bnd_v3){(float)(i / 2) * 10.0f, 0, 0});
+  }
+
+  broad_phase_refresh(world);
+  assert(broad_phase_root_count(&world->contacts.dynamics) == 2);
+  assert(world->contacts.dynamics.capacity > 1);
+  assert(world->contacts.hash_table_capacity > 2);
+  assert(world->contacts.hash_table_entry_count == 2);
+
+  broad_phase_move_body(world, bodies[0], (bnd_v3){100, 0, 0});
+  broad_phase_move_body(world, bodies[1], (bnd_v3){110, 0, 0});
+  broad_phase_refresh(world);
+  assert(broad_phase_root_count(&world->contacts.dynamics) == 1);
+  assert(broad_phase_free_count(&world->contacts.dynamics) == 1);
+
+  broad_phase_move_body(world, bodies[0], (bnd_v3){0, 0, 0});
+  broad_phase_move_body(world, bodies[1], (bnd_v3){0, 0, 0});
+  broad_phase_refresh(world);
+  assert(broad_phase_root_count(&world->contacts.dynamics) == 2);
+  assert(broad_phase_free_count(&world->contacts.dynamics) == 0);
+  broad_phase_assert_set_links(&world->contacts.dynamics);
+
+  bnd_teardown(world);
+}
+
+static void test_broad_phase_survives_dynamic_inner_reordering(void) {
+  bnd_world *world = test_world();
+  bnd_body_handle a = add_dynamic_sphere(world, 1.0f);
+  bnd_body_handle b = add_dynamic_sphere(world, 1.0f);
+  bnd_body_handle unrelated = add_dynamic_sphere(world, 1.0f);
+
+  broad_phase_refresh(world);
+  assert(broad_phase_contact_for_pair(world, a, b, BND_BODY_DYNAMIC) != NULL);
+
+  expect_ok(bnd_put_to_sleep(world, unrelated));
+  broad_phase_refresh(world);
+  broad_phase_contact *contact = broad_phase_contact_for_pair(world, a, b, BND_BODY_DYNAMIC);
+  assert(contact != NULL);
+  assert(world->contacts.hash_table_entry_count == 3);
+  broad_phase_assert_set_links(&world->contacts.dynamics);
+
+  bnd_teardown(world);
+}
+
+void broad_phase_tests(void) {
+  TESTS_BEGIN("Broad phase")
+    TEST(test_broad_phase_creates_and_deduplicates_contacts)
+    TEST(test_broad_phase_keeps_dynamic_and_static_sets_independent)
+    TEST(test_broad_phase_uses_shape_aabbs_and_inclusive_boundaries)
+    TEST(test_broad_phase_promotes_root_and_removes_final_shape_contact)
+    TEST(test_broad_phase_repairs_body_list_when_middle_pair_is_removed)
+    TEST(test_broad_phase_reuses_contacts_and_resizes_storage)
+    TEST(test_broad_phase_survives_dynamic_inner_reordering)
+  TESTS_END;
+}
+
+#endif

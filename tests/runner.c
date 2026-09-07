@@ -8,10 +8,12 @@ extern void joint_api_tests();
 extern void queries_tests();
 extern void world_tests();
 extern void collision_layers_tests();
+extern void broad_phase_tests();
 
 int main() {
   shapes_tests();
   joints_tests();
+  broad_phase_tests();
   collisions_tests();
   allocator_tests();
   events_tests();
