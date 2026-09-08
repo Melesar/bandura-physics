@@ -970,6 +970,9 @@ bnd_error bnd_set_collision_layer(bnd_world *world, bnd_body_handle handle, bnd_
 }
 
 count_t bnd_get_contacts(const bnd_world *world, bnd_contact *contacts, count_t max_contacts) {
+  (void) world;
+  (void) contacts;
+  (void) max_contacts;
   // TODO
   return 0;
 }

@@ -914,6 +914,9 @@ bnd_error run_narrow_phase(bnd_world *world) {
         contact_manifold prev_manifold = shape_contact->manifold;
         contact_manifold new_manifold = entry.func(world, &context);
 
+        (void) prev_manifold;
+        (void) new_manifold;
+
         shape_contact_index = shape_contact->next;
       }
 
@@ -1262,7 +1265,7 @@ bnd_error run_broad_phase(bnd_world *world) {
   return OK;
 }
 
-#if defined(BND_TESTS)
+#ifdef BND_TESTS
 
 #include "library_testing.h"
 #include "testing.h"
