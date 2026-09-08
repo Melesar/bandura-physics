@@ -1,3 +1,4 @@
+#include "bandura.h"
 #include "bnd-core.h"
 #include "bnd-math.h"
 #include "profiler.h"
@@ -388,17 +389,19 @@ static bool polytope_from_simplex(epa_polytope *polytope, const simplex *s) {
   return true;
 }
 
-static void epa_invalid_contact(body_support p, contact *contact) {
-  contact->point = bnd_v3_scale(bnd_v3_add(p.p1.point, p.p2.point), 0.5f);
-  contact->normal = bnd_v3_up();
-  contact->depth = 0.1f;
+static void epa_invalid_contact(body_support p, contact_manifold *manifold) {
+  manifold->count = 1;
+  manifold->normal = bnd_v3_up();
 
-  contact->features.witness_a = p.p1.point;
-  contact->features.witness_b = p.p2.point;
-  contact->features.normal = contact->normal;
+  manifold->points[0].point = bnd_v3_scale(bnd_v3_add(p.p1.point, p.p2.point), 0.5f);
+  manifold->points[0].depth = 0.1f;
+
+  manifold->points[0].features.witness_a = p.p1.point;
+  manifold->points[0].features.witness_b = p.p2.point;
+  manifold->points[0].features.normal = manifold->normal;
 }
 
-static void epa_calculate_contact(const epa_polytope *polytope, contact *contact) {
+static void epa_calculate_contact(const epa_polytope *polytope, contact_manifold *manifold) {
   epa_polytope_node node = polytope->nodes[polytope->nearest];
   bnd_v3 p1, p2;
   if (node.type == EPA_NODE_FACE) {
@@ -429,19 +432,20 @@ static void epa_calculate_contact(const epa_polytope *polytope, contact *contact
     return;
   }
 
-  contact->point = bnd_v3_scale(bnd_v3_add(p1, p2), 0.5f);
-  contact->depth = sqrtf(node.distance);
+  manifold->count = 1;
+  manifold->points[0].point = bnd_v3_scale(bnd_v3_add(p1, p2), 0.5f);
+  manifold->points[0].depth = sqrtf(node.distance);
 
   float length = bnd_v3_len(node.normal);
   if (length > EPSILON) {
-    contact->normal = bnd_v3_scale(node.normal, -1.0f / length);
+    manifold->normal = bnd_v3_scale(node.normal, -1.0f / length);
   } else {
-    contact->normal = bnd_v3_up();
+    manifold->normal = bnd_v3_up();
   }
 
-  contact->features.witness_a = p1;
-  contact->features.witness_b = p2;
-  contact->features.normal = contact->normal;
+  manifold->points[0].features.witness_a = p1;
+  manifold->points[0].features.witness_b = p2;
+  manifold->points[0].features.normal = manifold->normal;
 }
 
 static void mark_edge_for_removal(epa_polytope *polytope, uint16_t edge_index, body_support p, uint16_t *stack, uint16_t *stack_ptr) {
@@ -571,7 +575,7 @@ static bool epa_expand_polytope(epa_polytope *polytope, body_support p) {
   return true;
 }
 
-static epa_polytope *init_polytope(bnd_world *world, bnd_arena *arena) {
+static epa_polytope *init_polytope(const bnd_world *world, bnd_arena *arena) {
   uint16_t max_nodes = world->config.advanced.epa_max_nodes;
   uint64_t nodes_size = (max_nodes + 1) * sizeof(epa_polytope_node);
   uint64_t flags_size = polytope_flags_size(max_nodes);
@@ -647,21 +651,21 @@ static epa_status epa_run(epa_polytope *polytope, const collision_detection_cont
 }
 
 
-count_t epa_get_contact(bnd_world *world, const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact) {
+count_t epa_get_contact(const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact_manifold *manifold) {
   PROFILER_FUNCTION_START
 
   count_t attempts = 0;
-  bnd_arena_stack_frame stack_frame = arena_new_stack_frame(&world->arena);
+  bnd_arena_stack_frame stack_frame = arena_new_stack_frame((bnd_arena *)&ctx->world->arena);
 
-  epa_polytope *polytope = init_polytope(world, stack_frame.arena);
+  epa_polytope *polytope = init_polytope(ctx->world, stack_frame.arena);
   if (polytope == NULL) {
-    epa_invalid_contact(simplex->points[0], contact);
+    epa_invalid_contact(simplex->points[0], manifold);
     goto finish;
   }
 
   body_support support_point = simplex->points[0];
   if (!polytope_from_simplex(polytope, simplex)) {
-    epa_invalid_contact(support_point, contact);
+    epa_invalid_contact(support_point, manifold);
     goto finish;
   }
 
@@ -672,18 +676,22 @@ count_t epa_get_contact(bnd_world *world, const collision_detection_context *ctx
         continue;
 
       case EPA_STATUS_CONVERGED:
-        epa_calculate_contact(polytope, contact);
+        epa_calculate_contact(polytope, manifold);
         goto finish;
 
       default:
-        epa_invalid_contact(support_point, contact);
+        epa_invalid_contact(support_point, manifold);
         goto finish;
     }
   }
 
   finish:
-  world->stats.used_epa_nodes = polytope->node_count;
-  arena_release_stack_frame(stack_frame);
+  {
+    bnd_world_stats *stats = (bnd_world_stats *)&ctx->world->stats;
+    stats->used_epa_nodes = polytope->node_count;
+    arena_release_stack_frame(stack_frame);
+  }
+
   PROFILER_FUNCTION_END
   return attempts;
 }

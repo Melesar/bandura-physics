@@ -11,7 +11,14 @@
 
 #define PROFILING_BLOCK_NAME "Contacts cache"
 
-typedef contact_manifold (*collision_detection_func)(bnd_world *world, const collision_detection_context *ctx);
+typedef bool (*collision_detection_func)(const collision_detection_context *ctx, contact_manifold *manifold);
+
+typedef enum {
+  CONTACT_SOLID,
+  CONTACT_TRIGGER_A,
+  CONTACT_TRIGGER_B,
+  CONTACT_BOTH_TRIGGERS,
+} contact_type;
 
 typedef struct {
   collision_detection_func func;
@@ -205,11 +212,7 @@ body_support support(const collision_detection_context *ctx, bnd_v3 direction) {
   return result;
 }
 
-static contact_manifold sphere_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
-  (void) world;
-  
-  contact_manifold result = {0};
-
+static bool sphere_sphere_collision(const collision_detection_context *ctx, contact_manifold *manifold) {
   bnd_v3 center_a = body_a_center(ctx);
   bnd_v3 center_b = body_b_center(ctx);
 
@@ -220,24 +223,19 @@ static contact_manifold sphere_sphere_collision(bnd_world *world, const collisio
   float distance = bnd_v3_len(offset);
   float penetration = distance - radius_a - radius_b;
   if (penetration > 0) {
-    return result;
+    return false;
   }
 
-  result.count = 1;
-  result.normal = distance > EPSILON ? bnd_v3_scale(offset, 1 / distance) : bnd_v3_up();
+  manifold->count = 1;
+  manifold->normal = distance > EPSILON ? bnd_v3_scale(offset, 1 / distance) : bnd_v3_up();
 
-  contact_point *c = &result.points[0];
-  c->point = bnd_v3_add(center_b, bnd_v3_scale(result.normal, radius_b + penetration));
-  c->depth = -penetration;
+  manifold->points[0].point = bnd_v3_add(center_b, bnd_v3_scale(manifold->normal, radius_b + penetration));
+  manifold->points[0].depth = -penetration;
 
-  return result;
+  return true;
 }
 
-static contact_manifold capsule_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
-  (void) world;
-  
-  contact_manifold result = {0};
-
+static bool capsule_sphere_collision(const collision_detection_context *ctx, contact_manifold *manifold) {
   bnd_v3 capsule_center = body_a_center(ctx);
   bnd_quat capsule_rotation = body_a_rotation(ctx);
   bnd_quat capsule_inv_rotation = bnd_quat_invert(capsule_rotation);
@@ -253,24 +251,26 @@ static contact_manifold capsule_sphere_collision(bnd_world *world, const collisi
     float horizontal_distance = bnd_v3_len(horizontal_offset);
 
     if (horizontal_distance < capsule_radius) {
-      result.count = 1;
-      result.normal = horizontal_distance > EPSILON
+      manifold->count = 1;
+      manifold->normal = horizontal_distance > EPSILON
         ? bnd_v3_normalize(bnd_v3_rotate(bnd_v3_negate(horizontal_offset), capsule_rotation))
         : bnd_v3_rotate(bnd_v3_right(), capsule_rotation);
 
-      contact_point *c = &result.points[0];
-      c->point = bnd_v3_add(capsule_center, bnd_v3_rotate(local_sphere_center, capsule_rotation));
-      c->depth = capsule_radius - horizontal_distance + sphere_radius;
+      manifold->points[0].point = bnd_v3_add(capsule_center, bnd_v3_rotate(local_sphere_center, capsule_rotation));
+      manifold->points[0].depth = capsule_radius - horizontal_distance + sphere_radius;
+
+      return true;
     } else if (horizontal_distance < capsule_radius + sphere_radius) {
       bnd_v3 closest = bnd_v3_scale(horizontal_offset, capsule_radius / horizontal_distance);
       closest.y = local_sphere_center.y;
 
-      result.count = 1;
-      result.normal = bnd_v3_normalize(bnd_v3_rotate(bnd_v3_negate(horizontal_offset), capsule_rotation));
+      manifold->count = 1;
+      manifold->normal = bnd_v3_normalize(bnd_v3_rotate(bnd_v3_negate(horizontal_offset), capsule_rotation));
 
-      contact_point *c = &result.points[0];
-      c->point = bnd_v3_add(capsule_center, bnd_v3_rotate(closest, capsule_rotation));
-      c->depth = sphere_radius - horizontal_distance + capsule_radius;
+      manifold->points[0].point = bnd_v3_add(capsule_center, bnd_v3_rotate(closest, capsule_rotation));
+      manifold->points[0].depth = sphere_radius - horizontal_distance + capsule_radius;
+
+      return true;
     }
   } else {
     bnd_v3 local_caps[] = {
@@ -283,34 +283,33 @@ static contact_manifold capsule_sphere_collision(bnd_world *world, const collisi
 
     float cap_distance = bnd_v3_len(cap_offset);
     if (cap_distance < capsule_radius) {
-      result.count = 1;
-      result.normal = cap_distance > EPSILON
+      manifold->count = 1;
+      manifold->normal = cap_distance > EPSILON
         ? bnd_v3_normalize(bnd_v3_rotate(bnd_v3_negate(cap_offset), capsule_rotation))
         : bnd_v3_rotate(bnd_v3_up(), capsule_rotation);
 
-      contact_point *c = &result.points[0];
-      c->point = bnd_v3_add(capsule_center, bnd_v3_rotate(local_sphere_center, capsule_rotation));
-      c->depth = capsule_radius - cap_distance + sphere_radius;
+      manifold->points[0].point = bnd_v3_add(capsule_center, bnd_v3_rotate(local_sphere_center, capsule_rotation));
+      manifold->points[0].depth = capsule_radius - cap_distance + sphere_radius;
+
+      return true;
     } else if (cap_distance < capsule_radius + sphere_radius) {
       bnd_v3 closest = bnd_v3_scale(cap_offset, capsule_radius / cap_distance);
       closest = bnd_v3_add(cap, closest);
 
-      result.count = 1;
-      result.normal = bnd_v3_normalize(bnd_v3_rotate(bnd_v3_negate(cap_offset), capsule_rotation));
+      manifold->count = 1;
+      manifold->normal = bnd_v3_normalize(bnd_v3_rotate(bnd_v3_negate(cap_offset), capsule_rotation));
 
-      contact_point *c = &result.points[0];
-      c->point = bnd_v3_add(capsule_center, bnd_v3_rotate(closest, capsule_rotation));
-      c->depth = sphere_radius - cap_distance + capsule_radius;
+      manifold->points[0].point = bnd_v3_add(capsule_center, bnd_v3_rotate(closest, capsule_rotation));
+      manifold->points[0].depth = sphere_radius - cap_distance + capsule_radius;
+
+      return true;
     }
   }
 
-  return result;
+  return false;
 }
 
-static contact_manifold box_sphere_collision(bnd_world *world, const collision_detection_context *ctx) {
-  (void) world;
-  
-  contact_manifold result = {0};
+static bool box_sphere_collision(const collision_detection_context *ctx, contact_manifold *manifold) {
   bnd_v3 half_extents = bnd_v3_scale(ctx->shape_a.value.box.size, 0.5);
   bnd_v3 box_center = body_a_center(ctx);
   bnd_quat box_rotation = body_a_rotation(ctx);
@@ -328,7 +327,7 @@ static contact_manifold box_sphere_collision(bnd_world *world, const collision_d
 
   float distancesqr = bnd_v3_distancesqr(closest, local_sphere_center);
   if (distancesqr > r * r) {
-    return result;
+    return false;
   }
 
   float *s = (float *)&half_extents;
@@ -363,18 +362,15 @@ static contact_manifold box_sphere_collision(bnd_world *world, const collision_d
   bnd_v3 normal;
   memcpy(&normal, local_normal, sizeof(normal));
 
-  result.count = 1;
-  result.normal = bnd_v3_rotate(normal, box_rotation);
-  result.points[0].point = bnd_v3_add(box_center, bnd_v3_rotate(closest, box_rotation));
-  result.points[0].depth = depth;
+  manifold->count = 1;
+  manifold->normal = bnd_v3_rotate(normal, box_rotation);
+  manifold->points[0].point = bnd_v3_add(box_center, bnd_v3_rotate(closest, box_rotation));
+  manifold->points[0].depth = depth;
 
-  return result;
+  return true;
 }
 
-static contact_manifold box_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
-  (void) world;
-  
-  contact_manifold result = {0};
+static bool box_plane_collision(const collision_detection_context *ctx, contact_manifold *manifold) {
   bnd_quat box_rotation = ctx->data_a->rotations[ctx->body_a];
   bnd_quat shape_rotation = ctx->shape_a.rotation;
 
@@ -397,22 +393,19 @@ static contact_manifold box_plane_collision(bnd_world *world, const collision_de
       continue;
     }
 
-    contact_point *c = &result.points[contact_count];
-    c->point = bnd_v3_add(corner, bnd_v3_scale(plane_normal, -0.5f * distance));
-    c->depth = -distance;
+    manifold->points[contact_count].point = bnd_v3_add(corner, bnd_v3_scale(plane_normal, -0.5f * distance));
+    manifold->points[contact_count].depth = -distance;
 
     contact_count += 1;
   }
 
-  result.normal = plane_normal;
-  result.count = contact_count;
-  return result;
+  manifold->normal = plane_normal;
+  manifold->count = contact_count;
+
+  return contact_count > 0;
 }
 
-static contact_manifold sphere_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
-  (void) world;
-  
-  contact_manifold result = {0};
+static bool sphere_plane_collision(const collision_detection_context *ctx, contact_manifold *manifold) {
   bnd_v3 sphere_center = body_a_center(ctx);
   float sphere_radius = ctx->shape_a.value.sphere.radius;
 
@@ -421,20 +414,18 @@ static contact_manifold sphere_plane_collision(bnd_world *world, const collision
 
   float plane_sphere_distance = bnd_v3_dot(bnd_v3_sub(sphere_center, plane_point), plane_normal);
   if (plane_sphere_distance > sphere_radius) {
-    return result;
+    return false;
   }
 
-  result.count = 1;
-  result.normal = plane_normal;
-  result.points[0].point = bnd_v3_add(sphere_center, bnd_v3_scale(plane_normal, -plane_sphere_distance));
-  result.points[0].depth = sphere_radius - plane_sphere_distance;
-  return result;
+  manifold->count = 1;
+  manifold->normal = plane_normal;
+  manifold->points[0].point = bnd_v3_add(sphere_center, bnd_v3_scale(plane_normal, -plane_sphere_distance));
+  manifold->points[0].depth = sphere_radius - plane_sphere_distance;
+
+  return true;
 }
 
-static contact_manifold capsule_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
-  (void) world;
-  
-  contact_manifold result = {0};
+static bool capsule_plane_collision(const collision_detection_context *ctx, contact_manifold *manifold) {
   bnd_v3 capsule_center = body_a_center(ctx);
   float capsule_radius = ctx->shape_a.value.capsule.radius;
   float capsule_height = ctx->shape_a.value.capsule.height;
@@ -457,20 +448,19 @@ static contact_manifold capsule_plane_collision(bnd_world *world, const collisio
       continue;
     }
 
-    contact_point *c = &result.points[contact_count];
-    c->point = bnd_v3_add(points[i], bnd_v3_scale(plane_normal, -d));
-    c->depth = capsule_radius - d;
+    manifold->points[contact_count].point = bnd_v3_add(points[i], bnd_v3_scale(plane_normal, -d));
+    manifold->points[contact_count].depth = capsule_radius - d;
 
     contact_count += 1;
   }
 
-  result.normal = plane_normal;
-  result.count = contact_count;
-  return result;
+  manifold->normal = plane_normal;
+  manifold->count = contact_count;
+
+  return contact_count > 0;
 }
 
-static contact_manifold mesh_plane_collision(bnd_world *world, const collision_detection_context *ctx) {
-  contact_manifold result = {0};
+static bool mesh_plane_collision(const collision_detection_context *ctx, contact_manifold *manifold) {
   bnd_v3 plane_point = ctx->data_b->positions[ctx->body_b];
   bnd_v3 plane_normal = ctx->shape_b.value.plane.normal;
 
@@ -481,7 +471,7 @@ static contact_manifold mesh_plane_collision(bnd_world *world, const collision_d
   bnd_v3 local_normal = bnd_v3_rotate(plane_normal, inv_mesh_rotation);
   bnd_v3 local_point = bnd_v3_rotate(bnd_v3_sub(plane_point, mesh_center), inv_mesh_rotation);
 
-  const mesh_storage *meshes = &world->meshes;
+  const mesh_storage *meshes = &ctx->world->meshes;
   const bnd_mesh_handle mesh_handle = ctx->shape_a.value.mesh;
 
   bnd_mesh mesh = meshes->meshes[mesh_handle];
@@ -507,7 +497,7 @@ static contact_manifold mesh_plane_collision(bnd_world *world, const collision_d
   }
 
   if (min_dot > 0) {
-    return result;
+    return false;
   }
 
   bnd_v3 point = meshes->verticies[collision_vertex];
@@ -515,31 +505,22 @@ static contact_manifold mesh_plane_collision(bnd_world *world, const collision_d
   point = bnd_v3_add(point, mesh_center);
   point = bnd_v3_add(point, bnd_v3_scale(plane_normal, -min_dot)); // Project the deepest vertex back on the plane.
 
-  result.count = 1;
-  result.normal = plane_normal;
-  result.points[0].point = point;
-  result.points[0].depth = -min_dot;
-  return result;
+  manifold->count = 1;
+  manifold->normal = plane_normal;
+  manifold->points[0].point = point;
+  manifold->points[0].depth = -min_dot;
+
+  return true;
 }
 
-static contact_manifold polytope_polytope_collision(bnd_world *world, const collision_detection_context *ctx) {
-  contact_manifold result = {0};
+static bool polytope_polytope_collision(const collision_detection_context *ctx, contact_manifold *manifold) {
   simplex s;
-  if (!gjk_check_intersection(world, ctx, &s)) {
-    return result;
+  if (!gjk_check_intersection(ctx->world, ctx, &s)) {
+    return false;
   }
 
-  contact c = {0};
-  if (epa_get_contact(world, ctx, &s, world->config.advanced.epa_tolerance, &c) == 0) {
-    return result;
-  }
-
-  result.count = 1;
-  result.normal = c.normal;
-  result.points[0].point = c.point;
-  result.points[0].depth = c.depth;
-  result.points[0].features = c.features;
-  return result;
+  epa_get_contact(ctx, &s, ctx->world->config.advanced.epa_tolerance, manifold);
+  return true;
 }
 
 bnd_error collision_detection_epa_context(const bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, collision_detection_context *ctx) {
@@ -879,7 +860,7 @@ void collision_detection_init(void) {
   collision_detection_table[BND_MESH][BND_PLANE]      = (collision_detection_entry) { mesh_plane_collision, true, false };
 }
 
-bnd_error run_narrow_phase(bnd_world *world) {
+bnd_error for_each_broad_contact(bnd_world *world, broad_contact_iterator func) {
   broad_contacts_set *sets[] = { &world->contacts.dynamics, &world->contacts.statics };
   for (count_t k = 0; k < 2; ++k) {
     broad_contacts_set *contacts = sets[k];
@@ -892,30 +873,7 @@ bnd_error run_narrow_phase(bnd_world *world) {
       while (shape_contact_index != UINT32_MAX) {
         broad_phase_contact *shape_contact = &contacts->contacts[shape_contact_index];
 
-        common_data *data_a = (common_data *)&world->dynamics;
-        common_data *data_b = k == 0 ? (common_data *)&world->dynamics : (common_data *)&world->statics;
-
-        bnd_body_shape *shapes_a = shapes_get(world, data_a->shapes[shape_contact->body_a]);
-        bnd_body_shape *shapes_b = shapes_get(world, data_b->shapes[shape_contact->body_b]);
-        collision_detection_context ctx = {
-          world,
-          data_a,
-          data_b,
-          0,
-          shape_contact->body_a,
-          shape_contact->body_b,
-          shapes_a[shape_contact->shape_a],
-          shapes_b[shape_contact->shape_b],
-        };
-
-        collision_detection_entry entry = collision_detection_table[ctx.shape_a.type][ctx.shape_b.type];
-        collision_detection_context context = entry.primary ? ctx : ctx_inverse(ctx);
-
-        contact_manifold prev_manifold = shape_contact->manifold;
-        contact_manifold new_manifold = entry.func(world, &context);
-
-        (void) prev_manifold;
-        (void) new_manifold;
+        PROPAGATE_ERROR(func(world, contacts, (bnd_body_type)k, shape_contact, shape_contact_index));
 
         shape_contact_index = shape_contact->next;
       }
@@ -925,6 +883,47 @@ bnd_error run_narrow_phase(bnd_world *world) {
   }
 
   return OK;
+}
+
+static bnd_error detect_narrow_collisions(bnd_world *world, broad_contacts_set *contacts, bnd_body_type type, broad_phase_contact *contact, count_t index) {
+  common_data *data_a = (common_data *)&world->dynamics;
+  common_data *data_b = type == BND_BODY_DYNAMIC ? (common_data *)&world->dynamics : (common_data *)&world->statics;
+
+  uint8_t flags_a = data_a->flags[contact->body_a];
+  uint8_t flags_b = data_b->flags[contact->body_b];
+  contact_type ct = ((flags_a >> 1) | flags_b) & 0x3;
+  if (ct == CONTACT_BOTH_TRIGGERS) {
+    contact->manifold.count = 0;
+    return OK;
+  }
+
+  bnd_body_shape *shapes_a = shapes_get(world, data_a->shapes[contact->body_a]);
+  bnd_body_shape *shapes_b = shapes_get(world, data_b->shapes[contact->body_b]);
+  collision_detection_context ctx = {
+    world,
+    data_a,
+    data_b,
+    0,
+    contact->body_a,
+    contact->body_b,
+    shapes_a[contact->shape_a],
+    shapes_b[contact->shape_b],
+  };
+
+  contact_manifold new_manifold = {0};
+  collision_detection_entry entry = collision_detection_table[ctx.shape_a.type][ctx.shape_b.type];
+  collision_detection_context context = entry.primary ? ctx : ctx_inverse(ctx);
+
+  bool intersection = entry.func(&context, &new_manifold);
+
+  (void) new_manifold;
+  (void) intersection;
+  
+  return OK;
+}
+
+bnd_error run_narrow_phase(bnd_world *world) {
+  return for_each_broad_contact(world, detect_narrow_collisions);
 }
 
 static bool find_existing_shapes_contact(bnd_world *world, count_t hash_slot, broad_contacts_set *contacts, count_t shape_a, count_t shape_b, broad_phase_contact **contact, broad_phase_contact **prev_contact, count_t *contact_index, count_t *prev_contact_index) {

@@ -144,13 +144,12 @@ void epa_debug_capture(bnd_world *world) {
     return;
   }
 
-  contact c;
+  contact_manifold manifold = {0};
   count_t iterations_count = epa_get_contact(
-    world,
     &world->epa_debug->ctx,
     &world->epa_debug->s,
     world->config.advanced.epa_tolerance,
-    &c);
+    &manifold);
 
   world->epa_debug->target_iteration = 0;
   world->epa_debug->iterations_count_result = (bnd_result_u32) { OK, iterations_count };
