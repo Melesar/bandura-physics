@@ -13,13 +13,6 @@
 
 typedef bool (*collision_detection_func)(const collision_detection_context *ctx, contact_manifold *manifold);
 
-typedef enum {
-  CONTACT_SOLID,
-  CONTACT_TRIGGER_A,
-  CONTACT_TRIGGER_B,
-  CONTACT_BOTH_TRIGGERS,
-} contact_type;
-
 typedef struct {
   collision_detection_func func;
   bool primary;
@@ -885,17 +878,27 @@ bnd_error for_each_broad_contact(bnd_world *world, broad_contact_iterator func) 
   return OK;
 }
 
+static void update_contact_status(broad_phase_contact *contact, bool is_intersection) {
+  bool did_touch = contact->status & CONTACT_TOUCHING;
+
+  if (is_intersection) {
+    contact->status |= CONTACT_TOUCHING; 
+    if (!did_touch) {
+      contact->status |= CONTACT_BEGAN_TOUCHING;
+    } else {
+      contact->status &= ~CONTACT_BEGAN_TOUCHING;
+    }
+  } else if (did_touch) {
+    contact->status |= CONTACT_FINISHED_TOUCHING;
+    contact->status &= ~CONTACT_TOUCHING;
+  } else {
+    contact->status &= ~CONTACT_FINISHED_TOUCHING;
+  }
+}
+
 static bnd_error detect_narrow_collisions(bnd_world *world, broad_contacts_set *contacts, bnd_body_type type, broad_phase_contact *contact, count_t index) {
   common_data *data_a = (common_data *)&world->dynamics;
   common_data *data_b = type == BND_BODY_DYNAMIC ? (common_data *)&world->dynamics : (common_data *)&world->statics;
-
-  uint8_t flags_a = data_a->flags[contact->body_a];
-  uint8_t flags_b = data_b->flags[contact->body_b];
-  contact_type ct = ((flags_a >> 1) | flags_b) & 0x3;
-  if (ct == CONTACT_BOTH_TRIGGERS) {
-    contact->manifold.count = 0;
-    return OK;
-  }
 
   bnd_body_shape *shapes_a = shapes_get(world, data_a->shapes[contact->body_a]);
   bnd_body_shape *shapes_b = shapes_get(world, data_b->shapes[contact->body_b]);
@@ -916,8 +919,13 @@ static bnd_error detect_narrow_collisions(bnd_world *world, broad_contacts_set *
 
   bool intersection = entry.func(&context, &new_manifold);
 
+  if (!entry.primary) {
+    new_manifold.normal = bnd_v3_negate(new_manifold.normal);
+  }
+
+  update_contact_status(contact, intersection);
+
   (void) new_manifold;
-  (void) intersection;
   
   return OK;
 }
@@ -1121,7 +1129,7 @@ static void remove_all_shape_contacts(bnd_world *world, count_t hash_slot, broad
   } while (contact_index != UINT32_MAX);
 }
 
-static void init_contact(broad_phase_contact *contact, uint64_t key, const collision_detection_context *ctx, count_t shape_a, count_t shape_b) {
+static void init_contact(broad_phase_contact *contact, uint64_t key, const collision_detection_context *ctx, count_t shape_a, count_t shape_b, broad_contact_status status) {
   contact->key = key;
   contact->body_a = ctx->body_a;
   contact->body_b = ctx->body_b;
@@ -1134,6 +1142,7 @@ static void init_contact(broad_phase_contact *contact, uint64_t key, const colli
 
   contact->next = UINT32_MAX;
   contact->next_body = UINT32_MAX;
+  contact->status = status;
 }
 
 static bnd_error run_broad_phase_typed(bnd_world *world, broad_contacts_set *contact_set, bnd_body_type type) {
@@ -1144,6 +1153,7 @@ static bnd_error run_broad_phase_typed(bnd_world *world, broad_contacts_set *con
   common_data *data_a = (common_data *) &world->dynamics;
   common_data *data_b = (common_data *) as_common(world, type);
 
+
   for (count_t i = 0; i < data_a->count; ++i) {
     count_t until = type == BND_BODY_DYNAMIC ? i : data_b->count;
     for (count_t j = 0; j < until; j++) {
@@ -1152,6 +1162,14 @@ static bnd_error run_broad_phase_typed(bnd_world *world, broad_contacts_set *con
       if (type == BND_BODY_DYNAMIC && data_a->inner_lookup[i] > data_b->inner_lookup[j]) {
         body_a = j;
         body_b = i;
+      }
+
+      uint8_t flags_a = data_a->flags[body_a];
+      uint8_t flags_b = data_b->flags[body_b];
+
+      broad_contact_status contact_trigger_status = ((flags_a << 3) | (flags_b << 4)) & CONTACT_TRIGGER_BOTH;
+      if (contact_trigger_status == CONTACT_TRIGGER_BOTH) {
+        continue;
       }
 
       ctx.data_a = data_a;
@@ -1204,14 +1222,14 @@ static bnd_error run_broad_phase_typed(bnd_world *world, broad_contacts_set *con
                 if (!find_existing_shapes_contact(world, slot, contact_set, sa, sb, &shapes_contact, &prev_contact, &contact_index, &prev_contact_index)) {
                   // Shapes potentially overlap, there is a root contact for the bodies, but not for the shapes.
                   PROPAGATE_ERROR(create_shapes_contact(world, slot, contact_set, &shapes_contact));
-                  init_contact(shapes_contact, key, &ctx, sa, sb);
+                  init_contact(shapes_contact, key, &ctx, sa, sb, contact_trigger_status);
                 } else {
                   // Shapes potentially overlap and there is already a contact - do nothing.
                 }
               } else { 
                 // Shapes potentially overlap but there is not even a body contact. 
                 PROPAGATE_ERROR(create_body_contact(world, key, contact_set, &shapes_contact, &slot));
-                init_contact(shapes_contact, key, &ctx, sa, sb);
+                init_contact(shapes_contact, key, &ctx, sa, sb, contact_trigger_status);
                 body_contact_exists = true;
               }
             } else { 

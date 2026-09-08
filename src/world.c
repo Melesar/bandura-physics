@@ -1536,5 +1536,7 @@ bnd_error bnd_set_trigger(bnd_world *world, bnd_body_handle handle, bool is_trig
     data->flags[index] &= ~BODY_FLAG_TRIGGER;
   }
 
+  // TODO remove broad phase contact.
+
   return OK;
 }

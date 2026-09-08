@@ -71,10 +71,14 @@
 typedef uint32_t count_t;
 
 typedef enum {
-  CONTACT_NONE,
-  CONTACT_BEGAN_TOUCHING,
-  CONTACT_TOUCHING,
-  CONTACT_FINISHED_TOUCHING,
+  CONTACT_NONE                = 0x0,
+  CONTACT_TOUCHING            = 0x1,
+  CONTACT_BEGAN_TOUCHING      = 0x2,
+  CONTACT_FINISHED_TOUCHING   = 0x4,
+
+  CONTACT_TRIGGER_A           = 0x8,
+  CONTACT_TRIGGER_B           = 0x10,
+  CONTACT_TRIGGER_BOTH        = CONTACT_TRIGGER_A | CONTACT_TRIGGER_B,
 } broad_contact_status;
 
 typedef struct {
@@ -85,6 +89,7 @@ typedef struct {
 typedef struct {
   bnd_v3 point;
   float depth;
+  bnd_v3 normal_impulse, tangential_impulse;
   contact_features features;
 } contact_point;
 
