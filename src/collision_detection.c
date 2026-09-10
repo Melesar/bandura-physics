@@ -896,6 +896,12 @@ static void update_contact_status(broad_phase_contact *contact, bool is_intersec
   }
 }
 
+static void update_manifold(contact_manifold *target, const contact_manifold *new_manifold, const contact_manifold *old_manifold) {
+  memcpy(target, new_manifold, sizeof(contact_manifold));
+
+  // TODO implement caching.
+}
+
 static bnd_error detect_narrow_collisions(bnd_world *world, broad_contacts_set *contacts, bnd_body_type type, broad_phase_contact *contact, count_t index) {
   common_data *data_a = (common_data *)&world->dynamics;
   common_data *data_b = type == BND_BODY_DYNAMIC ? (common_data *)&world->dynamics : (common_data *)&world->statics;
@@ -923,10 +929,11 @@ static bnd_error detect_narrow_collisions(bnd_world *world, broad_contacts_set *
     new_manifold.normal = bnd_v3_negate(new_manifold.normal);
   }
 
+  contact_manifold current_manifold = contact->manifold;
+
+  update_manifold(&contact->manifold, &new_manifold, &current_manifold);
   update_contact_status(contact, intersection);
 
-  (void) new_manifold;
-  
   return OK;
 }
 

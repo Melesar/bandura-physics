@@ -95,6 +95,7 @@ typedef struct {
 
 typedef struct {
   count_t count;
+  count_t available;
   bnd_v3 normal;
   contact_point points[MAX_CONTACTS_PER_PAIR];
 } contact_manifold;
