@@ -230,6 +230,7 @@ bnd_config bnd_default_config(void) {
       .sleep_base_bias = 0.5f,
       .sleep_threshold = 0.3f,
       .min_bounce_velocity = 0.25f,
+      .solver_iterations = 8,
     },
     .memory = {
       .dynamics_capacity = 32,

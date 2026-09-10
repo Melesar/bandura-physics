@@ -255,6 +255,7 @@ typedef struct {
   float sleep_base_bias;       /**< Bias used when averaging motion for sleeping. */
   float sleep_threshold;       /**< Motion threshold below which a body sleeps. */
   float min_bounce_velocity;   /**< Minimum impact speed for restitution. */
+  uint32_t solver_iterations;  /**< Number of constraint solver iteration. Higher number means higher precision and stability but more time spent. */
 } bnd_config_simulation;
 
 /** Parameters controlling the persistent contact cache. */
