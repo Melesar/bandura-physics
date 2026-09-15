@@ -527,7 +527,7 @@ typedef enum {
   DEBUG_EPA_NORMAL_NEAREST = 16,
 } bnd_debug_epa_flags;
 
-typedef bnd_error (*broad_contact_iterator)(bnd_world *world, broad_contacts_set *contacts, bnd_body_type type, broad_phase_contact *contact, count_t index);
+typedef bnd_error (*broad_contact_iterator)(bnd_world *world, broad_contacts_set *contacts, bnd_body_type type, broad_phase_contact *contact, count_t index, void *custom_data);
 
 typedef void (*bnd_debug_draw_epa_face_fn)(bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_debug_epa_flags flags, void *user_data);
 typedef void (*bnd_debug_draw_epa_normal_fn)(bnd_v3 origin, bnd_v3 unit_normal, bnd_debug_epa_flags flags, void *user_data);
@@ -569,9 +569,9 @@ void                  contacts_reset(bnd_world *world);
 void                  contacts_teardown(bnd_world *world);
 void                  contacts_filter_largest_surface_area(contact *contacts, count_t contact_count, count_t *selected_indices);
 void                  contacts_generate(bnd_world *world);
-void                  resolve_constraints(bnd_world *world, float dt);
+bnd_error             resolve_constraints(bnd_world *world, float dt);
 
-bnd_error             for_each_broad_contact(bnd_world *world, broad_contact_iterator func);
+bnd_error             for_each_broad_contact(bnd_world *world, broad_contact_iterator func, void *custom_data);
 
 uint64_t              hash_table_create_key(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b, bnd_body_type type);
 bool                  hash_table_find_slot_for_key(const contacts *contacts, uint64_t key, count_t *slot);

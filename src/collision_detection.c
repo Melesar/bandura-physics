@@ -853,7 +853,7 @@ void collision_detection_init(void) {
   collision_detection_table[BND_MESH][BND_PLANE]      = (collision_detection_entry) { mesh_plane_collision, true, false };
 }
 
-bnd_error for_each_broad_contact(bnd_world *world, broad_contact_iterator func) {
+bnd_error for_each_broad_contact(bnd_world *world, broad_contact_iterator func, void *custom_data) {
   broad_contacts_set *sets[] = { &world->contacts.dynamics, &world->contacts.statics };
   for (count_t k = 0; k < 2; ++k) {
     broad_contacts_set *contacts = sets[k];
@@ -866,7 +866,7 @@ bnd_error for_each_broad_contact(bnd_world *world, broad_contact_iterator func) 
       while (shape_contact_index != UINT32_MAX) {
         broad_phase_contact *shape_contact = &contacts->contacts[shape_contact_index];
 
-        PROPAGATE_ERROR(func(world, contacts, (bnd_body_type)k, shape_contact, shape_contact_index));
+        PROPAGATE_ERROR(func(world, contacts, (bnd_body_type)k, shape_contact, shape_contact_index, custom_data));
 
         shape_contact_index = shape_contact->next;
       }
@@ -902,7 +902,7 @@ static void update_manifold(contact_manifold *target, const contact_manifold *ne
   // TODO implement caching.
 }
 
-static bnd_error detect_narrow_collisions(bnd_world *world, broad_contacts_set *contacts, bnd_body_type type, broad_phase_contact *contact, count_t index) {
+static bnd_error detect_narrow_collisions(bnd_world *world, broad_contacts_set *contacts, bnd_body_type type, broad_phase_contact *contact, count_t index, void *custom_data) {
   common_data *data_a = (common_data *)&world->dynamics;
   common_data *data_b = type == BND_BODY_DYNAMIC ? (common_data *)&world->dynamics : (common_data *)&world->statics;
 
@@ -938,7 +938,7 @@ static bnd_error detect_narrow_collisions(bnd_world *world, broad_contacts_set *
 }
 
 bnd_error run_narrow_phase(bnd_world *world) {
-  return for_each_broad_contact(world, detect_narrow_collisions);
+  return for_each_broad_contact(world, detect_narrow_collisions, NULL);
 }
 
 static bool find_existing_shapes_contact(bnd_world *world, count_t hash_slot, broad_contacts_set *contacts, count_t shape_a, count_t shape_b, broad_phase_contact **contact, broad_phase_contact **prev_contact, count_t *contact_index, count_t *prev_contact_index) {
