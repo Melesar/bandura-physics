@@ -5,9 +5,12 @@
 
 #include <string.h>
 
+#define ALIGNMENT_CONSTRAINT 4
+
 typedef struct {
   bnd_v3 relative_position[2];
   bnd_v3 local_velocity;
+  float normal_mass, tangent_mass[4];
   float separation;
 } constraint_point;
 
@@ -23,6 +26,11 @@ typedef struct {
 
   constraint_point points[MAX_CONTACTS_PER_PAIR];
 } contact_constraint;
+
+typedef struct {
+  count_t *constraint_count;
+  float dt;
+} constraint_creation_context;
 
 static bnd_m3 contact_space_transform(const broad_phase_contact *contact) {
   bnd_v3 y_axis = contact->manifold.normal;
@@ -61,26 +69,18 @@ static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set 
     return OK;
   }
 
-  bnd_result_ptr constraint_ptr = arena_alloc(&world->arena, 4, sizeof(contact_constraint));
+  constraint_creation_context *cx = (constraint_creation_context *) custom_data;
+  bnd_result_ptr constraint_ptr = arena_alloc(&world->arena, ALIGNMENT_CONSTRAINT, sizeof(contact_constraint));
   PROPAGATE_ERROR(constraint_ptr.error)
 
   dynamic_bodies *dynamics = &world->dynamics;
   const common_data *data_b = as_common_const(world, type);
 
-  // TODO body_a and body_b should be stable indices, now they are not
   count_t body_ids[] = {
-    contact->body_a,
-    contact->body_b
+    dynamics->outer_lookup[contact->body_a].index,
+    data_b->outer_lookup[contact->body_b].index,
   };
   count_t body_count = type == BND_BODY_DYNAMIC ? 2 : 1;
-  bnd_v3 angular_velocity[2];
-
-  for (count_t k = 0; k < body_count; ++k) {
-    bnd_m3 inv_inertia = bnd_m3_inertia(dynamics->inv_inertia_tensors[body_ids[k]], dynamics->rotations[body_ids[k]]);
-    angular_velocity[k] = bnd_m3_rotate(dynamics->angular_momenta[body_ids[k]], inv_inertia);
-
-    dynamics->inv_intertias[body_ids[k]] = inv_inertia;
-  }
 
   contact_constraint *constraint = constraint_ptr.value;
   constraint->type = type;
@@ -92,8 +92,83 @@ static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set 
   constraint->points_count = contact->manifold.count;
   constraint->basis = contact_space_transform(contact);
 
-  count_t *count = (count_t *) custom_data;
-  *count += 1;
+  bnd_m3 world_to_contact = bnd_m3_transpose(constraint->basis);
+
+  bnd_v3 position[2];
+  bnd_quat rotation[2];
+  bnd_v3 velocity[2];
+  bnd_v3 angular_momentum[2];
+  bnd_m3 inv_inertia_tensor[2];
+  bnd_m3 inv_inertia[2];
+  bnd_v3 angular_velocity[2];
+  float inv_mass[2];
+  for (count_t k = 0; k < body_count; ++k) {
+    count_t body_index = body_ids[k];
+
+    inv_mass[k] = dynamics->inv_masses[body_index];
+    position[k] = dynamics->positions[body_index];
+    rotation[k] = dynamics->rotations[body_index];
+    velocity[k] = dynamics->velocities[body_index];
+    angular_momentum[k] = dynamics->angular_momenta[body_index];
+    inv_inertia_tensor[k] = dynamics->inv_inertia_tensors[body_index];
+    inv_inertia[k] = bnd_m3_inertia(inv_inertia_tensor[k], rotation[k]);
+
+    angular_velocity[k] = bnd_m3_rotate(angular_momentum[k], inv_inertia[k]);
+    dynamics->inv_intertias[body_index] = inv_inertia[k];
+  }
+
+  for (count_t i = 0; i < contact->manifold.count; ++i) {
+    contact_point *mp = &contact->manifold.points[i];
+    constraint_point *cp = &constraint->points[i];
+
+    cp->separation = mp->depth;
+
+    bnd_v3 local_velocity[2] = {0};
+    bnd_m3 effective_mass = {0};
+    for (count_t k = 0; k < 2; ++k) {
+      cp->relative_position[k] = bnd_v3_sub(mp->point, position[k]);
+
+      bnd_v3 vel = bnd_v3_add(velocity[k], bnd_v3_cross(angular_velocity[k], cp->relative_position[k]));
+      local_velocity[k] = bnd_m3_rotate(vel, world_to_contact);
+
+      bnd_m3 r_cross = bnd_m3_skew_symmetric(cp->relative_position[k]);
+
+      bnd_m3 body_effective_mass = bnd_m3_multiply(r_cross, inv_inertia[k]);
+      body_effective_mass = bnd_m3_multiply(body_effective_mass, r_cross);
+      body_effective_mass = bnd_m3_negate(body_effective_mass);
+
+      effective_mass = bnd_m3_add(effective_mass, body_effective_mass);
+    }
+
+    cp->local_velocity = bnd_v3_sub(local_velocity[0], local_velocity[1]);
+
+    effective_mass = bnd_m3_multiply(world_to_contact, effective_mass);
+    effective_mass = bnd_m3_multiply(effective_mass, constraint->basis);
+    effective_mass.m0[0] += inv_mass[0] + inv_mass[1];
+    effective_mass.m1[1] += inv_mass[0] + inv_mass[1];
+    effective_mass.m2[2] += inv_mass[0] + inv_mass[1];
+
+    float normal_mass = effective_mass.m1[1];
+    cp->normal_mass = normal_mass > EPSILON ? 1.0f / normal_mass : 0.0f;
+
+    float tan_00 = effective_mass.m0[0];
+    float tan_01 = effective_mass.m0[2]; 
+    float tan_10 = effective_mass.m2[0];
+    float tan_11 = effective_mass.m2[2];
+    float tan_det = tan_00 * tan_11 - tan_01 * tan_10;
+    if (tan_det > EPSILON) {
+      tan_det = 1.0f / tan_det;
+
+      cp->tangent_mass[0] = tan_11 * tan_det;
+      cp->tangent_mass[1] = -tan_01 * tan_det;
+      cp->tangent_mass[2] = -tan_10 * tan_det;
+      cp->tangent_mass[3] = tan_00 * tan_det;
+    } else {
+      memset(cp->tangent_mass, 0, sizeof(cp->tangent_mass));
+    }
+  }
+
+  *cx->constraint_count += 1;
 
   return OK;
 }
@@ -107,10 +182,15 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
   count_t total_count;
   contact_constraint *constraints = (contact_constraint *)stack_frame.arena->buffer;
 
-  bnd_error e = for_each_broad_contact(world, constraints_from_contacts, &total_count);
+  constraint_creation_context cx = { &total_count, dt };
+  bnd_error e = for_each_broad_contact(world, constraints_from_contacts, &cx);
   if (IS_ERROR(e)) {
     arena_release_stack_frame(stack_frame);
     return e;
+  }
+
+  for (count_t i = 0; i < total_count; ++i) {
+    contact_constraint *c = &constraints[i];
   }
 
 

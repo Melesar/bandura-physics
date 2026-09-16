@@ -906,15 +906,18 @@ static bnd_error detect_narrow_collisions(bnd_world *world, broad_contacts_set *
   common_data *data_a = (common_data *)&world->dynamics;
   common_data *data_b = type == BND_BODY_DYNAMIC ? (common_data *)&world->dynamics : (common_data *)&world->statics;
 
-  bnd_body_shape *shapes_a = shapes_get(world, data_a->shapes[contact->body_a]);
-  bnd_body_shape *shapes_b = shapes_get(world, data_b->shapes[contact->body_b]);
+  count_t body_a = data_a->outer_lookup[contact->body_a].index;
+  count_t body_b = data_b->outer_lookup[contact->body_b].index;
+
+  bnd_body_shape *shapes_a = shapes_get(world, data_a->shapes[body_a]);
+  bnd_body_shape *shapes_b = shapes_get(world, data_b->shapes[body_b]);
   collision_detection_context ctx = {
     world,
     data_a,
     data_b,
     0,
-    contact->body_a,
-    contact->body_b,
+    body_a,
+    body_b,
     shapes_a[contact->shape_a],
     shapes_b[contact->shape_b],
   };
@@ -1138,8 +1141,8 @@ static void remove_all_shape_contacts(bnd_world *world, count_t hash_slot, broad
 
 static void init_contact(broad_phase_contact *contact, uint64_t key, const collision_detection_context *ctx, count_t shape_a, count_t shape_b, broad_contact_status status) {
   contact->key = key;
-  contact->body_a = ctx->body_a;
-  contact->body_b = ctx->body_b;
+  contact->body_a = ctx->data_a->inner_lookup[ctx->body_a];
+  contact->body_b = ctx->data_b->inner_lookup[ctx->body_b];
   contact->shape_a = shape_a;
   contact->shape_b = shape_b;
 
