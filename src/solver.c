@@ -257,7 +257,7 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
 
         float bias = MAX(BAUMGARDE * inv_dt * MIN(0.0f, point->separation + LINEAR_SLOP), -MAX_BAUMGARDE_VELOCITY);
         float vn = local_velocity.y;
-        float normal_impulse = -point->normal_mass * (vn + bias);
+        float normal_impulse = -point->normal_mass * (vn + bias) * (1 + constraint->restitution);
         float new_impulse = MAX(point->normal_impulse + normal_impulse, 0.0f);
         normal_impulse = new_impulse - point->normal_impulse;
         point->normal_impulse = new_impulse;
