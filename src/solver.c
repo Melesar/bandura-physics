@@ -107,6 +107,10 @@ static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set 
   };
   count_t body_count = type == BND_BODY_DYNAMIC ? 2 : 1;
 
+  for (count_t k = 0; k < body_count; ++k) {
+    dynamics->flags[body_ids[k]] |= BODY_FLAG_IMPULSE_APPLIED;
+  }
+
   contact_constraint *constraint = constraint_ptr.value;
   constraint->type = type;
   constraint->contact_index = index;

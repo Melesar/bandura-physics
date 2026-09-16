@@ -275,6 +275,7 @@ typedef enum {
   BODY_FLAG_NONE = 0,
   BODY_FLAG_TRIGGER = 1,
   BODY_FLAG_DIRTY = 2,
+  BODY_FLAG_IMPULSE_APPLIED = 4,
 } body_flags;
 
 

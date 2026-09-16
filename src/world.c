@@ -15,8 +15,12 @@
 
 #define INVALID_BODY_TYPE ((bnd_result_handle) { .error = (bnd_error) { .type = BND_ERROR_INVALID_BODY_TYPE, .message = "Unknown body type" } })
 
-#define BODY_DIRTY_MASK (0x0101010101010101ULL * (1ULL << BODY_FLAG_DIRTY))
-#define BODY_DIRTY_INV_MASK ~BODY_DIRTY_MASK
+#define BODY_MASK_WIDE(flags) (0x0101010101010101ULL * (flags))
+
+#define TEMP_BODY_MASK (BODY_FLAG_DIRTY | BODY_FLAG_IMPULSE_APPLIED)
+#define TEMP_BODY_MASK_WIDE BODY_MASK_WIDE(TEMP_BODY_MASK)
+#define DIRTY_MASK_WIDE BODY_MASK_WIDE(BODY_FLAG_DIRTY)
+#define CHUNK_SIZE sizeof(uint64_t)
 
 #define ASSERT_BODY_DYNAMIC(handle) \
   if (handle.type != BND_BODY_DYNAMIC) { \
@@ -191,28 +195,24 @@ static void clear_forces(bnd_world *world) {
 }
 
 static void clear_flags(bnd_world *world) {
-  #define chunk_size sizeof(uint64_t)
-
   common_data *bodies[] = { (common_data *)&world->dynamics, (common_data *)&world->statics };
   for (count_t k = 0; k < 2; ++k) {
     common_data *data = bodies[k];
 
     count_t i = 0;
-    for (; i + chunk_size <= data->count; i += chunk_size) {
+    for (; i + CHUNK_SIZE <= data->count; i += CHUNK_SIZE) {
       uint64_t flags;
-      memcpy(&flags, &data->flags[i], chunk_size);
+      memcpy(&flags, &data->flags[i], CHUNK_SIZE);
 
-      flags &= BODY_DIRTY_INV_MASK;
+      flags &= ~TEMP_BODY_MASK_WIDE;
 
-      memcpy(&data->flags[i], &flags, chunk_size);
+      memcpy(&data->flags[i], &flags, CHUNK_SIZE);
     }
 
     for (; i < data->count; ++i) {
-      data->flags[i] &= ~BODY_FLAG_DIRTY;
+      data->flags[i] &= ~TEMP_BODY_MASK;
     }
   }
-
-  #undef chunk_size
 }
 
 static void awaken_body(bnd_world *world, count_t index) {
@@ -233,10 +233,12 @@ static void update_awake_statuses(bnd_world *world, float dt) {
     return;
   }
 
-  // TODO check all dynamic bodies checking flags.
   const float sleep_threshold = world->config.simulation.sleep_threshold;
   count_t awake_count = dynamics->awake_count;
-  for (count_t i = 0; i < awake_count; ++i) {
+  for (count_t i = 0; i < dynamics->count; ++i) {
+    if (i >= awake_count && (dynamics->flags[i] & BODY_FLAG_IMPULSE_APPLIED) == 0) {
+      continue;
+    }
     bnd_v3 angular_velocity = bnd_m3_rotate(dynamics->angular_momenta[i], dynamics->inv_intertias[i]);
 
     float current_motion = dynamics->motion_avgs[i];
@@ -252,11 +254,11 @@ static void update_awake_statuses(bnd_world *world, float dt) {
   count_t left = 0;
   count_t right = dynamics->count - 1;
   while (left < awake_count && right >= awake_count) {
-    while (dynamics->motion_avgs[left] > sleep_threshold) {
+    while (left < awake_count && dynamics->motion_avgs[left] > sleep_threshold) {
       left += 1;
     }
 
-    while (dynamics->motion_avgs[right] <= sleep_threshold && right >= awake_count) {
+    while (right >= awake_count && dynamics->motion_avgs[right] <= sleep_threshold) {
       right -= 1;
     }
 
@@ -1011,8 +1013,6 @@ bool bnd_body_next_typed(const bnd_world *world, bnd_body_enumerator_typed *enum
 }
 
 static void update_aabbs(bnd_world *world) {
-  #define chunk_size sizeof(uint64_t)
-
   count_t i = 0; 
 
   dynamic_bodies *dynamics = &world->dynamics;
@@ -1020,15 +1020,15 @@ static void update_aabbs(bnd_world *world) {
     calculate_aabb(world, (common_data *) dynamics, i);
   }
 
-  for (i = dynamics->awake_count; i + chunk_size <= dynamics->count; i += chunk_size) {
+  for (i = dynamics->awake_count; i + CHUNK_SIZE <= dynamics->count; i += CHUNK_SIZE) {
     uint64_t flags;
-    memcpy(&flags, &dynamics->flags[i], chunk_size);
+    memcpy(&flags, &dynamics->flags[i], CHUNK_SIZE);
 
-    if ((flags & BODY_DIRTY_MASK) == 0) {
+    if ((flags & DIRTY_MASK_WIDE) == 0) {
       continue;
     }
 
-    for (count_t j = 0; j < chunk_size; ++j) {
+    for (count_t j = 0; j < CHUNK_SIZE; ++j) {
       if (dynamics->flags[i + j] & BODY_FLAG_DIRTY) {
         calculate_aabb(world, (common_data *)dynamics, i + j);
       }
@@ -1042,15 +1042,15 @@ static void update_aabbs(bnd_world *world) {
   }
 
   common_data *statics = (common_data *)&world->statics;
-  for (i = 0; i + chunk_size <= statics->count; i += chunk_size) {
+  for (i = 0; i + CHUNK_SIZE <= statics->count; i += CHUNK_SIZE) {
     uint64_t flags;
-    memcpy(&flags, &statics->flags[i], chunk_size);
+    memcpy(&flags, &statics->flags[i], CHUNK_SIZE);
 
-    if ((flags & BODY_DIRTY_MASK) == 0) {
+    if ((flags & DIRTY_MASK_WIDE) == 0) {
       continue;
     }
 
-    for (count_t j = 0; j < chunk_size; ++j) {
+    for (count_t j = 0; j < CHUNK_SIZE; ++j) {
       if (statics->flags[i + j] & BODY_FLAG_DIRTY) {
         calculate_aabb(world, statics, i + j);
       }
@@ -1062,8 +1062,6 @@ static void update_aabbs(bnd_world *world) {
       calculate_aabb(world, statics, i);
     }
   }
-  
-  #undef chunk_size
 }
 
 static void integrate_velocities(bnd_world *world, float dt) {
