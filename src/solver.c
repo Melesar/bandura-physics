@@ -6,11 +6,18 @@
 #include <string.h>
 
 #define ALIGNMENT_CONSTRAINT 4
+#define MAX_BAUMGARDE_VELOCITY 4.0f
+#define BAUMGARDE 0.2f
+#define LINEAR_SLOP 0.005f
+
+#define MIN(A, B) ((A) < (B) ? (A) : (B))
+#define MAX(A, B) ((A) > (B) ? (A) : (B))
 
 typedef struct {
   bnd_v3 relative_position[2];
-  bnd_v3 local_velocity;
   float normal_mass, tangent_mass[4];
+  float normal_impulse;
+  float tangent_impulse[2];
   float separation;
 } constraint_point;
 
@@ -63,6 +70,24 @@ static bnd_m3 contact_space_transform(const broad_phase_contact *contact) {
   return bnd_m3_from_basis(x_axis, y_axis, z_axis);
 }
 
+static bnd_v3 contact_point_local_velocity(
+  const bnd_world *world,
+  const contact_constraint *constraint,
+  const constraint_point *point,
+  count_t body_count,
+  count_t body_ids[2],
+  bnd_v3 velocities[2],
+  bnd_v3 momenta[2]
+) {
+  bnd_v3 local_velocity[2] = {0};
+  for (count_t k = 0; k < body_count; ++k) {
+    bnd_v3 angular_velocity = bnd_m3_rotate(momenta[k], world->dynamics.inv_intertias[body_ids[k]]);
+    bnd_v3 vel = bnd_v3_add(velocities[k], bnd_v3_cross(angular_velocity, point->relative_position[k]));
+    local_velocity[k] = bnd_m3_rotate(vel, bnd_m3_transpose(constraint->basis));
+  }
+
+  return bnd_v3_sub(local_velocity[0], local_velocity[1]);
+}
 
 static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set *contacts, bnd_body_type type, broad_phase_contact *contact, count_t index, void *custom_data) {
   if (contact->manifold.count == 0) {
@@ -100,8 +125,7 @@ static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set 
   bnd_v3 angular_momentum[2];
   bnd_m3 inv_inertia_tensor[2];
   bnd_m3 inv_inertia[2];
-  bnd_v3 angular_velocity[2];
-  float inv_mass[2];
+  float inv_mass[2] = {0};
   for (count_t k = 0; k < body_count; ++k) {
     count_t body_index = body_ids[k];
 
@@ -113,7 +137,6 @@ static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set 
     inv_inertia_tensor[k] = dynamics->inv_inertia_tensors[body_index];
     inv_inertia[k] = bnd_m3_inertia(inv_inertia_tensor[k], rotation[k]);
 
-    angular_velocity[k] = bnd_m3_rotate(angular_momentum[k], inv_inertia[k]);
     dynamics->inv_intertias[body_index] = inv_inertia[k];
   }
 
@@ -121,15 +144,14 @@ static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set 
     contact_point *mp = &contact->manifold.points[i];
     constraint_point *cp = &constraint->points[i];
 
-    cp->separation = mp->depth;
+    cp->separation = -mp->depth;
+    cp->normal_impulse = 0.0f;
+    cp->tangent_impulse[0] = 0.0f;
+    cp->tangent_impulse[1] = 0.0f;
 
-    bnd_v3 local_velocity[2] = {0};
     bnd_m3 effective_mass = {0};
-    for (count_t k = 0; k < 2; ++k) {
+    for (count_t k = 0; k < body_count; ++k) {
       cp->relative_position[k] = bnd_v3_sub(mp->point, position[k]);
-
-      bnd_v3 vel = bnd_v3_add(velocity[k], bnd_v3_cross(angular_velocity[k], cp->relative_position[k]));
-      local_velocity[k] = bnd_m3_rotate(vel, world_to_contact);
 
       bnd_m3 r_cross = bnd_m3_skew_symmetric(cp->relative_position[k]);
 
@@ -139,8 +161,6 @@ static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set 
 
       effective_mass = bnd_m3_add(effective_mass, body_effective_mass);
     }
-
-    cp->local_velocity = bnd_v3_sub(local_velocity[0], local_velocity[1]);
 
     effective_mass = bnd_m3_multiply(world_to_contact, effective_mass);
     effective_mass = bnd_m3_multiply(effective_mass, constraint->basis);
@@ -173,29 +193,120 @@ static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set 
   return OK;
 }
 
-bnd_error resolve_constraints(bnd_world *world, float dt) {
-  (void) dt;
+static void apply_impulse(bnd_v3 impulse, bnd_v3 *velocities, bnd_v3 *momenta, float *inv_masses, constraint_point *point, count_t body_count) {
+  float sign = 1.0;
+  for (count_t k = 0; k < body_count; ++k) {
+    velocities[k] = bnd_v3_add(velocities[k], bnd_v3_scale(impulse, inv_masses[k] * sign));
+    momenta[k] = bnd_v3_add(momenta[k], bnd_v3_scale(bnd_v3_cross(point->relative_position[k], impulse), sign));
 
-  PROFILER_FUNCTION_START
+    sign = -1;
+  }
+}
+
+bnd_error resolve_constraints(bnd_world *world, float dt) {
+  if (dt <= 0.0f) {
+    return OK;
+  }
+
   bnd_arena_stack_frame stack_frame = arena_new_stack_frame(&world->arena);
 
-  count_t total_count;
-  contact_constraint *constraints = (contact_constraint *)stack_frame.arena->buffer;
+  count_t constraints_count = 0;
+  uint64_t arena_offset = AlignTo(stack_frame.arena->offset, ALIGNMENT_CONSTRAINT);
 
-  constraint_creation_context cx = { &total_count, dt };
+  PROFILER_BLOCK_START("prepare_constraints");
+  constraint_creation_context cx = { &constraints_count, dt };
   bnd_error e = for_each_broad_contact(world, constraints_from_contacts, &cx);
+  PROFILER_BLOCK_END;
+
   if (IS_ERROR(e)) {
     arena_release_stack_frame(stack_frame);
     return e;
   }
 
-  for (count_t i = 0; i < total_count; ++i) {
-    contact_constraint *c = &constraints[i];
+  PROFILER_BLOCK_START("resolve_constraints");
+  float inv_dt = 1.0f / dt;
+  dynamic_bodies *dynamics = &world->dynamics;
+
+  bnd_v3 velocities[2];
+  bnd_v3 momenta[2];
+  float inv_masses[2];
+
+  contact_constraint *constraints = (contact_constraint *)(stack_frame.arena->buffer + arena_offset);
+
+  for (count_t i = 0; i < world->config.simulation.solver_iterations; ++i) {
+    for (count_t j = 0; j < constraints_count; ++j) {
+      contact_constraint *constraint = &constraints[j];
+
+      bnd_v3 constraint_normal = { constraint->basis.m0[1], constraint->basis.m1[1], constraint->basis.m2[1] };
+      count_t body_count = 1 + (constraint->type == BND_BODY_DYNAMIC);
+      count_t body_ids[] = { constraint->body_a, constraint->body_b };
+
+      for (count_t k = 0; k < body_count; ++k) {
+        velocities[k] = dynamics->velocities[body_ids[k]];
+        momenta[k] = dynamics->angular_momenta[body_ids[k]];
+        inv_masses[k] = dynamics->inv_masses[body_ids[k]];
+      }
+
+      for (count_t p = 0; p < constraint->points_count; ++p) {
+        constraint_point *point = &constraint->points[p];
+        bnd_v3 local_velocity = contact_point_local_velocity(world, constraint, point, body_count, body_ids, velocities, momenta);
+
+        float bias = MAX(BAUMGARDE * inv_dt * MIN(0.0f, point->separation + LINEAR_SLOP), -MAX_BAUMGARDE_VELOCITY);
+        float vn = local_velocity.y;
+        float normal_impulse = -point->normal_mass * (vn + bias);
+        float new_impulse = MAX(point->normal_impulse + normal_impulse, 0.0f);
+        normal_impulse = new_impulse - point->normal_impulse;
+        point->normal_impulse = new_impulse;
+
+        bnd_v3 impulse = bnd_v3_scale(constraint_normal, normal_impulse);
+        apply_impulse(impulse, velocities, momenta, inv_masses, point, body_count);
+      }
+
+      for (count_t p = 0; p < constraint->points_count; ++p) {
+        constraint_point *point = &constraint->points[p];
+        bnd_v3 local_velocity = contact_point_local_velocity(world, constraint, point, body_count, body_ids, velocities, momenta);
+
+        float delta_lambda[] = {
+          -(local_velocity.x * point->tangent_mass[0] + local_velocity.z * point->tangent_mass[1]),
+          -(local_velocity.x * point->tangent_mass[2] + local_velocity.z * point->tangent_mass[3]),
+        };
+
+        float candidate_lambda[] = {
+          point->tangent_impulse[0] + delta_lambda[0],
+          point->tangent_impulse[1] + delta_lambda[1]
+        };
+
+        float max_friction = constraint->friction * point->normal_impulse;
+        float friction_impulse = sqrtf(candidate_lambda[0] * candidate_lambda[0] + candidate_lambda[1] * candidate_lambda[1]);
+        if (friction_impulse > max_friction) {
+          candidate_lambda[0] = candidate_lambda[0] / friction_impulse * max_friction;
+          candidate_lambda[1] = candidate_lambda[1] / friction_impulse * max_friction;
+        }
+
+        float lambda[] = {
+          candidate_lambda[0] - point->tangent_impulse[0],
+          candidate_lambda[1] - point->tangent_impulse[1],
+        };
+
+        memcpy(point->tangent_impulse, candidate_lambda, sizeof(candidate_lambda));
+
+        bnd_v3 t1 = { constraint->basis.m0[0], constraint->basis.m1[0], constraint->basis.m2[0] };
+        bnd_v3 t2 = { constraint->basis.m0[2], constraint->basis.m1[2], constraint->basis.m2[2] };
+        bnd_v3 impulse = bnd_v3_add(bnd_v3_scale(t1, lambda[0]), bnd_v3_scale(t2, lambda[1]));
+
+        apply_impulse(impulse, velocities, momenta, inv_masses, point, body_count);
+      }
+
+      for (count_t k = 0; k < body_count; ++k) {
+        dynamics->velocities[body_ids[k]] = velocities[k];
+        dynamics->angular_momenta[body_ids[k]] = momenta[k];
+      }
+    }
   }
+  PROFILER_BLOCK_END;
 
 
   arena_release_stack_frame(stack_frame);
-  PROFILER_FUNCTION_END
 
   return OK;
 }

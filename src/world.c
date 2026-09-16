@@ -233,6 +233,7 @@ static void update_awake_statuses(bnd_world *world, float dt) {
     return;
   }
 
+  // TODO check all dynamic bodies checking flags.
   const float sleep_threshold = world->config.simulation.sleep_threshold;
   count_t awake_count = dynamics->awake_count;
   for (count_t i = 0; i < awake_count; ++i) {
@@ -1142,8 +1143,8 @@ void bnd_simulate(bnd_world *world, float dt) {
   epa_debug_capture(world);
 #endif
   resolve_constraints(world, dt);
-  integrate_positions(world, dt);
   update_awake_statuses(world, dt);
+  integrate_positions(world, dt);
   clear_flags(world);
   clear_forces(world);
 
