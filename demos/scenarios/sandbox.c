@@ -80,6 +80,8 @@ void scenario_initialize(bnd_world *world) {
   explosion_impulse = 10;
 
   cone_mesh.success = import_raylib_mesh(world, GenMeshCone(2, 3, 16), &cone_mesh.mesh);
+
+  SetRandomSeed(42);
 }
 
 void scenario_setup_scene(bnd_world *world) {

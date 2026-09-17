@@ -1282,11 +1282,6 @@ static bnd_error run_broad_phase_typed(bnd_world *world, broad_contacts_set *con
 void contacts_remove_for_body(bnd_world *world, bnd_body_handle handle) {
   broad_contacts_set *sets[] = { &world->contacts.dynamics, &world->contacts.statics };
 
-  const uint64_t index_key_part = handle.index & 0x7FFFFF;
-  const uint64_t key_high = (index_key_part << 31);
-  const uint64_t key_low = index_key_part;
-  const uint64_t key_mask = key_high | key_low;
-
   for (count_t k = 0; k < 2; ++k) {
     if (k == 0 && handle.type == BND_BODY_STATIC) {
       continue;
@@ -1298,8 +1293,10 @@ void contacts_remove_for_body(bnd_world *world, bnd_body_handle handle) {
       broad_phase_contact *contact = &contacts->contacts[index];
       index = contact->next_body;
 
-      uint64_t masked_key = contact->key & key_mask;
-      if (masked_key == key_high || masked_key == key_low) {
+      bool static_match = handle.type == BND_BODY_STATIC && contact->body_b == handle.index;
+      bool full_dynamic_match = k == 0 && handle.type == BND_BODY_DYNAMIC && (contact->body_a == handle.index || contact->body_b == handle.index);
+      bool partial_dynamic_match = k == 1 && handle.type == BND_BODY_DYNAMIC && contact->body_a == handle.index;
+      if (static_match || full_dynamic_match || partial_dynamic_match) {
         count_t slot;
         if (hash_table_find_slot_for_key(&world->contacts, contact->key, &slot)) {
           remove_all_shape_contacts(world, slot, contacts);
