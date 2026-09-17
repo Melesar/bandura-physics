@@ -1177,7 +1177,10 @@ static bnd_error run_broad_phase_typed(bnd_world *world, broad_contacts_set *con
       uint8_t flags_a = data_a->flags[body_a];
       uint8_t flags_b = data_b->flags[body_b];
 
-      broad_contact_status contact_trigger_status = ((flags_a << 3) | (flags_b << 4)) & CONTACT_TRIGGER_BOTH;
+      uint8_t trigger_flags = flags_a & BODY_FLAG_TRIGGER;
+      trigger_flags |= (flags_b & BODY_FLAG_TRIGGER) << 1;
+
+      broad_contact_status contact_trigger_status = (trigger_flags << 3) & CONTACT_TRIGGER_BOTH;
       if (contact_trigger_status == CONTACT_TRIGGER_BOTH) {
         continue;
       }
