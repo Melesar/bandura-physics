@@ -68,6 +68,9 @@
     return (bnd_result_##suffix) { e, dummy_value }; \
   }\
 
+#define MIN(A, B) ((A) < (B) ? (A) : (B))
+#define MAX(A, B) ((A) > (B) ? (A) : (B))
+
 typedef uint32_t count_t;
 
 typedef enum {
@@ -616,6 +619,7 @@ void                  events_teardown(bnd_world *world);
 void                  events_reset(bnd_world *world);
 bool                  events_subscribed(const common_data *data, count_t index, bnd_event_type event_type);
 bnd_error             events_push(bnd_world *world, common_data *data, count_t index, bnd_event event);
+bnd_error             events_emit_contacts(bnd_world *world);
 
 bnd_quat              integrate_rotation_midpoint(bnd_quat rotation, bnd_v3 angular_momentum, bnd_m3 base_inv_inertia, float dt);
 

@@ -146,3 +146,79 @@ bnd_error events_push(bnd_world *world, common_data *data, count_t index, bnd_ev
 
   return OK;
 }
+
+static bnd_error push_collision_events(bnd_world *world, const broad_phase_contact *contact, common_data *data, count_t body, count_t other_body, bnd_body_type body_type, bnd_body_type other_body_type) {
+  bnd_body_handle body_a = make_body_handle(world, body_type, body);
+  bnd_body_handle body_b = make_body_handle(world, other_body_type, other_body);
+
+  for (count_t i = 0; i < contact->manifold.count; ++i) {
+    const contact_point *point = &contact->manifold.points[i];
+
+    bnd_contact contact_data = {
+      .point  = point->point,
+      .normal = contact->manifold.normal,
+      .depth  = point->depth,
+      .body_a = body_a,
+      .body_b = body_b,
+    };
+
+    if (contact->status & CONTACT_BEGAN_TOUCHING && events_subscribed(data, body, BND_EVENT_COLLISION_ENTER)) {
+      PROPAGATE_ERROR(events_push(world, data, body, (bnd_event) { .type = BND_EVENT_COLLISION_ENTER, .collision = contact_data }));
+    } else if (contact->status & CONTACT_TOUCHING && events_subscribed(data, body, BND_EVENT_COLLISION)) {
+      PROPAGATE_ERROR(events_push(world, data, body, (bnd_event) { .type = BND_EVENT_COLLISION, .collision = contact_data }));
+    } else if (contact->status & CONTACT_FINISHED_TOUCHING && events_subscribed(data, body, BND_EVENT_COLLISION_FINISH)) {
+      PROPAGATE_ERROR(events_push(world, data, body, (bnd_event) { .type = BND_EVENT_TRIGGER_FINISH, .collision = contact_data }));
+    }
+  }
+  return OK;
+}
+
+static bnd_error push_trigger_events(bnd_world *world, const broad_phase_contact *contact, common_data *data, count_t body, count_t other_body, bnd_body_type other_body_type) {
+  bnd_trigger trigger = { .other = make_body_handle(world, other_body_type, other_body) };
+
+  if (contact->status & CONTACT_BEGAN_TOUCHING && events_subscribed(data, body, BND_EVENT_TRIGGER_ENTER)) {
+    PROPAGATE_ERROR(events_push(world, data, body, (bnd_event) { .type = BND_EVENT_TRIGGER_ENTER, .trigger = trigger }));
+  } else if (contact->status & CONTACT_TOUCHING && events_subscribed(data, body, BND_EVENT_TRIGGER)) {
+    PROPAGATE_ERROR(events_push(world, data, body, (bnd_event) { .type = BND_EVENT_TRIGGER, .trigger = trigger }));
+  } else if (contact->status & CONTACT_FINISHED_TOUCHING && events_subscribed(data, body, BND_EVENT_TRIGGER_FINISH)) {
+    PROPAGATE_ERROR(events_push(world, data, body, (bnd_event) { .type = BND_EVENT_TRIGGER_FINISH, .trigger = trigger }));
+  }
+  return OK;
+}
+
+static bnd_error contacts_to_events(bnd_world *world, broad_contacts_set *contacts, bnd_body_type type, broad_phase_contact *contact, count_t index, void *custom_data) {
+  enum {
+    TRIGGER_SUBSCRIPTION_MASK   = BND_EVENT_TRIGGER   | BND_EVENT_TRIGGER_ENTER   | BND_EVENT_TRIGGER_FINISH,
+    COLLISION_SUBSCRIPTION_MASK = BND_EVENT_COLLISION | BND_EVENT_COLLISION_ENTER | BND_EVENT_COLLISION_FINISH,
+  };
+
+  common_data *data_a = (common_data *) &world->dynamics;
+  common_data *data_b = as_common(world, type);
+
+  count_t body_a = data_a->outer_lookup[contact->body_a].index;
+  count_t body_b = data_a->outer_lookup[contact->body_b].index;
+
+  if (contact->status & CONTACT_TRIGGER_BOTH) {
+    if (events_subscribed(data_a, body_a, TRIGGER_SUBSCRIPTION_MASK)) {
+      PROPAGATE_ERROR(push_trigger_events(world, contact, data_a, body_a, body_b, type));
+    }
+
+    if (events_subscribed(data_b, body_b, TRIGGER_SUBSCRIPTION_MASK)) {
+      PROPAGATE_ERROR(push_trigger_events(world, contact, data_b, body_b, body_a, BND_BODY_DYNAMIC));
+    }
+  } else {
+    if (events_subscribed(data_a, body_a, COLLISION_SUBSCRIPTION_MASK)) {
+      PROPAGATE_ERROR(push_collision_events(world, contact, data_a, body_a, body_b, BND_BODY_DYNAMIC, type));
+    }
+
+    if (events_subscribed(data_b, body_b, COLLISION_SUBSCRIPTION_MASK)) {
+      PROPAGATE_ERROR(push_collision_events(world, contact, data_b, body_b, body_a, type, BND_BODY_DYNAMIC));
+    }
+  }
+
+  return OK;  
+}
+
+bnd_error events_emit_contacts(bnd_world *world) {
+  return for_each_broad_contact(world, contacts_to_events, NULL);
+}

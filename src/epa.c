@@ -576,7 +576,7 @@ static bool epa_expand_polytope(epa_polytope *polytope, body_support p) {
 }
 
 static epa_polytope *init_polytope(const bnd_world *world, bnd_arena *arena) {
-  uint16_t max_nodes = world->config.advanced.epa_max_nodes;
+  uint16_t max_nodes = world->config.collision_detection.epa_max_nodes;
   uint64_t nodes_size = (max_nodes + 1) * sizeof(epa_polytope_node);
   uint64_t flags_size = polytope_flags_size(max_nodes);
   uint64_t free_list_size = max_nodes * sizeof(uint16_t);
@@ -782,7 +782,7 @@ bool epa_debug_draw(bnd_world *world, const epa_debug_status *debug_status, bnd_
       return false;
     }
 
-    status = epa_run(polytope, &debug_status->ctx, &support_point, world->config.advanced.epa_tolerance);
+    status = epa_run(polytope, &debug_status->ctx, &support_point, world->config.collision_detection.epa_tolerance);
     if (status != EPA_STATUS_OK && status != EPA_STATUS_CONVERGED) {
       arena_release_stack_frame(stack_frame);
       return false;

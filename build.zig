@@ -79,6 +79,8 @@ pub fn build(b: *std.Build) !void {
         s.default.addCSourceFile(defaultBanduraSrc);
         s.profiling.addCSourceFile(profilingBanduraSrc);
 
+        s.default.addCMacro("COLLISION_TEST_SUITE_PATH", "\"tests/collision_test_cases.yaml\"");
+
         const target = s.compile(b);
         try targets.append(b.allocator, target.default);
         try targets.append(b.allocator, target.profiling);

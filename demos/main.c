@@ -336,14 +336,11 @@ static void build_ui() {
         ui_value_float("Angular damping", &physics_config->simulation.angular_drag, 0, 1);
         ui_value_float("Restitution", &physics_config->simulation.bounciness, 0, 2);
         ui_value_float("Friction", &physics_config->simulation.friction, 0, 1);
-        ui_value_int("Max GJK iterations", (int *)&physics_config->advanced.max_gjk_iterations, 1, 1000);
-        ui_value_float("EPA tolerance", &physics_config->advanced.epa_tolerance, 0, 1);
-        ui_value_int("Iterations factor", (int *)&physics_config->advanced.resolution_attempts_factor, 1, 20);
-        ui_value_float("Penetration epsilon", &physics_config->advanced.penetration_epsilon, 0.001, 0.5);
-        ui_value_float("Velocity epsilon", &physics_config->advanced.velocity_epsilon, 0.001, 0.5);
+        ui_value_int("Max GJK iterations", (int *)&physics_config->collision_detection.max_gjk_iterations, 1, 1000);
+        ui_value_int("Iteration count", (int*)&physics_config->solver.iterations_count, 1, 25);
+        ui_value_float("EPA tolerance", &physics_config->collision_detection.epa_tolerance, 0, 1);
         ui_value_float("Sleep base bias", &physics_config->simulation.sleep_base_bias, 0, 1);
         ui_value_float("Sleep threshold", &physics_config->simulation.sleep_threshold, 0, 10);
-        ui_value_float("Restitution damping epsilon", &physics_config->simulation.min_bounce_velocity, 0, 1);
       }
 
       ui_end_area();

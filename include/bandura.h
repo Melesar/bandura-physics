@@ -120,8 +120,13 @@ typedef enum {
 
 /** Event categories a body may receive. Values can be ORed together. */
 typedef enum {
-  BND_EVENT_COLLISION = 1,  /**< The body touches another body. */
-  BND_EVENT_TRIGGER = 2,    /**< The body intersects a trigger. */
+  BND_EVENT_COLLISION_ENTER  = 1,  /**< The body started touching another body. */
+  BND_EVENT_COLLISION        = 2,  /**< The body stays in contact with another body. */
+  BND_EVENT_COLLISION_FINISH = 4,  /**< The body stopped touching another body */
+
+  BND_EVENT_TRIGGER_ENTER  = 8,    /**< The body started intersecting a trigger. */
+  BND_EVENT_TRIGGER        = 16,   /**< The body intersects a trigger */
+  BND_EVENT_TRIGGER_FINISH = 32,   /**< The body stopped intersecting a trigger */
 } bnd_event_type;
 
 /** Set of allocation callbacks used by a world. */
@@ -234,15 +239,16 @@ typedef struct {
  * @note The buffers may grow above these capacities during simulation or as a result of body addition.
  */
 typedef struct {
-  uint32_t dynamics_capacity;            /**< Initial dynamic-body capacity. */
-  uint32_t statics_capacity;             /**< Initial static-body capacity. */
-  uint32_t contacts_capacity;            /**< Initial contact capacity. */
-  uint32_t joints_capacity;              /**< Initial joint capacity. */
-  uint32_t meshes_capacity;              /**< Initial imported-mesh capacity. */
-  uint32_t events_capacity;              /**< Initial event capacity. */
-  uint32_t materials_capacity;           /**< Initial material capacity. */
-  uint32_t hash_table_capacity;          /**< Initial capacity of the broad-phase hash table */
-  uint64_t internal_allocation_budget;   /**< How much memory the engine can allocate internally */
+  uint32_t dynamics_capacity;                  /**< Initial dynamic-body capacity. */
+  uint32_t statics_capacity;                   /**< Initial static-body capacity. */
+  uint32_t contacts_capacity;                  /**< Initial contact capacity. */
+  uint32_t joints_capacity;                    /**< Initial joint capacity. */
+  uint32_t meshes_capacity;                    /**< Initial imported-mesh capacity. */
+  uint32_t events_capacity;                    /**< Initial event capacity. */
+  uint32_t materials_capacity;                 /**< Initial material capacity. */
+  uint32_t hash_table_capacity;                /**< Initial capacity of the broad-phase hash table */
+  uint32_t shapes_brackets_capacity[5];        /**< Capacities for compound-shape storage brackets. */
+  uint64_t internal_allocator_capacity_bytes;  /**< How much memory the engine can allocate internally */
 } bnd_config_memory;
 
 /** Parameters controlling integration, damping, contacts, and sleeping. */
@@ -254,36 +260,27 @@ typedef struct {
   float friction;              /**< Default friction coefficient. */
   float sleep_base_bias;       /**< Bias used when averaging motion for sleeping. */
   float sleep_threshold;       /**< Motion threshold below which a body sleeps. */
-  float min_bounce_velocity;   /**< Minimum impact speed for restitution. */
-  uint32_t solver_iterations;  /**< Number of constraint solver iteration. Higher number means higher precision and stability but more time spent. */
 } bnd_config_simulation;
 
-/** Parameters controlling the persistent contact cache. */
 typedef struct {
-  uint32_t max_age;                   /**< Number of simulation frames a cached feature may remain unused. */
-  uint32_t hash_table_capacity;       /**< Contact-cache hash table capacity. */
-  uint32_t buffer_capacity;           /**< Number of cached contact features. */
-  float feature_distance_threshold;   /**< Maximum witness-point movement for feature reuse. */
-  float separation_threshold;         /**< Separation at which a cached contact is discarded. */
-} bnd_config_contacts_cache;
+  uint32_t iterations_count;        /**< Higher number means higher precision and stability but more time spent by the solver. */
+  float baumgarde_coefficient;      /**< How hard the solver tryies to push away penetrating bodies. */
+  float linear_slop;                /**< Minimum penetration depth for the solver to act upon. */
+  float max_baumgarde_velocity;     /**< Maximum separation velocity to apply to penetrating bodies. */
+} bnd_config_solver;
 
-/** Advanced collision-detection and solver parameters. */
 typedef struct {
-  uint32_t shapes_brackets_capacity[5]; /**< Capacities for compound-shape storage brackets. */
-  uint32_t max_gjk_iterations;          /**< Maximum GJK iterations per collision test. */
-  float epa_tolerance;                  /**< EPA convergence tolerance. */
-  uint32_t resolution_attempts_factor;  /**< Solver iteration multiplier. */
-  float penetration_epsilon;             /**< Positional-resolution tolerance. */
-  float velocity_epsilon;                /**< Velocity-resolution tolerance. */
-  bnd_config_contacts_cache contacts_cache; /**< Persistent contact-cache settings. */
-  uint16_t epa_max_nodes;                /**< Maximum EPA polytope nodes. */
-} bnd_config_advanced;
+  uint32_t max_gjk_iterations;              /**< Maximum GJK iterations per collision test. */
+  float epa_tolerance;                      /**< EPA convergence tolerance. */
+  uint16_t epa_max_nodes;                   /**< Maximum EPA polytope nodes. */
+} bnd_config_collision_detection;
 
 /** Complete world configuration. */
 typedef struct {
-  bnd_config_memory memory;          /**< Memory capacities. */
-  bnd_config_simulation simulation;  /**< Simulation parameters. */
-  bnd_config_advanced advanced;      /**< Collision and solver parameters. */
+  bnd_config_memory memory;                              /**< Memory capacities. */
+  bnd_config_simulation simulation;                      /**< Simulation parameters. */
+  bnd_config_solver solver;                              /**< Constraint solver parameters. */
+  bnd_config_collision_detection collision_detection;    /**< Collision detection parameters. */
 } bnd_config;
 
 /** Counters collected during simulation. */

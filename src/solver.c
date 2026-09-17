@@ -6,12 +6,6 @@
 #include <string.h>
 
 #define ALIGNMENT_CONSTRAINT 4
-#define MAX_BAUMGARDE_VELOCITY 4.0f
-#define BAUMGARDE 0.2f
-#define LINEAR_SLOP 0.005f
-
-#define MIN(A, B) ((A) < (B) ? (A) : (B))
-#define MAX(A, B) ((A) > (B) ? (A) : (B))
 
 typedef struct {
   bnd_v3 relative_position[2];
@@ -237,7 +231,9 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
 
   contact_constraint *constraints = (contact_constraint *)(stack_frame.arena->buffer + arena_offset);
 
-  for (count_t i = 0; i < world->config.simulation.solver_iterations; ++i) {
+  const bnd_config_solver solver_config = world->config.solver;
+
+  for (count_t i = 0; i < solver_config.iterations_count; ++i) {
     for (count_t j = 0; j < constraints_count; ++j) {
       contact_constraint *constraint = &constraints[j];
 
@@ -255,7 +251,7 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
         constraint_point *point = &constraint->points[p];
         bnd_v3 local_velocity = contact_point_local_velocity(world, constraint, point, body_count, body_ids, velocities, momenta);
 
-        float bias = MAX(BAUMGARDE * inv_dt * MIN(0.0f, point->separation + LINEAR_SLOP), -MAX_BAUMGARDE_VELOCITY);
+        float bias = MAX(solver_config.baumgarde_coefficient * inv_dt * MIN(0.0f, point->separation + solver_config.linear_slop), -solver_config.max_baumgarde_velocity);
         float vn = local_velocity.y;
         float normal_impulse = -point->normal_mass * (vn + bias) * (1 + constraint->restitution);
         float new_impulse = MAX(point->normal_impulse + normal_impulse, 0.0f);

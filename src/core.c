@@ -156,7 +156,7 @@ uint64_t bnd_required_memory(const bnd_config *config) {
     sizeof(count_t)             * config->memory.hash_table_capacity +
     sizeof(broad_phase_contact) * config->memory.contacts_capacity;
 
-  uint64_t arena_size = config->memory.internal_allocation_budget;
+  uint64_t arena_size = config->memory.internal_allocator_capacity_bytes;
 
   size += (config->memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT) * dynamic_size
     + (config->memory.statics_capacity + EPHEMERAL_BODIES_COUNT) * common_size
@@ -229,8 +229,6 @@ bnd_config bnd_default_config(void) {
       .friction = 0.9f,
       .sleep_base_bias = 0.5f,
       .sleep_threshold = 0.3f,
-      .min_bounce_velocity = 0.25f,
-      .solver_iterations = 8,
     },
     .memory = {
       .dynamics_capacity = 32,
@@ -241,24 +239,21 @@ bnd_config bnd_default_config(void) {
       .events_capacity = 128,
       .materials_capacity = 8,
       .hash_table_capacity = 512,
-      .internal_allocation_budget = 8 << 10, // 8 Kb
+      .shapes_brackets_capacity = {64, 1, 1, 1, 1},
+      .internal_allocator_capacity_bytes = 8 << 10, // 8 Kb
     },
-    .advanced = {
+    .solver = {
+      .iterations_count = 8,
+      .baumgarde_coefficient = 0.2f,
+      .linear_slop = 0.005f,
+      .max_baumgarde_velocity = 4.0f,  
+    },
+    .collision_detection = {
       .max_gjk_iterations = 100,
       .epa_tolerance = 0.01f,
       .epa_max_nodes = 128,
-      .resolution_attempts_factor = 15,
-      .penetration_epsilon = 0.01f,
-      .velocity_epsilon = 0.01f,
-      .shapes_brackets_capacity = {64, 1, 1, 1, 1},
-      .contacts_cache = {
-        .max_age = 3,
-        .hash_table_capacity = 256,
-        .buffer_capacity = 64,
-        .feature_distance_threshold = 0.02f,
-        .separation_threshold = 0.05f,
-      }
-    },
+    
+    }
   };
 }
 
@@ -288,7 +283,7 @@ static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allo
   ALLOC(world->dynamics.inv_intertias, matrices);
   ALLOC(world->dynamics.motion_avgs, floats);
 
-  INVOKE(arena_init(allocator, config.memory.internal_allocation_budget, &world->arena))
+  INVOKE(arena_init(allocator, config.memory.internal_allocator_capacity_bytes, &world->arena))
 
   world->matrix.matrix[0] = 1;
   for(count_t i = 1; i < MAX_COLLISION_LAYERS; ++i) {

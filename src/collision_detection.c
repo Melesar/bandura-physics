@@ -512,7 +512,7 @@ static bool polytope_polytope_collision(const collision_detection_context *ctx, 
     return false;
   }
 
-  epa_get_contact(ctx, &s, ctx->world->config.advanced.epa_tolerance, manifold);
+  epa_get_contact(ctx, &s, ctx->world->config.collision_detection.epa_tolerance, manifold);
   return true;
 }
 

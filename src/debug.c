@@ -148,7 +148,7 @@ void epa_debug_capture(bnd_world *world) {
   count_t iterations_count = epa_get_contact(
     &world->epa_debug->ctx,
     &world->epa_debug->s,
-    world->config.advanced.epa_tolerance,
+    world->config.collision_detection.epa_tolerance,
     &manifold);
 
   world->epa_debug->target_iteration = 0;

@@ -34,7 +34,7 @@ void scenario_setup_scene(bnd_world *world) {
     free(rgd);
   }
 
-  rgd = ragdoll_create(world, (bnd_v3) { 0, 5, -5 });
+  // rgd = ragdoll_create(world, (bnd_v3) { 0, 5, -5 });
 }
 
 void scenario_handle_input(bnd_world *world, Camera *camera) {
