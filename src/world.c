@@ -973,11 +973,56 @@ bnd_error bnd_set_collision_layer(bnd_world *world, bnd_body_handle handle, bnd_
 }
 
 count_t bnd_get_contacts(const bnd_world *world, bnd_contact *contacts, count_t max_contacts) {
-  (void) world;
-  (void) contacts;
-  (void) max_contacts;
-  // TODO
-  return 0;
+  if (contacts == NULL || max_contacts == 0) {
+    return 0;
+  }
+
+  count_t count = 0;
+
+  const broad_contacts_set *sets[] = { &world->contacts.dynamics, &world->contacts.statics };
+  for (count_t k = 0; k < 2; ++k) {
+    const broad_contacts_set *contact_set = sets[k];
+
+    bnd_body_type contact_type = (bnd_body_type) k;
+    const common_data *data_a = as_common_const(world, BND_BODY_DYNAMIC);
+    const common_data *data_b = as_common_const(world, contact_type);
+
+    count_t body_index = contact_set->first;
+    while (body_index != UINT32_MAX) {
+      const broad_phase_contact *body_contact = &contact_set->contacts[body_index];
+
+      count_t shape_index = body_index;
+      while (shape_index != UINT32_MAX) {
+        const broad_phase_contact *shape_contact = &contact_set->contacts[shape_index];
+        if (shape_contact->manifold.count == 0) {
+          shape_index = shape_contact->next;
+          continue;
+        }
+
+        for (count_t i = 0; i < shape_contact->manifold.count; ++i) {
+          const contact_point *p = &shape_contact->manifold.points[i];
+
+          contacts[count++] = (bnd_contact){
+            .point = p->point,
+            .normal = shape_contact->manifold.normal,
+            .depth = p->depth,
+            .body_a = (bnd_body_handle) { .type = BND_BODY_DYNAMIC, .world_id = world->id, .index = shape_contact->body_a, .generation = data_a->generations[shape_contact->body_a] },
+            .body_b = (bnd_body_handle) { .type = contact_type,     .world_id = world->id, .index = shape_contact->body_b, .generation = data_b->generations[shape_contact->body_b] },
+          };
+
+          if (count >= max_contacts) {
+            return count;
+          }
+        }
+
+        shape_index = shape_contact->next;
+      }
+
+      body_index = body_contact->next_body;
+    }
+  }
+  
+  return count;
 }
 
 
