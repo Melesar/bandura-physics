@@ -79,13 +79,13 @@ static void test_collision_response_respects_collision_layers(void) {
   expect_ok(bnd_event_subscribe(world, dynamic, BND_EVENT_COLLISION));
 
   expect_ok(bnd_set_layers_collision(world, 0, 1, false));
-  bnd_simulate(world, 0.0f);
+  bnd_simulate(world, 0.008f);
   assert(bnd_collisions_count(world) == 0);
   assert(!bnd_event_any(world, dynamic).value);
   expect_v3_near(bnd_get_position(world, dynamic).value, bnd_v3_zero());
 
   expect_ok(bnd_set_layers_collision(world, 0, 1, true));
-  bnd_simulate(world, 0.0f);
+  bnd_simulate(world, 0.008f);
   assert(bnd_collisions_count(world) > 0);
   assert(bnd_event_any(world, dynamic).value);
   assert(bnd_get_position(world, dynamic).value.z < 0.0f);

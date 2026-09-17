@@ -62,7 +62,7 @@ static void test_trigger_events_skip_collision_response_and_notify_both_bodies(v
   expect_ok(bnd_event_subscribe(world, dynamic, BND_EVENT_TRIGGER | BND_EVENT_COLLISION));
   expect_ok(bnd_event_subscribe(world, trigger, BND_EVENT_TRIGGER | BND_EVENT_COLLISION));
 
-  bnd_simulate(world, 0.0f);
+  bnd_simulate(world, 0.005f);
 
   assert(bnd_collisions_count(world) == 0);
   expect_v3_near(bnd_get_position(world, dynamic).value, bnd_v3_zero());

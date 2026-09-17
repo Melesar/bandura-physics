@@ -84,7 +84,7 @@ static bnd_v3 contact_point_local_velocity(
 }
 
 static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set *contacts, bnd_body_type type, broad_phase_contact *contact, count_t index, void *custom_data) {
-  if (contact->manifold.count == 0) {
+  if (contact->manifold.count == 0 || contact->status & CONTACT_TRIGGER_BOTH) {
     return OK;
   }
 
@@ -202,10 +202,6 @@ static void apply_impulse(bnd_v3 impulse, bnd_v3 *velocities, bnd_v3 *momenta, f
 }
 
 bnd_error resolve_constraints(bnd_world *world, float dt) {
-  if (dt <= 0.0f) {
-    return OK;
-  }
-
   bnd_arena_stack_frame stack_frame = arena_new_stack_frame(&world->arena);
 
   count_t constraints_count = 0;
@@ -215,6 +211,13 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
   constraint_creation_context cx = { &constraints_count, dt };
   bnd_error e = for_each_broad_contact(world, constraints_from_contacts, &cx);
   PROFILER_BLOCK_END;
+
+  world->stats.contacts_count = constraints_count;
+
+  if (dt <= 0.0f) {
+    arena_release_stack_frame(stack_frame);
+    return OK;
+  }
 
   if (IS_ERROR(e)) {
     arena_release_stack_frame(stack_frame);

@@ -288,7 +288,6 @@ typedef struct {
   uint64_t max_internal_buffer_size;         /**< Maximum size of the internal memory buffer */
   uint32_t body_count;                       /**< Total body count. */
   uint32_t contacts_count;                   /**< Contacts generated in the latest simulation. */
-  uint32_t incomplete_resolutions;           /**< Solver passes that did not converge. */
   uint32_t incomplete_collision_detections;  /**< Collision tests that exceeded their budget. */
   uint32_t world_age;                        /**< Number of completed simulation steps. */
   uint16_t used_epa_nodes;                   /**< Nodes used for collision detection */

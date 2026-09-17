@@ -6,15 +6,30 @@
 #include <stdlib.h>
 #include <string.h>
 
+typedef struct {
+  bnd_debug_draw_contact_fn callback;
+  void *user_data;
+} draw_contact_data;
+
+static bnd_error draw_contact(bnd_world *world, broad_contacts_set *contacts, bnd_body_type type, broad_phase_contact *contact, count_t index, void *custom_data) {
+  draw_contact_data *data = (draw_contact_data *) custom_data;
+
+  for (count_t i = 0; i < contact->manifold.count; ++i) {
+    const contact_point *p = &contact->manifold.points[i];
+
+    data->callback(p->point, contact->manifold.normal, p->depth, data->user_data);
+  }
+ 
+  return OK;
+}
+
 static void draw_contacts(const bnd_world *world, bnd_debug_draw_callbacks callbacks, void *user_data) {
   if (callbacks.draw_contact == NULL) {
     return;
   }
+  draw_contact_data data = { callbacks.draw_contact, user_data };
 
-  for (count_t i = 0; i < world->contacts.count; i++) {
-    const contact *contact = &world->contacts.values[i];
-    callbacks.draw_contact(contact->point, contact->normal, contact->depth, user_data);
-  }
+  for_each_broad_contact((bnd_world *)world, draw_contact, &data);
 }
 
 static void draw_shapes(const bnd_world *world, bnd_body_type type, bnd_debug_draw_callbacks callbacks, void *user_data) {

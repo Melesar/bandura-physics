@@ -163,7 +163,7 @@ bnd_body_shape *shapes_get(const bnd_world *world, body_shapes shapes) {
 void test_shapes_write_primitive_bracket_uses_second_block(void) {
   bnd_world world = {0};
   world.allocator = bnd_default_allocator();
-  world.config.advanced.shapes_brackets_capacity[BRACKET_PRIMITIVE] = 65;
+  world.config.memory.shapes_brackets_capacity[BRACKET_PRIMITIVE] = 65;
 
   shapes_init(&world);
 
@@ -192,7 +192,7 @@ void test_shapes_write_primitive_bracket_uses_second_block(void) {
 void test_shapes_write_four_bracket_keeps_alignment_across_blocks(void) {
   bnd_world world = {0};
   world.allocator = bnd_default_allocator();
-  world.config.advanced.shapes_brackets_capacity[BRACKET_FOUR] = 65;
+  world.config.memory.shapes_brackets_capacity[BRACKET_FOUR] = 65;
 
   shapes_init(&world);
 
@@ -225,7 +225,7 @@ void test_shapes_write_four_bracket_keeps_alignment_across_blocks(void) {
 void test_shapes_expand_bracket_preserves_existing_data_after_two_blocks(void) {
   bnd_world world = {0};
   world.allocator = bnd_default_allocator();
-  world.config.advanced.shapes_brackets_capacity[BRACKET_TWO] = 65;
+  world.config.memory.shapes_brackets_capacity[BRACKET_TWO] = 65;
 
   shapes_init(&world);
 
@@ -281,7 +281,7 @@ void test_shapes_expand_bracket_preserves_existing_data_after_two_blocks(void) {
 void test_shapes_clear_slot_reuses_second_block_slot_with_bracket_alignment(void) {
   bnd_world world = {0};
   world.allocator = bnd_default_allocator();
-  world.config.advanced.shapes_brackets_capacity[BRACKET_EIGHT] = 65;
+  world.config.memory.shapes_brackets_capacity[BRACKET_EIGHT] = 65;
 
   shapes_init(&world);
 

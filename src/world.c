@@ -658,6 +658,9 @@ bnd_result_handle bnd_add_compound_body(bnd_world *world, bnd_body_type type, bn
 bnd_error bnd_remove_body(bnd_world *world, bnd_body_handle handle) {
   PROPAGATE_ERROR(bnd_handle_valid(world, handle))
 
+  joints_remove_stale_if_needed(world, handle);
+  contacts_remove_for_body(world, handle);
+
   common_data *data = as_common(world, handle.type);
   data->generations[handle.index] += 1;
   data->free_list[data->free_count++] = handle.index; // We keep the outer index in the free list
@@ -685,9 +688,6 @@ bnd_error bnd_remove_body(bnd_world *world, bnd_body_handle handle) {
   }
 
   data->count -= 1;
-
-  // TODO remove broad phase contact with this body.
-  joints_remove_stale_if_needed(world, handle);
 
   outer_lookup_node *outer_node = &data->outer_lookup[handle.index];
   outer_node->index = max_body_index;
@@ -811,7 +811,7 @@ count_t bnd_awake_count(const bnd_world *world) {
 }
 
 count_t bnd_collisions_count(const bnd_world *world) {
-  return world->contacts.count;
+  return world->stats.contacts_count;
 }
 
 bnd_result_v3 bnd_get_position(const bnd_world *world, bnd_body_handle handle) {
@@ -962,12 +962,12 @@ bnd_error bnd_set_collision_layer(bnd_world *world, bnd_body_handle handle, bnd_
     return (bnd_error) { BND_ERROR_INVALID_COLLISION_LAYER, "Provided layer doesn't exist" };
   }
 
+  contacts_remove_for_body(world, handle);
+
   common_data *data = as_common(world, handle.type);
   count_t index = handle_to_inner_index(world, handle);
 
   data->collision_layers[index] = layer;
-
-  // TODO check for stale broad phase contacts and remove them.
 
   return OK;
 }
@@ -1160,7 +1160,7 @@ void bnd_simulate(bnd_world *world, float dt) {
   PROFILER_REPORT_METRIC_INT("Dynamic bodies", world->dynamics.count);
   PROFILER_REPORT_METRIC_INT("Static bodies", world->statics.count);
   PROFILER_REPORT_METRIC_INT("Total bodies", world->dynamics.count + world->statics.count);
-  PROFILER_REPORT_METRIC_INT("Contacts count", world->contacts.count);
+  PROFILER_REPORT_METRIC_INT("Contacts count", world->stats.contacts_count);
   PROFILER_REPORT_METRIC_INT("EPA nodes", world->stats.used_epa_nodes);
   PROFILER_REPORT_METRIC_INT("Max internal buffer size", world->arena.max_offset);
   PROFILER_REPORT_METRIC_INT("Internal buffer capacity", world->arena.capacity);
@@ -1227,7 +1227,6 @@ void bnd_reset_world(bnd_world *world) {
   world->statics.free_count = 0;
   world->statics.first_outer_node = max_body_index;
 
-  world->stats.incomplete_resolutions = 0;
   world->stats.incomplete_collision_detections = 0;
 
   contacts_reset(world);
@@ -1540,7 +1539,7 @@ bnd_error bnd_set_trigger(bnd_world *world, bnd_body_handle handle, bool is_trig
     data->flags[index] &= ~BODY_FLAG_TRIGGER;
   }
 
-  // TODO remove broad phase contact.
+  contacts_remove_for_body(world, handle);
 
   return OK;
 }

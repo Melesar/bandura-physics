@@ -199,11 +199,6 @@ typedef struct {
 
   broad_contacts_set dynamics;
   broad_contacts_set statics;
-
-  // Obsolete
-  contact *values;
-  count_t capacity;
-  count_t count;
 } contacts;
 
 typedef struct {
@@ -571,8 +566,8 @@ const common_data    *as_common_const(const bnd_world *world, bnd_body_type type
 bnd_error             contacts_init(bnd_world *world);
 void                  contacts_reset(bnd_world *world);
 void                  contacts_teardown(bnd_world *world);
+void                  contacts_remove_for_body(bnd_world *world, bnd_body_handle handle);
 void                  contacts_filter_largest_surface_area(contact *contacts, count_t contact_count, count_t *selected_indices);
-void                  contacts_generate(bnd_world *world);
 bnd_error             resolve_constraints(bnd_world *world, float dt);
 
 bnd_error             for_each_broad_contact(bnd_world *world, broad_contact_iterator func, void *custom_data);

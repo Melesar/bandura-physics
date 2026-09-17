@@ -1,3 +1,4 @@
+#include "bandura.h"
 #include "bnd-core.h"
 #include "bnd-math.h"
 
@@ -896,6 +897,7 @@ static void update_contact_status(broad_phase_contact *contact, bool is_intersec
   }
 }
 
+
 static void update_manifold(contact_manifold *target, const contact_manifold *new_manifold, const contact_manifold *old_manifold) {
   memcpy(target, new_manifold, sizeof(contact_manifold));
 
@@ -1146,6 +1148,8 @@ static void init_contact(broad_phase_contact *contact, uint64_t key, const colli
   contact->shape_a = shape_a;
   contact->shape_b = shape_b;
 
+  memset(&contact->manifold, 0, sizeof(contact_manifold));
+
   // Per-shape materials maybe??
   contact->friction = mix_friction(ctx);
   contact->restitution = mix_restitution(ctx);
@@ -1273,6 +1277,36 @@ static bnd_error run_broad_phase_typed(bnd_world *world, broad_contacts_set *con
   }
 
   return OK;
+}
+
+void contacts_remove_for_body(bnd_world *world, bnd_body_handle handle) {
+  broad_contacts_set *sets[] = { &world->contacts.dynamics, &world->contacts.statics };
+
+  const uint64_t index_key_part = handle.index & 0x7FFFFF;
+  const uint64_t key_high = (index_key_part << 31);
+  const uint64_t key_low = index_key_part;
+  const uint64_t key_mask = key_high | key_low;
+
+  for (count_t k = 0; k < 2; ++k) {
+    if (k == 0 && handle.type == BND_BODY_STATIC) {
+      continue;
+    }
+
+    broad_contacts_set *contacts = sets[k];
+    count_t index = contacts->first;
+    while(index != UINT32_MAX) {
+      broad_phase_contact *contact = &contacts->contacts[index];
+      index = contact->next_body;
+
+      uint64_t masked_key = contact->key & key_mask;
+      if (masked_key == key_high || masked_key == key_low) {
+        count_t slot;
+        if (hash_table_find_slot_for_key(&world->contacts, contact->key, &slot)) {
+          remove_all_shape_contacts(world, slot, contacts);
+        }
+      }
+    }
+  }
 }
 
 bnd_error run_broad_phase(bnd_world *world) {

@@ -80,8 +80,8 @@ void scenario_setup_scene(bnd_world *world) {
     }
   }
 
-  pair_index = 3;
-  case_index = 0;
+  pair_index = 0;
+  case_index = 30;
   update_pair(world);
 }
 

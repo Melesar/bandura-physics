@@ -186,39 +186,67 @@ static bnd_error push_trigger_events(bnd_world *world, const broad_phase_contact
   return OK;
 }
 
-static bnd_error contacts_to_events(bnd_world *world, broad_contacts_set *contacts, bnd_body_type type, broad_phase_contact *contact, count_t index, void *custom_data) {
+bnd_error events_emit_contacts(bnd_world *world) {
   enum {
     TRIGGER_SUBSCRIPTION_MASK   = BND_EVENT_TRIGGER   | BND_EVENT_TRIGGER_ENTER   | BND_EVENT_TRIGGER_FINISH,
     COLLISION_SUBSCRIPTION_MASK = BND_EVENT_COLLISION | BND_EVENT_COLLISION_ENTER | BND_EVENT_COLLISION_FINISH,
   };
 
-  common_data *data_a = (common_data *) &world->dynamics;
-  common_data *data_b = as_common(world, type);
+  broad_contacts_set *sets[] = { &world->contacts.dynamics, &world->contacts.statics };
+  for (count_t k = 0; k < 2; ++k) {
+    broad_contacts_set *contacts = sets[k];
 
-  count_t body_a = data_a->outer_lookup[contact->body_a].index;
-  count_t body_b = data_a->outer_lookup[contact->body_b].index;
+    count_t body_contact_index = contacts->first;
+    while (body_contact_index != UINT32_MAX) {
+      broad_phase_contact *body_contact = &contacts->contacts[body_contact_index];
+      bnd_body_type contact_type = (bnd_body_type) k;
 
-  if (contact->status & CONTACT_TRIGGER_BOTH) {
-    if (events_subscribed(data_a, body_a, TRIGGER_SUBSCRIPTION_MASK)) {
-      PROPAGATE_ERROR(push_trigger_events(world, contact, data_a, body_a, body_b, type));
-    }
+      common_data *data_a = (common_data *) &world->dynamics;
+      common_data *data_b = as_common(world, contact_type);
 
-    if (events_subscribed(data_b, body_b, TRIGGER_SUBSCRIPTION_MASK)) {
-      PROPAGATE_ERROR(push_trigger_events(world, contact, data_b, body_b, body_a, BND_BODY_DYNAMIC));
-    }
-  } else {
-    if (events_subscribed(data_a, body_a, COLLISION_SUBSCRIPTION_MASK)) {
-      PROPAGATE_ERROR(push_collision_events(world, contact, data_a, body_a, body_b, BND_BODY_DYNAMIC, type));
-    }
+      count_t body_a = data_a->outer_lookup[body_contact->body_a].index;
+      count_t body_b = data_a->outer_lookup[body_contact->body_b].index;
 
-    if (events_subscribed(data_b, body_b, COLLISION_SUBSCRIPTION_MASK)) {
-      PROPAGATE_ERROR(push_collision_events(world, contact, data_b, body_b, body_a, type, BND_BODY_DYNAMIC));
+      if (body_contact->status & CONTACT_TRIGGER_BOTH) {
+        if (body_contact->manifold.count == 0) {
+          body_contact_index = body_contact->next_body;
+          continue;
+        }
+
+        if (events_subscribed(data_a, body_a, TRIGGER_SUBSCRIPTION_MASK)) {
+          PROPAGATE_ERROR(push_trigger_events(world, body_contact, data_a, body_a, body_b, contact_type));
+        }
+
+        if (events_subscribed(data_b, body_b, TRIGGER_SUBSCRIPTION_MASK)) {
+          PROPAGATE_ERROR(push_trigger_events(world, body_contact, data_b, body_b, body_a, BND_BODY_DYNAMIC));
+        }
+
+        body_contact_index = body_contact->next_body;
+        continue;
+      }
+
+      count_t shape_contact_index = body_contact_index;
+      while (shape_contact_index != UINT32_MAX) {
+        broad_phase_contact *shape_contact = &contacts->contacts[shape_contact_index];
+        if (shape_contact->manifold.count == 0) {
+          shape_contact_index = shape_contact->next;
+          continue;
+        }
+
+        if (events_subscribed(data_a, body_a, COLLISION_SUBSCRIPTION_MASK)) {
+          PROPAGATE_ERROR(push_collision_events(world, shape_contact, data_a, body_a, body_b, BND_BODY_DYNAMIC, contact_type));
+        }
+
+        if (events_subscribed(data_b, body_b, COLLISION_SUBSCRIPTION_MASK)) {
+          PROPAGATE_ERROR(push_collision_events(world, shape_contact, data_b, body_b, body_a, contact_type, BND_BODY_DYNAMIC));
+        }
+
+        shape_contact_index = shape_contact->next;
+      }
+
+      body_contact_index = body_contact->next_body;
     }
   }
 
-  return OK;  
-}
-
-bnd_error events_emit_contacts(bnd_world *world) {
-  return for_each_broad_contact(world, contacts_to_events, NULL);
+  return OK;
 }

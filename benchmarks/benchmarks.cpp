@@ -295,7 +295,6 @@ void AddCounters(benchmark::State &state, const SceneInstance &instance) {
   state.counters["contacts_after_batch"] = bnd_collisions_count(instance.world);
   state.counters["awake_after_warmup"] = instance.warmup_awake;
   state.counters["awake_after_batch"] = bnd_awake_count(instance.world);
-  state.counters["incomplete_resolutions"] = stats.incomplete_resolutions;
   state.counters["incomplete_collision_detections"] =
       stats.incomplete_collision_detections;
   state.counters["steps_per_batch"] = kStepsPerBatch;
