@@ -1397,6 +1397,48 @@ static count_t broad_phase_free_count(const broad_contacts_set *set) {
   return count;
 }
 
+static count_t broad_phase_contacts_for_body(const bnd_world *world, bnd_body_handle handle) {
+  const broad_contacts_set *sets[] = { &world->contacts.dynamics, &world->contacts.statics };
+  count_t count = 0;
+
+  for (count_t k = 0; k < 2; ++k) {
+    const broad_contacts_set *set = sets[k];
+    for (count_t index = set->first; index != UINT32_MAX; index = set->contacts[index].next_body) {
+      const broad_phase_contact *contact = &set->contacts[index];
+      bool dynamic_match = handle.type == BND_BODY_DYNAMIC &&
+        (contact->body_a == handle.index || (k == 0 && contact->body_b == handle.index));
+      bool static_match = handle.type == BND_BODY_STATIC && k == 1 && contact->body_b == handle.index;
+
+      if (dynamic_match || static_match) {
+        count += broad_phase_chain_count(set, index);
+      }
+    }
+  }
+
+  return count;
+}
+
+static bnd_body_handle add_two_shape_dynamic(bnd_world *world) {
+  bnd_body_shape shapes[] = {
+    { .type = BND_SPHERE, .value.sphere = { .radius = 1.0f }, .offset = {-0.5f, 0, 0}, .rotation = bnd_quat_identity() },
+    { .type = BND_SPHERE, .value.sphere = { .radius = 1.0f }, .offset = { 0.5f, 0, 0}, .rotation = bnd_quat_identity() },
+  };
+  float masses[] = {1.0f, 1.0f};
+  bnd_result_handle result = bnd_add_compound_body_dynamic(world, shapes, masses, 2);
+  expect_ok(result.error);
+  return result.value;
+}
+
+static bnd_body_handle add_two_shape_static(bnd_world *world) {
+  bnd_body_shape shapes[] = {
+    { .type = BND_SPHERE, .value.sphere = { .radius = 1.0f }, .offset = {-0.5f, 0, 0}, .rotation = bnd_quat_identity() },
+    { .type = BND_SPHERE, .value.sphere = { .radius = 1.0f }, .offset = { 0.5f, 0, 0}, .rotation = bnd_quat_identity() },
+  };
+  bnd_result_handle result = bnd_add_compound_body_static(world, shapes, 2);
+  expect_ok(result.error);
+  return result.value;
+}
+
 static void broad_phase_assert_set_links(const broad_contacts_set *set) {
   count_t roots = 0;
   count_t shape_entries = 0;
@@ -1618,6 +1660,114 @@ static void test_broad_phase_survives_dynamic_inner_reordering(void) {
   bnd_teardown(world);
 }
 
+static void test_removing_dynamic_body_removes_all_its_broad_phase_contacts(void) {
+  bnd_world *world = test_world();
+  bnd_body_handle far_a = add_dynamic_sphere(world, 1.0f);
+  bnd_body_handle removed = add_two_shape_dynamic(world);
+  bnd_body_handle peer_a = add_dynamic_sphere(world, 1.0f);
+  bnd_body_handle peer_b = add_dynamic_sphere(world, 1.0f);
+  bnd_body_handle far_b = add_dynamic_sphere(world, 1.0f);
+  bnd_body_handle near_static = add_static_sphere(world, 1.0f);
+  bnd_body_handle far_static = add_static_sphere(world, 1.0f);
+  broad_phase_move_body(world, far_a, (bnd_v3){10, 0, 0});
+  broad_phase_move_body(world, far_b, (bnd_v3){10, 0, 0});
+  broad_phase_move_body(world, far_static, (bnd_v3){10, 0, 0});
+  broad_phase_refresh(world);
+
+  assert(broad_phase_contacts_for_body(world, removed) == 6);
+  expect_ok(bnd_remove_body(world, removed));
+
+  assert(broad_phase_contacts_for_body(world, removed) == 0);
+  assert(world->contacts.hash_table_entry_count == 6);
+  assert(broad_phase_contact_for_pair(world, peer_a, peer_b, BND_BODY_DYNAMIC) != NULL);
+  assert(broad_phase_contact_for_pair(world, far_a, far_b, BND_BODY_DYNAMIC) != NULL);
+  assert(broad_phase_contact_for_pair(world, peer_a, near_static, BND_BODY_STATIC) != NULL);
+  assert(broad_phase_contact_for_pair(world, far_a, far_static, BND_BODY_STATIC) != NULL);
+  broad_phase_assert_set_links(&world->contacts.dynamics);
+  broad_phase_assert_set_links(&world->contacts.statics);
+
+  bnd_teardown(world);
+}
+
+static void test_removing_static_body_removes_all_its_broad_phase_contacts(void) {
+  bnd_world *world = test_world();
+  bnd_body_handle far_dynamic = add_dynamic_sphere(world, 1.0f);
+  bnd_body_handle dynamic_a = add_dynamic_sphere(world, 1.0f);
+  bnd_body_handle dynamic_b = add_dynamic_sphere(world, 1.0f);
+  bnd_body_handle far_static = add_static_sphere(world, 1.0f);
+  bnd_body_handle removed = add_two_shape_static(world);
+  broad_phase_move_body(world, far_dynamic, (bnd_v3){10, 0, 0});
+  broad_phase_move_body(world, far_static, (bnd_v3){10, 0, 0});
+  broad_phase_refresh(world);
+
+  assert(broad_phase_contacts_for_body(world, removed) == 4);
+  expect_ok(bnd_remove_body(world, removed));
+
+  assert(broad_phase_contacts_for_body(world, removed) == 0);
+  assert(world->contacts.hash_table_entry_count == 2);
+  assert(broad_phase_contact_for_pair(world, dynamic_a, dynamic_b, BND_BODY_DYNAMIC) != NULL);
+  assert(broad_phase_contact_for_pair(world, far_dynamic, far_static, BND_BODY_STATIC) != NULL);
+  broad_phase_assert_set_links(&world->contacts.dynamics);
+  broad_phase_assert_set_links(&world->contacts.statics);
+
+  bnd_teardown(world);
+}
+
+static void test_changing_collision_layer_removes_all_body_broad_phase_contacts(void) {
+  bnd_world *world = test_world();
+  expect_ok(bnd_set_layers_count(world, 2));
+  bnd_body_handle far_dynamic = add_dynamic_sphere(world, 1.0f);
+  bnd_body_handle changed = add_two_shape_dynamic(world);
+  bnd_body_handle spacer = add_dynamic_sphere(world, 1.0f);
+  bnd_body_handle peer = add_dynamic_sphere(world, 1.0f);
+  bnd_body_handle far_static = add_static_sphere(world, 1.0f);
+  bnd_body_handle near_static = add_static_sphere(world, 1.0f);
+  broad_phase_move_body(world, far_dynamic, (bnd_v3){10, 0, 0});
+  broad_phase_move_body(world, spacer, (bnd_v3){20, 0, 0});
+  broad_phase_move_body(world, far_static, (bnd_v3){10, 0, 0});
+  broad_phase_refresh(world);
+
+  assert(broad_phase_contacts_for_body(world, changed) == 4);
+  expect_ok(bnd_set_collision_layer(world, changed, 1));
+
+  assert(broad_phase_contacts_for_body(world, changed) == 0);
+  assert(world->contacts.hash_table_entry_count == 2);
+  assert(broad_phase_contact_for_pair(world, peer, near_static, BND_BODY_STATIC) != NULL);
+  assert(broad_phase_contact_for_pair(world, far_dynamic, far_static, BND_BODY_STATIC) != NULL);
+  broad_phase_assert_set_links(&world->contacts.dynamics);
+  broad_phase_assert_set_links(&world->contacts.statics);
+
+  bnd_teardown(world);
+}
+
+static void test_changing_trigger_status_removes_all_body_broad_phase_contacts(void) {
+  bnd_world *world = test_world();
+  bnd_body_handle far_dynamic = add_dynamic_sphere(world, 1.0f);
+  bnd_body_handle near_dynamic = add_dynamic_sphere(world, 1.0f);
+  bnd_body_handle far_static = add_static_sphere(world, 1.0f);
+  bnd_body_handle changed = add_two_shape_static(world);
+  broad_phase_move_body(world, far_dynamic, (bnd_v3){10, 0, 0});
+  broad_phase_move_body(world, far_static, (bnd_v3){10, 0, 0});
+  broad_phase_refresh(world);
+
+  assert(broad_phase_contacts_for_body(world, changed) == 2);
+  expect_ok(bnd_set_trigger(world, changed, true));
+  assert(broad_phase_contacts_for_body(world, changed) == 0);
+  assert(broad_phase_contact_for_pair(world, far_dynamic, far_static, BND_BODY_STATIC) != NULL);
+
+  broad_phase_refresh(world);
+  assert(broad_phase_contacts_for_body(world, changed) == 2);
+  expect_ok(bnd_set_trigger(world, changed, false));
+
+  assert(broad_phase_contacts_for_body(world, changed) == 0);
+  assert(world->contacts.hash_table_entry_count == 1);
+  assert(broad_phase_contact_for_pair(world, far_dynamic, far_static, BND_BODY_STATIC) != NULL);
+  assert(broad_phase_contact_for_pair(world, near_dynamic, changed, BND_BODY_STATIC) == NULL);
+  broad_phase_assert_set_links(&world->contacts.statics);
+
+  bnd_teardown(world);
+}
+
 void broad_phase_tests(void) {
   TESTS_BEGIN("Broad phase")
     TEST(test_broad_phase_creates_and_deduplicates_contacts)
@@ -1627,6 +1777,10 @@ void broad_phase_tests(void) {
     TEST(test_broad_phase_repairs_body_list_when_middle_pair_is_removed)
     TEST(test_broad_phase_reuses_contacts_and_resizes_storage)
     TEST(test_broad_phase_survives_dynamic_inner_reordering)
+    TEST(test_removing_dynamic_body_removes_all_its_broad_phase_contacts)
+    TEST(test_removing_static_body_removes_all_its_broad_phase_contacts)
+    TEST(test_changing_collision_layer_removes_all_body_broad_phase_contacts)
+    TEST(test_changing_trigger_status_removes_all_body_broad_phase_contacts)
   TESTS_END;
 }
 
