@@ -1,4 +1,3 @@
-#include "bandura.h"
 #include "bnd-core.h"
 #include "bnd-math.h"
 #include "profiler.h"
@@ -396,9 +395,8 @@ static void epa_invalid_contact(body_support p, contact_manifold *manifold) {
   manifold->points[0].point = bnd_v3_scale(bnd_v3_add(p.p1.point, p.p2.point), 0.5f);
   manifold->points[0].depth = 0.1f;
 
-  manifold->points[0].features.witness_a = p.p1.point;
-  manifold->points[0].features.witness_b = p.p2.point;
-  manifold->points[0].features.normal = manifold->normal;
+  manifold->points[0].witness_a = p.p1.point;
+  manifold->points[0].witness_b = p.p2.point;
 }
 
 static void epa_calculate_contact(const epa_polytope *polytope, contact_manifold *manifold) {
@@ -443,9 +441,8 @@ static void epa_calculate_contact(const epa_polytope *polytope, contact_manifold
     manifold->normal = bnd_v3_up();
   }
 
-  manifold->points[0].features.witness_a = p1;
-  manifold->points[0].features.witness_b = p2;
-  manifold->points[0].features.normal = manifold->normal;
+  manifold->points[0].witness_a = p1;
+  manifold->points[0].witness_b = p2;
 }
 
 static void mark_edge_for_removal(epa_polytope *polytope, uint16_t edge_index, body_support p, uint16_t *stack, uint16_t *stack_ptr) {

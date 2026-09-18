@@ -205,7 +205,7 @@ bnd_error events_emit_contacts(bnd_world *world) {
       common_data *data_b = as_common(world, contact_type);
 
       count_t body_a = data_a->outer_lookup[body_contact->body_a].index;
-      count_t body_b = data_a->outer_lookup[body_contact->body_b].index;
+      count_t body_b = data_b->outer_lookup[body_contact->body_b].index;
 
       if (body_contact->status & CONTACT_TRIGGER_BOTH) {
         if (body_contact->manifold.count == 0) {

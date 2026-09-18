@@ -34,8 +34,6 @@ static void test_joints_removing_unrelated_body_keeps_every_joint(void) {
   assert(world->joints.count == 2);
   assert(world->joints.dynamic_count == 1);
 
-  printf("Layer pointer: %p\n", world->dynamics.collision_layers);
-
   assert(IS_OK(bnd_remove_body(world, unrelated)));
 
   assert(world->joints.count == 2);

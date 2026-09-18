@@ -85,22 +85,21 @@ typedef enum {
 } broad_contact_status;
 
 typedef struct {
-  bnd_v3 witness_a, witness_b;
-  bnd_v3 normal;
-} contact_features;
-
-typedef struct {
   bnd_v3 point;
   float depth;
-  bnd_v3 normal_impulse, tangential_impulse;
-  // World-space witnesses from narrow phase; body-local witnesses/normal in cached manifolds.
-  contact_features features;
+
+  // World-space for narrow phase contacts.
+  // Local-sapce for cached contacts.
+  bnd_v3 witness_a, witness_b;
+
+  float normal_impulse;
+  float tangential_impulse[4];
 } contact_point;
 
 typedef struct {
   count_t count;
-  count_t available;
   bnd_v3 normal;
+  bnd_v3 local_normal;
   contact_point points[MAX_CONTACTS_PER_PAIR];
 } contact_manifold;
 
@@ -119,22 +118,6 @@ typedef struct {
 } broad_phase_contact;
 
 typedef struct {
-  bnd_v3 point;
-  bnd_v3 normal;
-  float depth;
-  count_t index_a, index_b;
-  float friction, restitution;
-  contact_features features;
-
-  bnd_m3 basis;
-  bnd_v3 relative_position[2];
-  bnd_v3 local_velocity;
-  float desired_delta_velocity;
-
-  bool from_cache;
-} contact;
-
-typedef struct {
   bnd_joint *values;
   count_t *ids;
 
@@ -144,15 +127,6 @@ typedef struct {
   count_t next_id;
   count_t dynamic_count;
 } joints;
-
-typedef struct cache_entry cache_entry;
-
-struct cache_entry {
-  uint64_t key;
-  count_t feature_count;
-  count_t access_time;
-  contact_features features[MAX_CONTACTS_PER_PAIR];
-};
 
 typedef struct {
   float restitution;
@@ -165,16 +139,6 @@ typedef struct {
   count_t count;
   count_t capacity;
 } body_materials;
-
-typedef struct {
-  count_t *hash_table;
-  count_t hash_table_capacity;
-
-  cache_entry *entries;
-
-  count_t entry_count;
-  count_t buffer_capacity;
-} contacts_cache;
 
 typedef struct {
   uint64_t *keys;
@@ -568,7 +532,7 @@ bnd_error             contacts_init(bnd_world *world);
 void                  contacts_reset(bnd_world *world);
 void                  contacts_teardown(bnd_world *world);
 void                  contacts_remove_for_body(bnd_world *world, bnd_body_handle handle);
-void                  contacts_filter_largest_surface_area(contact *contacts, count_t contact_count, count_t *selected_indices);
+void                  contacts_filter_largest_surface_area(contact_point *contacts, count_t contact_count, bnd_v3 normal, count_t *selected_indices);
 bnd_error             resolve_constraints(bnd_world *world, float dt);
 
 bnd_error             for_each_broad_contact(bnd_world *world, broad_contact_iterator func, void *custom_data);

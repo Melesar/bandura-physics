@@ -252,34 +252,34 @@ static void sort_points(bnd_v3 *points) {
   }
 }
 
-static float contact_set_area(contact *contacts, const count_t *indices, bnd_v3 origin, bnd_v3 tangent_x, bnd_v3 tangent_y) {
-  bnd_v3 points[MAX_CONTACTS_PER_PAIR];
+static float contact_set_area(contact_point *points, const count_t *indices, bnd_v3 origin, bnd_v3 tangent_x, bnd_v3 tangent_y) {
+  bnd_v3 p[MAX_CONTACTS_PER_PAIR];
   for (count_t i = 0; i < MAX_CONTACTS_PER_PAIR; ++i) {
-    bnd_v3 offset = bnd_v3_sub(contacts[indices[i]].point, origin);
-    points[i] = (bnd_v3){
+    bnd_v3 offset = bnd_v3_sub(points[indices[i]].point, origin);
+    p[i] = (bnd_v3){
       .x = bnd_v3_dot(offset, tangent_x),
       .y = bnd_v3_dot(offset, tangent_y),
     };
   }
 
-  sort_points(points);
+  sort_points(p);
 
   bnd_v3 hull[MAX_CONTACTS_PER_PAIR * 2];
   count_t hull_count = 0;
 
   for (count_t i = 0; i < MAX_CONTACTS_PER_PAIR; ++i) {
-    while (hull_count >= 2 && cross_2d(hull[hull_count - 2], hull[hull_count - 1], points[i]) <= EPSILON) {
+    while (hull_count >= 2 && cross_2d(hull[hull_count - 2], hull[hull_count - 1], p[i]) <= EPSILON) {
       --hull_count;
     }
-    hull[hull_count++] = points[i];
+    hull[hull_count++] = p[i];
   }
 
   count_t lower_count = hull_count;
   for (count_t i = MAX_CONTACTS_PER_PAIR - 1; i < MAX_CONTACTS_PER_PAIR; --i) {
-    while (hull_count > lower_count && cross_2d(hull[hull_count - 2], hull[hull_count - 1], points[i]) <= EPSILON) {
+    while (hull_count > lower_count && cross_2d(hull[hull_count - 2], hull[hull_count - 1], p[i]) <= EPSILON) {
       --hull_count;
     }
-    hull[hull_count++] = points[i];
+    hull[hull_count++] = p[i];
   }
 
   if (hull_count <= 3) {
@@ -298,10 +298,10 @@ static float contact_set_area(contact *contacts, const count_t *indices, bnd_v3 
   return fabsf(area) * 0.5f;
 }
 
-static float contact_set_depth(contact *contacts, const count_t *indices) {
+static float contact_set_depth(contact_point *points, const count_t *indices) {
   float depth = 0;
   for (count_t i = 0; i < MAX_CONTACTS_PER_PAIR; ++i) {
-    depth += contacts[indices[i]].depth;
+    depth += points[indices[i]].depth;
   }
 
   return depth;
@@ -331,45 +331,45 @@ static void sort_indices(count_t *indices) {
   }
 }
 
-void contacts_filter_largest_surface_area(contact *contacts, count_t contact_count, count_t *selected_indices) {
+void contacts_filter_largest_surface_area(contact_point *points, count_t points_count, bnd_v3 normal, count_t *selected_indices) {
   count_t deepest = 0;
-  for (count_t i = 1; i < contact_count; ++i) {
-    if (contacts[i].depth > contacts[deepest].depth) {
+  for (count_t i = 1; i < points_count; ++i) {
+    if (points[i].depth > points[deepest].depth) {
       deepest = i;
     }
   }
 
-  bnd_v3 normal = contacts[deepest].normal;
   bnd_v3 tangent_seed = fabsf(normal.y) < 0.70710678f ? bnd_v3_up() : bnd_v3_right();
   bnd_v3 tangent_x = bnd_v3_cross(tangent_seed, normal);
   if (bnd_v3_lensqr(tangent_x) <= EPSILON * EPSILON) {
     tangent_x = bnd_v3_cross(bnd_v3_forward(), normal);
   }
   tangent_x = bnd_v3_normalize(tangent_x);
+
   bnd_v3 tangent_y = bnd_v3_normalize(bnd_v3_cross(normal, tangent_x));
-  bnd_v3 origin = contacts[deepest].point;
+  bnd_v3 origin = points[deepest].point;
 
   float best_area = -FLT_MAX;
   float best_depth = -FLT_MAX;
 
-  for (count_t i = 0; i < contact_count; ++i) {
+  for (count_t i = 0; i < points_count; ++i) {
     if (i == deepest) {
       continue;
     }
 
-    for (count_t j = i + 1; j < contact_count; ++j) {
+    for (count_t j = i + 1; j < points_count; ++j) {
       if (j == deepest) {
         continue;
       }
 
-      for (count_t k = j + 1; k < contact_count; ++k) {
+      for (count_t k = j + 1; k < points_count; ++k) {
         if (k == deepest) {
           continue;
         }
 
         count_t indices[MAX_CONTACTS_PER_PAIR] = { deepest, i, j, k };
-        float area = contact_set_area(contacts, indices, origin, tangent_x, tangent_y);
-        float depth = contact_set_depth(contacts, indices);
+        float area = contact_set_area(points, indices, origin, tangent_x, tangent_y);
+        float depth = contact_set_depth(points, indices);
 
         if (better_contact_set(area, depth, best_area, best_depth)) {
           memcpy(selected_indices, indices, sizeof(indices));
@@ -384,6 +384,6 @@ void contacts_filter_largest_surface_area(contact *contacts, count_t contact_cou
   sort_indices(selected_indices);
 
   for (count_t i = 0; i < MAX_CONTACTS_PER_PAIR; ++i) {
-    contacts[i] = contacts[selected_indices[i]];
+    points[i] = points[selected_indices[i]];
   }
 }
