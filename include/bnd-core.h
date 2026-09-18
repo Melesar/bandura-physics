@@ -93,6 +93,7 @@ typedef struct {
   bnd_v3 point;
   float depth;
   bnd_v3 normal_impulse, tangential_impulse;
+  // World-space witnesses from narrow phase; body-local witnesses/normal in cached manifolds.
   contact_features features;
 } contact_point;
 

@@ -252,6 +252,8 @@ bnd_config bnd_default_config(void) {
       .max_gjk_iterations = 100,
       .epa_tolerance = 0.01f,
       .epa_max_nodes = 128,
+      .feature_distance_threshold = 0.02f,
+      .separation_threshold = 0.05f,
     
     }
   };

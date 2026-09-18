@@ -273,6 +273,8 @@ typedef struct {
   uint32_t max_gjk_iterations;              /**< Maximum GJK iterations per collision test. */
   float epa_tolerance;                      /**< EPA convergence tolerance. */
   uint16_t epa_max_nodes;                   /**< Maximum EPA polytope nodes. */
+  float feature_distance_threshold;        /**< Maximum cached witness matching distance and tangential drift. */
+  float separation_threshold;              /**< Maximum separation for retaining a cached contact point. */
 } bnd_config_collision_detection;
 
 /** Complete world configuration. */

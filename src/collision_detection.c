@@ -898,10 +898,89 @@ static void update_contact_status(broad_phase_contact *contact, bool is_intersec
 }
 
 
-static void update_manifold(contact_manifold *target, const contact_manifold *new_manifold, const contact_manifold *old_manifold) {
-  memcpy(target, new_manifold, sizeof(contact_manifold));
+static void update_manifold(const collision_detection_context *ctx, bool use_cache, contact_manifold *target, const contact_manifold *new_manifold, const contact_manifold *old_manifold) {
+  *target = *new_manifold;
 
-  // TODO implement caching.
+  // Analytic manifolds are complete already. A narrow-phase miss ends the cached manifold.
+  if (!use_cache || new_manifold->count == 0) {
+    return;
+  }
+
+  float distance = ctx->world->config.collision_detection.feature_distance_threshold;
+  float distance_sqr = distance * distance;
+  float separation_threshold = ctx->world->config.collision_detection.separation_threshold;
+  bnd_v3 position_a = ctx->data_a->positions[ctx->body_a];
+  bnd_v3 position_b = ctx->data_b->positions[ctx->body_b];
+  bnd_quat rotation_a = ctx->data_a->rotations[ctx->body_a];
+  bnd_quat rotation_b = ctx->data_b->rotations[ctx->body_b];
+  bnd_quat inverse_a = bnd_quat_invert(rotation_a);
+  bnd_quat inverse_b = bnd_quat_invert(rotation_b);
+
+  contact_point candidates[MAX_CONTACTS_PER_PAIR * 2];
+  count_t count = new_manifold->count;
+  for (count_t i = 0; i < count; ++i) {
+    candidates[i] = new_manifold->points[i];
+    contact_features *features = &candidates[i].features;
+    features->witness_a = bnd_v3_rotate(bnd_v3_sub(features->witness_a, position_a), inverse_a);
+    features->witness_b = bnd_v3_rotate(bnd_v3_sub(features->witness_b, position_b), inverse_b);
+    features->normal = bnd_v3_rotate(new_manifold->normal, inverse_a);
+  }
+
+  for (count_t i = 0; i < old_manifold->count; ++i) {
+    contact_point point = old_manifold->points[i];
+    const contact_features *features = &point.features;
+    bnd_v3 witness_a = bnd_v3_add(bnd_v3_rotate(features->witness_a, rotation_a), position_a);
+    bnd_v3 witness_b = bnd_v3_add(bnd_v3_rotate(features->witness_b, rotation_b), position_b);
+    bnd_v3 normal = bnd_v3_rotate(features->normal, rotation_a);
+    // All points share the new manifold normal; contacts from another face cannot be reused.
+    if (bnd_v3_dot(normal, new_manifold->normal) < 0.95f) {
+      continue;
+    }
+
+    bnd_v3 offset = bnd_v3_sub(witness_a, witness_b);
+    float separation = bnd_v3_dot(offset, new_manifold->normal);
+    bnd_v3 drift = bnd_v3_sub(offset, bnd_v3_scale(new_manifold->normal, separation));
+    if (separation > separation_threshold || bnd_v3_lensqr(drift) > distance_sqr) {
+      continue;
+    }
+
+    count_t match = count;
+    for (count_t j = 0; j < count; ++j) {
+      if (bnd_v3_distancesqr(features->witness_a, candidates[j].features.witness_a) <= distance_sqr &&
+          bnd_v3_distancesqr(features->witness_b, candidates[j].features.witness_b) <= distance_sqr) {
+        match = j;
+        break;
+      }
+    }
+    if (match < count) {
+      // Keep the fresh geometry while retaining the solver state of the matching point.
+      candidates[match].normal_impulse = point.normal_impulse;
+      candidates[match].tangential_impulse = point.tangential_impulse;
+      continue;
+    }
+
+    point.point = bnd_v3_scale(bnd_v3_add(witness_a, witness_b), 0.5f);
+    point.depth = -separation;
+    candidates[count++] = point;
+  }
+
+  if (count > MAX_CONTACTS_PER_PAIR) {
+    contact reduction[MAX_CONTACTS_PER_PAIR * 2] = {0};
+    for (count_t i = 0; i < count; ++i) {
+      reduction[i].point = candidates[i].point;
+      reduction[i].depth = candidates[i].depth;
+      reduction[i].normal = new_manifold->normal;
+    }
+    count_t selected[MAX_CONTACTS_PER_PAIR];
+    contacts_filter_largest_surface_area(reduction, count, selected);
+    target->count = MAX_CONTACTS_PER_PAIR;
+    for (count_t i = 0; i < target->count; ++i) {
+      target->points[i] = candidates[selected[i]];
+    }
+  } else {
+    target->count = count;
+    memcpy(target->points, candidates, count * sizeof(contact_point));
+  }
 }
 
 static bnd_error detect_narrow_collisions(bnd_world *world, broad_contacts_set *contacts, bnd_body_type type, broad_phase_contact *contact, count_t index, void *custom_data) {
@@ -932,11 +1011,18 @@ static bnd_error detect_narrow_collisions(bnd_world *world, broad_contacts_set *
 
   if (!entry.primary) {
     new_manifold.normal = bnd_v3_negate(new_manifold.normal);
+    for (count_t i = 0; i < new_manifold.count; ++i) {
+      contact_features *features = &new_manifold.points[i].features;
+      bnd_v3 witness = features->witness_a;
+      features->witness_a = features->witness_b;
+      features->witness_b = witness;
+      features->normal = bnd_v3_negate(features->normal);
+    }
   }
 
   contact_manifold current_manifold = contact->manifold;
 
-  update_manifold(&contact->manifold, &new_manifold, &current_manifold);
+  update_manifold(&ctx, entry.use_cache, &contact->manifold, &new_manifold, &current_manifold);
   update_contact_status(contact, intersection);
 
   return OK;
@@ -1330,6 +1416,157 @@ bnd_error run_broad_phase(bnd_world *world) {
 
 #include "library_testing.h"
 #include "testing.h"
+
+static collision_detection_context manifold_test_context(bnd_world *world) {
+  add_dynamic_sphere(world, 1);
+  add_static_sphere(world, 1);
+  return (collision_detection_context) {
+    .world = world, .data_a = (common_data *)&world->dynamics, .data_b = (common_data *)&world->statics,
+  };
+}
+
+static contact_manifold manifold_test_point(float x, float z, float depth) {
+  return (contact_manifold) {
+    .count = 1, .normal = {0, 1, 0},
+    .points = {{ .point = {x, -depth * 0.5f, z}, .depth = depth,
+      .features = { .witness_a = {x, -depth, z}, .witness_b = {x, 0, z}, .normal = {0, 1, 0} } }},
+  };
+}
+
+static void test_manifold_materializes_local_witnesses(void) {
+  bnd_world *world = test_world();
+  collision_detection_context ctx = manifold_test_context(world);
+  contact_manifold empty = {0}, cached, result;
+  contact_manifold fresh = manifold_test_point(1, 0, 0.2f);
+  update_manifold(&ctx, true, &cached, &fresh, &empty);
+
+  bnd_quat rotation = (bnd_quat){0, 0, sinf(0.25f), cosf(0.25f)};
+  bnd_v3 translation = {2, 3, 4};
+  world->dynamics.rotations[0] = world->statics.rotations[0] = rotation;
+  world->dynamics.positions[0] = world->statics.positions[0] = translation;
+  fresh = manifold_test_point(-1, 0, 0.1f);
+  fresh.normal = bnd_v3_rotate(fresh.normal, rotation);
+  fresh.points[0].point = bnd_v3_add(bnd_v3_rotate(fresh.points[0].point, rotation), translation);
+  fresh.points[0].features.witness_a = bnd_v3_add(bnd_v3_rotate(fresh.points[0].features.witness_a, rotation), translation);
+  fresh.points[0].features.witness_b = bnd_v3_add(bnd_v3_rotate(fresh.points[0].features.witness_b, rotation), translation);
+  update_manifold(&ctx, true, &result, &fresh, &cached);
+  assert(result.count == 2);
+  expect_v3_near(result.points[1].point, bnd_v3_add(bnd_v3_rotate(cached.points[0].point, rotation), translation));
+  expect_float_near(result.points[1].depth, 0.2f);
+  expect_v3_near(result.points[0].features.witness_a, ((bnd_v3){-1, -0.1f, 0}));
+  expect_v3_near(result.points[1].features.witness_a, cached.points[0].features.witness_a);
+  bnd_teardown(world);
+}
+
+static void test_manifold_matches_fresh_points_and_keeps_impulses(void) {
+  bnd_world *world = test_world();
+  collision_detection_context ctx = manifold_test_context(world);
+  contact_manifold empty = {0}, cached, result;
+  contact_manifold fresh = manifold_test_point(0, 0, 0.1f);
+  update_manifold(&ctx, true, &cached, &fresh, &empty);
+  cached.points[0].normal_impulse = (bnd_v3){0, 2, 0};
+  cached.points[0].tangential_impulse = (bnd_v3){1, 0, 0};
+  fresh = manifold_test_point(0.005f, 0, 0.11f);
+  update_manifold(&ctx, true, &result, &fresh, &cached);
+  assert(result.count == 1);
+  expect_float_near(result.points[0].depth, 0.11f);
+  expect_v3_near(result.points[0].point, fresh.points[0].point);
+  expect_v3_near(result.points[0].normal_impulse, cached.points[0].normal_impulse);
+  expect_v3_near(result.points[0].tangential_impulse, cached.points[0].tangential_impulse);
+  bnd_teardown(world);
+}
+
+static void test_manifold_discards_invalid_cached_points(void) {
+  bnd_world *world = test_world();
+  collision_detection_context ctx = manifold_test_context(world);
+  contact_manifold empty = {0}, cached, result;
+  contact_manifold fresh = manifold_test_point(1, 0, 0.1f);
+  update_manifold(&ctx, true, &cached, &fresh, &empty);
+  fresh = manifold_test_point(-1, 0, 0.1f);
+
+  world->dynamics.positions[0].y = 0.2f;
+  update_manifold(&ctx, true, &result, &fresh, &cached);
+  assert(result.count == 1); // Normal separation.
+  world->dynamics.positions[0] = (bnd_v3){0.1f, 0, 0};
+  update_manifold(&ctx, true, &result, &fresh, &cached);
+  assert(result.count == 1); // Tangential drift.
+  world->dynamics.positions[0] = bnd_v3_zero();
+  cached.points[0].features.normal = bnd_v3_right();
+  update_manifold(&ctx, true, &result, &fresh, &cached);
+  assert(result.count == 1); // Different contact face.
+  cached.points[0].features.normal = bnd_v3_up();
+  update_manifold(&ctx, false, &result, &fresh, &cached);
+  assert(result.count == 1); // Analytic contacts do not accumulate points.
+  update_manifold(&ctx, true, &result, &empty, &cached);
+  assert(result.count == 0); // A narrow-phase miss clears the cache.
+  bnd_teardown(world);
+}
+
+static void test_manifold_reduces_to_largest_surface(void) {
+  bnd_world *world = test_world();
+  collision_detection_context ctx = manifold_test_context(world);
+  contact_manifold cached = {0}, result;
+  float corners[4][2] = {{-1, -1}, {-1, 1}, {1, -1}, {1, 1}};
+  for (count_t i = 0; i < 4; ++i) {
+    contact_manifold fresh = manifold_test_point(corners[i][0], corners[i][1], i == 0 ? 0.2f : 0.1f);
+    update_manifold(&ctx, true, &result, &fresh, &cached);
+    cached = result;
+  }
+  assert(cached.count == 4);
+  contact_manifold fresh = manifold_test_point(0, 0, 0.1f);
+  update_manifold(&ctx, true, &result, &fresh, &cached);
+  assert(result.count == 4);
+  for (count_t i = 0; i < result.count; ++i) {
+    expect_float_near(fabsf(result.points[i].point.x), 1);
+    expect_float_near(fabsf(result.points[i].point.z), 1);
+  }
+  // The selected points, including their local features, survive another frame unchanged.
+  cached = result;
+  update_manifold(&ctx, true, &result, &fresh, &cached);
+  assert(result.count == 4);
+  for (count_t i = 0; i < result.count; ++i) {
+    expect_v3_near(result.points[i].point, cached.points[i].point);
+    expect_v3_near(result.points[i].features.witness_a, cached.points[i].features.witness_a);
+  }
+  bnd_teardown(world);
+}
+
+static void test_manifold_inverted_dispatch_and_contact_end(void) {
+  bnd_world *world = test_world();
+  bnd_result_handle capsule = bnd_add_capsule_dynamic(world, 1, 0.5f, 1);
+  bnd_result_handle box = bnd_add_box_static(world, (bnd_v3){2, 2, 2});
+  expect_ok(capsule.error);
+  expect_ok(box.error);
+  expect_ok(bnd_set_position(world, capsule.value, (bnd_v3){3.2f, 2, 4}));
+  expect_ok(bnd_set_position(world, box.value, (bnd_v3){2, 2, 4}));
+  expect_ok(run_broad_phase(world));
+  expect_ok(run_narrow_phase(world));
+  assert(world->contacts.statics.first != UINT32_MAX);
+  broad_phase_contact *c = &world->contacts.statics.contacts[world->contacts.statics.first];
+  assert(c->manifold.count == 1);
+  assert(c->status & CONTACT_BEGAN_TOUCHING);
+  assert(c->manifold.normal.x > 0.9f);
+  contact_point point = c->manifold.points[0];
+  bnd_v3 a = bnd_v3_add(point.features.witness_a, world->dynamics.positions[0]);
+  bnd_v3 b = bnd_v3_add(point.features.witness_b, world->statics.positions[0]);
+  expect_v3_near(point.point, bnd_v3_scale(bnd_v3_add(a, b), 0.5f));
+  expect_float_near(point.depth, -bnd_v3_dot(bnd_v3_sub(a, b), c->manifold.normal));
+  expect_float_near(point.features.witness_b.x, 1);
+  assert(point.features.witness_a.x < 0);
+  expect_ok(run_narrow_phase(world));
+  assert(c->manifold.count == 1);
+  assert(c->status & CONTACT_TOUCHING);
+  assert(!(c->status & CONTACT_BEGAN_TOUCHING));
+
+  // Keep the broad contact to verify that a narrow-phase miss clears its manifold.
+  expect_ok(bnd_set_position(world, capsule.value, (bnd_v3){10, 2, 4}));
+  expect_ok(run_narrow_phase(world));
+  assert(c->manifold.count == 0);
+  assert(c->status & CONTACT_FINISHED_TOUCHING);
+  assert(!(c->status & CONTACT_TOUCHING));
+  bnd_teardown(world);
+}
+
 
 static count_t broad_phase_inner_index(const bnd_world *world, bnd_body_handle handle);
 
@@ -1781,6 +2018,16 @@ void broad_phase_tests(void) {
     TEST(test_removing_static_body_removes_all_its_broad_phase_contacts)
     TEST(test_changing_collision_layer_removes_all_body_broad_phase_contacts)
     TEST(test_changing_trigger_status_removes_all_body_broad_phase_contacts)
+  TESTS_END;
+}
+
+void manifold_tests(void) {
+  TESTS_BEGIN("Contact manifolds")
+    TEST(test_manifold_materializes_local_witnesses)
+    TEST(test_manifold_matches_fresh_points_and_keeps_impulses)
+    TEST(test_manifold_discards_invalid_cached_points)
+    TEST(test_manifold_reduces_to_largest_surface)
+    TEST(test_manifold_inverted_dispatch_and_contact_end)
   TESTS_END;
 }
 
