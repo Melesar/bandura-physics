@@ -1,9 +1,10 @@
 #include "raylib.h"
-#include "raymath.h"
 #include "rlgl.h"
 #include "scenario-core.h"
 #include "bnd-core.h"
 #include "bnd-math.h"
+
+#include <stdio.h>
 
 int target_age;
 int target_iteration;
@@ -68,6 +69,12 @@ void scenario_simulate(bnd_world *world, float dt) {
 // #endif
 
   bnd_simulate(world, dt);
+
+  count_t index = handle_to_inner_index(world, box_first_floor);
+  printf("Age %u:\n", world->age);
+  for (count_t i = 0; i < world->config.solver.iterations_count; ++i) {
+    printf("  %u: %f\n", i, world->dynamics.applied_impulses[index * APPLIED_IMPULSES_PER_BODY + i]);
+  }
 }
 
 void draw_face(bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_debug_epa_flags flags, void *user_data) {

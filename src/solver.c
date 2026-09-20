@@ -143,9 +143,15 @@ static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set 
     constraint_point *cp = &constraint->points[i];
 
     cp->separation = -mp->depth;
-    cp->normal_impulse = 0.0f;
-    cp->tangent_impulse[0] = 0.0f;
-    cp->tangent_impulse[1] = 0.0f;
+    if (world->config.solver.warm_start) {
+      cp->normal_impulse = mp->normal_impulse;
+      cp->tangent_impulse[0] = mp->tangential_impulse[0];
+      cp->tangent_impulse[1] = mp->tangential_impulse[1];
+    } else {
+      cp->normal_impulse = 0.0f;
+      cp->tangent_impulse[0] = 0.0f;
+      cp->tangent_impulse[1] = 0.0f;
+    }
 
     bnd_m3 effective_mass = {0};
     for (count_t k = 0; k < body_count; ++k) {
@@ -191,7 +197,7 @@ static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set 
   return OK;
 }
 
-static void apply_impulse(bnd_v3 impulse, bnd_v3 *velocities, bnd_v3 *momenta, float *inv_masses, constraint_point *point, count_t body_count) {
+static void apply_impulse(bnd_v3 impulse, bnd_v3 *velocities, bnd_v3 *momenta, const float *inv_masses, const constraint_point *point, count_t body_count) {
   float sign = 1.0;
   for (count_t k = 0; k < body_count; ++k) {
     velocities[k] = bnd_v3_add(velocities[k], bnd_v3_scale(impulse, inv_masses[k] * sign));
@@ -223,10 +229,12 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
     arena_release_stack_frame(stack_frame);
     return e;
   }
-
+  
   PROFILER_BLOCK_START("resolve_constraints");
   float inv_dt = 1.0f / dt;
   dynamic_bodies *dynamics = &world->dynamics;
+
+  memset(dynamics->applied_impulses, 0, dynamics->count * APPLIED_IMPULSES_PER_BODY * sizeof(float));
 
   bnd_v3 velocities[2];
   bnd_v3 momenta[2];
@@ -235,6 +243,38 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
   contact_constraint *constraints = (contact_constraint *)(stack_frame.arena->buffer + arena_offset);
 
   const bnd_config_solver solver_config = world->config.solver;
+
+  if (solver_config.warm_start) {
+    for (count_t i = 0; i < constraints_count; ++i) {
+      contact_constraint *constraint = &constraints[i];
+      
+      bnd_v3 constraint_normal = { constraint->basis.m0[1], constraint->basis.m1[1], constraint->basis.m2[1] };
+      bnd_v3 t1 = { constraint->basis.m0[0], constraint->basis.m1[0], constraint->basis.m2[0] };
+      bnd_v3 t2 = { constraint->basis.m0[2], constraint->basis.m1[2], constraint->basis.m2[2] };
+
+      count_t body_count = 1 + (constraint->type == BND_BODY_DYNAMIC);
+      count_t body_ids[] = { constraint->body_a, constraint->body_b };
+
+      for (count_t k = 0; k < body_count; ++k) {
+        velocities[k] = dynamics->velocities[body_ids[k]];
+        momenta[k] = dynamics->angular_momenta[body_ids[k]];
+        inv_masses[k] = dynamics->inv_masses[body_ids[k]];
+      }
+
+      for (count_t p = 0; p < constraint->points_count; ++p) {
+        constraint_point *point = &constraint->points[p];
+        bnd_v3 tangent_impulse = bnd_v3_add(bnd_v3_scale(t1, point->tangent_impulse[0]), bnd_v3_scale(t2, point->tangent_impulse[1]));
+        bnd_v3 impulse = bnd_v3_add(bnd_v3_scale(constraint_normal, point->normal_impulse), tangent_impulse);
+
+        apply_impulse(impulse, velocities, momenta, inv_masses, point, body_count);
+      }
+
+      for (count_t k = 0; k < body_count; ++k) {
+        dynamics->velocities[body_ids[k]] = velocities[k];
+        dynamics->angular_momenta[body_ids[k]] = momenta[k];
+      }
+    }
+  }
 
   for (count_t i = 0; i < solver_config.iterations_count; ++i) {
     for (count_t j = 0; j < constraints_count; ++j) {
@@ -263,6 +303,10 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
 
         bnd_v3 impulse = bnd_v3_scale(constraint_normal, normal_impulse);
         apply_impulse(impulse, velocities, momenta, inv_masses, point, body_count);
+
+        for (count_t k = 0; k < body_count; ++k) {
+          dynamics->applied_impulses[body_ids[k] * APPLIED_IMPULSES_PER_BODY + i] += fabsf(normal_impulse);
+        }
       }
 
       for (count_t p = 0; p < constraint->points_count; ++p) {
@@ -304,6 +348,18 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
         dynamics->velocities[body_ids[k]] = velocities[k];
         dynamics->angular_momenta[body_ids[k]] = momenta[k];
       }
+    }
+  }
+
+  for (count_t i = 0; i < constraints_count; ++i) {
+    const contact_constraint * constraint = &constraints[i];
+    broad_contacts_set *contacts = constraint->type == BND_BODY_DYNAMIC ? &world->contacts.dynamics : &world->contacts.statics;
+
+    contact_manifold *manifold = &contacts->contacts[constraint->contact_index].manifold;
+    for (count_t j = 0; j < manifold->count; ++j) {
+      manifold->points[j].normal_impulse = constraint->points[j].normal_impulse;
+      manifold->points[j].tangential_impulse[0] = constraints->points[j].tangent_impulse[0];
+      manifold->points[j].tangential_impulse[1] = constraints->points[j].tangent_impulse[1];
     }
   }
   PROFILER_BLOCK_END;
