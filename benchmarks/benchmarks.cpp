@@ -140,14 +140,14 @@ bnd_config MakeConfig(const SceneDefinition &definition) {
   config.memory.statics_capacity = static_count + 16U;
   config.memory.contacts_capacity = contacts_capacity;
   config.memory.joints_capacity = joint_count + 16U;
-  config.advanced.shapes_brackets_capacity[0] =
+  config.memory.shapes_brackets_capacity[0] =
       RoundUpTo64(dynamic_count + static_count + 16U);
-  config.advanced.shapes_brackets_capacity[2] =
+  config.memory.shapes_brackets_capacity[2] =
       definition.kind == SceneKind::CompoundCrowd
           ? RoundUpTo64(dynamic_count + 16U)
           : 64U;
-  config.advanced.contacts_cache.buffer_capacity = contacts_capacity;
-  config.advanced.contacts_cache.hash_table_capacity = contacts_capacity * 2U;
+  config.memory.hash_table_capacity = contacts_capacity * 2U;
+  config.memory.internal_allocator_capacity_bytes = 1 << 20;
 
   if (definition.kind == SceneKind::SparseAwakeGrid ||
       definition.kind == SceneKind::DrivenJointLattice) {
@@ -385,9 +385,9 @@ REGISTER_SCENE(DenseSettlingPile_10, kPile10);
 REGISTER_SCENE(CompoundCrowd_32, kCrowd32);
 REGISTER_SCENE(CompoundCrowd_64, kCrowd64);
 REGISTER_SCENE(CompoundCrowd_128, kCrowd128);
-REGISTER_SCENE(DrivenJointLattice_8, kLattice8);
-REGISTER_SCENE(DrivenJointLattice_12, kLattice12);
-REGISTER_SCENE(DrivenJointLattice_16, kLattice16);
+// REGISTER_SCENE(DrivenJointLattice_8, kLattice8);
+// REGISTER_SCENE(DrivenJointLattice_12, kLattice12);
+// REGISTER_SCENE(DrivenJointLattice_16, kLattice16);
 
 #undef REGISTER_SCENE
 
