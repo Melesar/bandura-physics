@@ -15,9 +15,10 @@ void scenario_initialize(bnd_world *world) {
 }
 
 void scenario_setup_scene(bnd_world *world) {
-  // dense_settling_pile(world, 8);
-  // compound_crowd(world, 4, 5, 4);
-  joints_lattice(world, NUM_ANCHORS, anchors);
+  // sparse_awake_grid(world, 16, 16, 16);
+  dense_settling_pile(world, 8);
+  // compound_crowd(world, 4, 8, 4);
+  // joints_lattice(world, NUM_ANCHORS, anchors);
 }
 
 void scenario_handle_input(bnd_world *world, Camera *camera) { }

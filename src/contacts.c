@@ -217,7 +217,8 @@ bnd_error hash_table_resize_if_needed(bnd_world *world, count_t additional_count
     while (index != UINT32_MAX) {
       const broad_phase_contact *c = &set->contacts[index];
 
-      assert(hash_table_find_empty_slot(contacts, c->key, &slot));
+      MUST_BE_TRUE(hash_table_find_empty_slot(contacts, c->key, &slot))
+
       contacts->keys[slot] = c->key;
       contacts->indices[slot] = index;
 

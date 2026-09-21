@@ -1043,7 +1043,11 @@ static bnd_error detect_narrow_collisions(bnd_world *world, broad_contacts_set *
 }
 
 bnd_error run_narrow_phase(bnd_world *world) {
-  return for_each_broad_contact(world, detect_narrow_collisions, NULL);
+  PROFILER_FUNCTION_START
+  bnd_error e = for_each_broad_contact(world, detect_narrow_collisions, NULL);
+  PROFILER_FUNCTION_END
+
+  return e;
 }
 
 static bool find_existing_shapes_contact(bnd_world *world, count_t hash_slot, broad_contacts_set *contacts, count_t shape_a, count_t shape_b, broad_phase_contact **contact, broad_phase_contact **prev_contact, count_t *contact_index, count_t *prev_contact_index) {
@@ -1140,7 +1144,8 @@ static bnd_error create_body_contact(bnd_world *world, uint64_t hash_key, broad_
   PROPAGATE_ERROR(new_contact_index(world, contacts, &contact_index))
   PROPAGATE_ERROR(hash_table_resize_if_needed(world, 1))
 
-  assert(hash_table_find_empty_slot(&world->contacts, hash_key, &slot));
+  MUST_BE_TRUE(hash_table_find_empty_slot(&world->contacts, hash_key, &slot))
+
   world->contacts.keys[slot] = hash_key;
   world->contacts.indices[slot] = contact_index;
   world->contacts.hash_table_entry_count += 1;

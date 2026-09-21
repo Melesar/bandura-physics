@@ -17,6 +17,8 @@
 #define OK (bnd_error){BND_OK, NULL}
 #define OOM_ERROR (bnd_error){BND_ERROR_OUT_OF_MEMORY, "Allocator.malloc failed to allocate memory"}
 
+#define MUST_BE_TRUE(expr) bool expr_result_rrr = (expr); (void)expr_result_rrr; assert(expr_result_rrr);
+
 #define IS_ERROR(e) ((e).type != BND_OK)
 #define IS_OK(e) ((e).type == BND_OK)
 
