@@ -267,7 +267,6 @@ typedef struct {
   float baumgarde_coefficient;      /**< How hard the solver tryies to push away penetrating bodies. */
   float linear_slop;                /**< Minimum penetration depth for the solver to act upon. */
   float max_baumgarde_velocity;     /**< Maximum separation velocity to apply to penetrating bodies. */
-  bool warm_start;
 } bnd_config_solver;
 
 typedef struct {

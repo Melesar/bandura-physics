@@ -145,15 +145,9 @@ static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set 
     constraint_point *cp = &constraint->points[i];
 
     cp->separation = -mp->depth;
-    if (world->config.solver.warm_start) {
-      cp->normal_impulse = mp->normal_impulse;
-      cp->tangent_impulse[0] = mp->tangential_impulse[0];
-      cp->tangent_impulse[1] = mp->tangential_impulse[1];
-    } else {
-      cp->normal_impulse = 0.0f;
-      cp->tangent_impulse[0] = 0.0f;
-      cp->tangent_impulse[1] = 0.0f;
-    }
+    cp->normal_impulse = mp->normal_impulse;
+    cp->tangent_impulse[0] = mp->tangential_impulse[0];
+    cp->tangent_impulse[1] = mp->tangential_impulse[1];
 
     bnd_m3 effective_mass = {0};
     for (count_t k = 0; k < body_count; ++k) {
@@ -244,35 +238,33 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
 
   const bnd_config_solver solver_config = world->config.solver;
 
-  if (solver_config.warm_start) {
-    for (count_t i = 0; i < constraints_count; ++i) {
-      contact_constraint *constraint = &constraints[i];
-      
-      bnd_v3 constraint_normal = { constraint->basis.m0[1], constraint->basis.m1[1], constraint->basis.m2[1] };
-      bnd_v3 t1 = { constraint->basis.m0[0], constraint->basis.m1[0], constraint->basis.m2[0] };
-      bnd_v3 t2 = { constraint->basis.m0[2], constraint->basis.m1[2], constraint->basis.m2[2] };
+  for (count_t i = 0; i < constraints_count; ++i) {
+    contact_constraint *constraint = &constraints[i];
+    
+    bnd_v3 constraint_normal = { constraint->basis.m0[1], constraint->basis.m1[1], constraint->basis.m2[1] };
+    bnd_v3 t1 = { constraint->basis.m0[0], constraint->basis.m1[0], constraint->basis.m2[0] };
+    bnd_v3 t2 = { constraint->basis.m0[2], constraint->basis.m1[2], constraint->basis.m2[2] };
 
-      count_t body_count = 1 + (constraint->type == BND_BODY_DYNAMIC);
-      count_t body_ids[] = { constraint->body_a, constraint->body_b };
+    count_t body_count = 1 + (constraint->type == BND_BODY_DYNAMIC);
+    count_t body_ids[] = { constraint->body_a, constraint->body_b };
 
-      for (count_t k = 0; k < body_count; ++k) {
-        velocities[k] = dynamics->velocities[body_ids[k]];
-        momenta[k] = dynamics->angular_momenta[body_ids[k]];
-        inv_masses[k] = dynamics->inv_masses[body_ids[k]];
-      }
+    for (count_t k = 0; k < body_count; ++k) {
+      velocities[k] = dynamics->velocities[body_ids[k]];
+      momenta[k] = dynamics->angular_momenta[body_ids[k]];
+      inv_masses[k] = dynamics->inv_masses[body_ids[k]];
+    }
 
-      for (count_t p = 0; p < constraint->points_count; ++p) {
-        constraint_point *point = &constraint->points[p];
-        bnd_v3 tangent_impulse = bnd_v3_add(bnd_v3_scale(t1, point->tangent_impulse[0]), bnd_v3_scale(t2, point->tangent_impulse[1]));
-        bnd_v3 impulse = bnd_v3_add(bnd_v3_scale(constraint_normal, point->normal_impulse), tangent_impulse);
+    for (count_t p = 0; p < constraint->points_count; ++p) {
+      constraint_point *point = &constraint->points[p];
+      bnd_v3 tangent_impulse = bnd_v3_add(bnd_v3_scale(t1, point->tangent_impulse[0]), bnd_v3_scale(t2, point->tangent_impulse[1]));
+      bnd_v3 impulse = bnd_v3_add(bnd_v3_scale(constraint_normal, point->normal_impulse), tangent_impulse);
 
-        apply_impulse(impulse, velocities, momenta, inv_masses, point, body_count);
-      }
+      apply_impulse(impulse, velocities, momenta, inv_masses, point, body_count);
+    }
 
-      for (count_t k = 0; k < body_count; ++k) {
-        dynamics->velocities[body_ids[k]] = velocities[k];
-        dynamics->angular_momenta[body_ids[k]] = momenta[k];
-      }
+    for (count_t k = 0; k < body_count; ++k) {
+      dynamics->velocities[body_ids[k]] = velocities[k];
+      dynamics->angular_momenta[body_ids[k]] = momenta[k];
     }
   }
 

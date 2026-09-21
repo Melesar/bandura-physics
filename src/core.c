@@ -247,7 +247,6 @@ bnd_config bnd_default_config(void) {
       .baumgarde_coefficient = 0.2f,
       .linear_slop = 0.005f,
       .max_baumgarde_velocity = 4.0f,  
-      .warm_start = true,
     },
     .collision_detection = {
       .max_gjk_iterations = 100,
