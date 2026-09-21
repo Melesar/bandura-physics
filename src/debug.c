@@ -12,6 +12,10 @@ typedef struct {
 } draw_contact_data;
 
 static bnd_error draw_contact(bnd_world *world, broad_contacts_set *contacts, bnd_body_type type, broad_phase_contact *contact, count_t index, void *custom_data) {
+  (void)world;
+  (void)contacts;
+  (void)type;
+  (void)index;
   draw_contact_data *data = (draw_contact_data *) custom_data;
 
   for (count_t i = 0; i < contact->manifold.count; ++i) {

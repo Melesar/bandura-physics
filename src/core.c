@@ -285,7 +285,6 @@ static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allo
   ALLOC(world->dynamics.inv_inertia_tensors, matrices);
   ALLOC(world->dynamics.inv_intertias, matrices);
   ALLOC(world->dynamics.motion_avgs, floats);
-  ALLOC(world->dynamics.applied_impulses, APPLIED_IMPULSES_PER_BODY * floats);
 
   INVOKE(arena_init(allocator, config.memory.internal_allocator_capacity_bytes, &world->arena))
 
@@ -359,7 +358,6 @@ void bnd_teardown(bnd_world *world) {
   world->allocator.free(world->dynamics.inv_inertia_tensors, dynamics_total_capacity * sizeof(bnd_m3));
   world->allocator.free(world->dynamics.inv_intertias, dynamics_total_capacity * sizeof(bnd_m3));
   world->allocator.free(world->dynamics.motion_avgs, dynamics_total_capacity * sizeof(float));
-  world->allocator.free(world->dynamics.applied_impulses, APPLIED_IMPULSES_PER_BODY * dynamics_total_capacity * sizeof(float));
 
   shapes_teardown(world);
   joints_teardown(world);

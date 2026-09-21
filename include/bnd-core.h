@@ -4,7 +4,6 @@
 #include "bandura.h"
 #include <stdbool.h>
 
-#define APPLIED_IMPULSES_PER_BODY 8
 #define EPSILON 0.000001f
 #define EPHEMERAL_BODIES_COUNT 4
 #define DEFAULT_VERTEX_PER_MESH 512
@@ -417,8 +416,6 @@ typedef struct {
   // Derived values.
   bnd_v3 *accelerations;
   bnd_m3 *inv_intertias;
-
-  float *applied_impulses;
 
   // Sleeping
   count_t awake_count;

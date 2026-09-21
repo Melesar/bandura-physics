@@ -84,6 +84,8 @@ static bnd_v3 contact_point_local_velocity(
 }
 
 static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set *contacts, bnd_body_type type, broad_phase_contact *contact, count_t index, void *custom_data) {
+  (void)contacts;
+
   if (contact->manifold.count == 0 || contact->status & CONTACT_TRIGGER_BOTH) {
     return OK;
   }
@@ -234,8 +236,6 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
   float inv_dt = 1.0f / dt;
   dynamic_bodies *dynamics = &world->dynamics;
 
-  memset(dynamics->applied_impulses, 0, dynamics->count * APPLIED_IMPULSES_PER_BODY * sizeof(float));
-
   bnd_v3 velocities[2];
   bnd_v3 momenta[2];
   float inv_masses[2];
@@ -303,10 +303,6 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
 
         bnd_v3 impulse = bnd_v3_scale(constraint_normal, normal_impulse);
         apply_impulse(impulse, velocities, momenta, inv_masses, point, body_count);
-
-        for (count_t k = 0; k < body_count; ++k) {
-          dynamics->applied_impulses[body_ids[k] * APPLIED_IMPULSES_PER_BODY + i] += fabsf(normal_impulse);
-        }
       }
 
       for (count_t p = 0; p < constraint->points_count; ++p) {

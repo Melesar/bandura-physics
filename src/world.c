@@ -438,8 +438,6 @@ static bnd_error realloc_data(common_data *data, bnd_allocator allocator, bool w
     REALLOC_BUFFER4(dynamics->inv_inertia_tensors, allocator, sizeof(bnd_m3), old_capacity, total_capacity);
     REALLOC_BUFFER4(dynamics->inv_intertias, allocator, sizeof(bnd_m3), old_capacity, total_capacity);
     REALLOC_BUFFER4(dynamics->motion_avgs, allocator, sizeof(float), old_capacity, total_capacity);
-
-    REALLOC_BUFFER4(dynamics->applied_impulses, allocator, sizeof(float) * APPLIED_IMPULSES_PER_BODY, old_capacity, total_capacity);
   }
 
   return OK;
@@ -486,8 +484,6 @@ static void init_body_dynamic(bnd_world *world, float mass, bnd_m3 inertia_tenso
   data->impulses[index] = bnd_v3_zero();
   data->angular_impulses[index] = bnd_v3_zero();
   data->accelerations[index] = bnd_v3_zero();
-
-  memset(data->applied_impulses + APPLIED_IMPULSES_PER_BODY * index, 0, APPLIED_IMPULSES_PER_BODY * sizeof(float));
 }
 
 static count_t insert_new_dynamic_body(bnd_world *world) {
@@ -1321,11 +1317,6 @@ static void swap_bodies(bnd_world *world, bnd_body_type type, count_t index_a, c
     SWAP_DYNAMIC(bnd_v3, impulses)
     SWAP_DYNAMIC(bnd_v3, angular_impulses)
     SWAP_DYNAMIC(bnd_v3, accelerations)
-
-    float impulses[APPLIED_IMPULSES_PER_BODY];
-    memcpy(impulses, world->dynamics.applied_impulses + APPLIED_IMPULSES_PER_BODY * index_a, APPLIED_IMPULSES_PER_BODY * sizeof(float));
-    memcpy(world->dynamics.applied_impulses + APPLIED_IMPULSES_PER_BODY * index_a, world->dynamics.applied_impulses + APPLIED_IMPULSES_PER_BODY * index_b, APPLIED_IMPULSES_PER_BODY * sizeof(float));
-    memcpy(world->dynamics.applied_impulses + APPLIED_IMPULSES_PER_BODY * index_b, impulses, APPLIED_IMPULSES_PER_BODY * sizeof(float));
   }
 
   data->outer_lookup[data->inner_lookup[index_b]].index = index_b;
@@ -1362,8 +1353,6 @@ static void move_body(bnd_world *world, count_t src_index, count_t dst_index) {
   data->impulses[dst_index] = data->impulses[src_index];
   data->angular_impulses[dst_index] = data->angular_impulses[src_index];
   data->accelerations[dst_index] = data->accelerations[src_index];
-
-  memcpy(data->applied_impulses + APPLIED_IMPULSES_PER_BODY * dst_index, data->applied_impulses + APPLIED_IMPULSES_PER_BODY * src_index, APPLIED_IMPULSES_PER_BODY * sizeof(float));
 }
 
 bnd_collision_mask bnd_get_all_layers_mask(const bnd_world *world) {

@@ -989,6 +989,10 @@ static void update_manifold(const collision_detection_context *ctx, contact_mani
 }
 
 static bnd_error detect_narrow_collisions(bnd_world *world, broad_contacts_set *contacts, bnd_body_type type, broad_phase_contact *contact, count_t index, void *custom_data) {
+  (void)custom_data;
+  (void)index;
+  (void)contacts;
+
   common_data *data_a = (common_data *)&world->dynamics;
   common_data *data_b = type == BND_BODY_DYNAMIC ? (common_data *)&world->dynamics : (common_data *)&world->statics;
 
