@@ -86,6 +86,10 @@ typedef enum {
   CONTACT_TRIGGER_BOTH        = CONTACT_TRIGGER_A | CONTACT_TRIGGER_B,
 } broad_contact_status;
 
+typedef enum {
+  JOINT_DISTANCE
+} joint_type;
+
 typedef struct {
   bnd_v3 point;
   float depth;
@@ -118,6 +122,13 @@ typedef struct {
   broad_contact_status status;
   contact_manifold manifold;
 } broad_phase_contact;
+
+typedef struct {
+  joint_type type;
+  bnd_body_handle bodies[2];           
+  bnd_v3 anchors[2];
+  float max_distance;                     
+} bnd_joint;
 
 typedef struct {
   bnd_joint *values;

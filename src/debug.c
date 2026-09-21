@@ -92,7 +92,7 @@ void draw_joints(const bnd_world *world, bnd_debug_draw_callbacks callbacks, voi
       count_t body_index = handle_to_inner_index(world, j->bodies[k]);
       const common_data *data = as_common_const(world, j->bodies[k].type);
 
-      points[k] = bnd_v3_rotate(j->relative_contact_positions[k], data->rotations[body_index]);
+      points[k] = bnd_v3_rotate(j->anchors[k], data->rotations[body_index]);
       points[k] = bnd_v3_add(points[k], data->positions[body_index]);
     }
    

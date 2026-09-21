@@ -28,8 +28,8 @@ static void test_joints_removing_unrelated_body_keeps_every_joint(void) {
   bnd_body_handle ground = bnd_add_box_static(world, bnd_v3_one()).value;
   bnd_body_handle unrelated = bnd_add_sphere_dynamic(world, 1.0f, 1.0f).value;
 
-  count_t dynamic_joint = bnd_add_joint(world, a, b, bnd_v3_zero(), bnd_v3_zero(), 1.0f).value;
-  count_t static_joint = bnd_add_joint(world, a, ground, bnd_v3_zero(), bnd_v3_zero(), 1.0f).value;
+  count_t dynamic_joint = bnd_add_distance_joint(world, a, b, bnd_v3_zero(), bnd_v3_zero(), 1.0f).value;
+  count_t static_joint = bnd_add_distance_joint(world, a, ground, bnd_v3_zero(), bnd_v3_zero(), 1.0f).value;
 
   assert(world->joints.count == 2);
   assert(world->joints.dynamic_count == 1);
@@ -50,12 +50,12 @@ static void test_joints_removing_body_drops_all_of_its_joints(void) {
   bnd_body_handle c = bnd_add_sphere_dynamic(world, 1.0f, 1.0f).value;
   bnd_body_handle ground = bnd_add_box_static(world, bnd_v3_one()).value;
 
-  bnd_add_joint(world, shared, b, bnd_v3_zero(), bnd_v3_zero(), 1.0f);
-  bnd_add_joint(world, shared, c, bnd_v3_zero(), bnd_v3_zero(), 1.0f);
-  bnd_add_joint(world, shared, ground, bnd_v3_zero(), bnd_v3_zero(), 1.0f);
+  bnd_add_distance_joint(world, shared, b, bnd_v3_zero(), bnd_v3_zero(), 1.0f);
+  bnd_add_distance_joint(world, shared, c, bnd_v3_zero(), bnd_v3_zero(), 1.0f);
+  bnd_add_distance_joint(world, shared, ground, bnd_v3_zero(), bnd_v3_zero(), 1.0f);
 
-  count_t survivor_dynamic = bnd_add_joint(world, b, c, bnd_v3_zero(), bnd_v3_zero(), 1.0f).value;
-  count_t survivor_static = bnd_add_joint(world, c, ground, bnd_v3_zero(), bnd_v3_zero(), 1.0f).value;
+  count_t survivor_dynamic = bnd_add_distance_joint(world, b, c, bnd_v3_zero(), bnd_v3_zero(), 1.0f).value;
+  count_t survivor_static = bnd_add_distance_joint(world, c, ground, bnd_v3_zero(), bnd_v3_zero(), 1.0f).value;
 
   assert(world->joints.count == 5);
   assert(world->joints.dynamic_count == 3);
@@ -77,9 +77,9 @@ static void test_joints_removing_static_body_drops_its_joints(void) {
   bnd_body_handle b = bnd_add_sphere_dynamic(world, 1.0f, 1.0f).value;
   bnd_body_handle ground = bnd_add_box_static(world, bnd_v3_one()).value;
 
-  count_t survivor = bnd_add_joint(world, a, b, bnd_v3_zero(), bnd_v3_zero(), 1.0f).value;
-  bnd_add_joint(world, a, ground, bnd_v3_zero(), bnd_v3_zero(), 1.0f);
-  bnd_add_joint(world, b, ground, bnd_v3_zero(), bnd_v3_zero(), 1.0f);
+  count_t survivor = bnd_add_distance_joint(world, a, b, bnd_v3_zero(), bnd_v3_zero(), 1.0f).value;
+  bnd_add_distance_joint(world, a, ground, bnd_v3_zero(), bnd_v3_zero(), 1.0f);
+  bnd_add_distance_joint(world, b, ground, bnd_v3_zero(), bnd_v3_zero(), 1.0f);
 
   assert(world->joints.count == 3);
   assert(world->joints.dynamic_count == 1);
@@ -99,7 +99,7 @@ static void test_joints_removing_body_reusing_outer_slot_leaves_no_stale_row(voi
   bnd_body_handle a = bnd_add_sphere_dynamic(world, 1.0f, 1.0f).value;
   bnd_body_handle doomed = bnd_add_sphere_dynamic(world, 1.0f, 1.0f).value;
 
-  bnd_add_joint(world, a, doomed, bnd_v3_zero(), bnd_v3_zero(), 1.0f);
+  bnd_add_distance_joint(world, a, doomed, bnd_v3_zero(), bnd_v3_zero(), 1.0f);
   assert(world->joints.count == 1);
 
   assert(IS_OK(bnd_remove_body(world, doomed)));

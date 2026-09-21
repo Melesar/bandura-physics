@@ -129,17 +129,17 @@ static void joints_lattice(bnd_world *world, uint32_t side, bnd_body_handle *anc
     for (unsigned int x = 0; x < side; ++x) {
       const bnd_body_handle body = bodies[y * side + x];
       if (x + 1U < side) {
-        bnd_add_joint(world, body, bodies[y * side + x + 1U], (bnd_v3){0.0f, 0.0f, 0.0f}, (bnd_v3){0.0f, 0.0f, 0.0f}, max_joint_distance);
+        bnd_add_distance_joint(world, body, bodies[y * side + x + 1U], (bnd_v3){0.0f, 0.0f, 0.0f}, (bnd_v3){0.0f, 0.0f, 0.0f}, max_joint_distance);
       }
       if (y + 1U < side) {
-        bnd_add_joint(world, body,
+        bnd_add_distance_joint(world, body,
           bodies[(y + 1U) * side + x], (bnd_v3){0.0f, 0.0f, 0.0f}, (bnd_v3){0.0f, 0.0f, 0.0f}, max_joint_distance);
       }
     }
   }
 
   for (unsigned int x = 0; x < side; ++x) {
-    bnd_add_joint(world, bodies[(side - 1U) * side + x], anchors[x], (bnd_v3){0.0f, 0.0f, 0.0f}, (bnd_v3){0.0f, 0.0f, 0.0f}, 0.20f);
+    bnd_add_distance_joint(world, bodies[(side - 1U) * side + x], anchors[x], (bnd_v3){0.0f, 0.0f, 0.0f}, (bnd_v3){0.0f, 0.0f, 0.0f}, 0.20f);
   }
 
   free(bodies);

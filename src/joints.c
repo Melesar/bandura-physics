@@ -18,7 +18,7 @@ static bnd_error joints_resize_if_needed(bnd_allocator allocator, joints *joints
   return OK;
 }
 
-bnd_result_u32 bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_v3 contact_offset_a, bnd_v3 contact_offset_b, float max_distance) {
+bnd_result_u32 bnd_add_distance_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_v3 contact_offset_a, bnd_v3 contact_offset_b, float max_distance) {
   PROPAGATE_RESULT(u32, bnd_handle_valid(world, body_a));
   PROPAGATE_RESULT(u32, bnd_handle_valid(world, body_b));
 
@@ -60,9 +60,10 @@ bnd_result_u32 bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_
   }
 
   joints->values[index] = (bnd_joint){
+    .type = JOINT_DISTANCE,
     .bodies = {body_a, body_b},
-    .relative_contact_positions = {contact_offset_a, contact_offset_b},
-    .max_error = max_distance,
+    .anchors = {contact_offset_a, contact_offset_b},
+    .max_distance = max_distance,
   };
   joints->ids[index] = id;
 

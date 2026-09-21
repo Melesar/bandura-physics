@@ -24,6 +24,9 @@ void scenario_configure(program_config *config, bnd_config *physics_config) {
   config->window_title = "Stack";
   config->camera_position = (bnd_v3){0, 5, -10};
   config->camera_target = (bnd_v3){0, 2, 10};
+
+  physics_config->simulation.bounciness = 0.4f;
+  physics_config->solver.iterations_count = 16;
 }
 
 void scenario_initialize(bnd_world *world) {

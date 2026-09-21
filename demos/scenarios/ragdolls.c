@@ -33,7 +33,7 @@ void scenario_setup_scene(bnd_world *world) {
   bnd_set_position(world, ramp, (bnd_v3) { 5, 0, 5 });
 
   hanging_doll = ragdoll_create(world, (bnd_v3){8, 5, 5});
-  bnd_add_joint(world, ramp, hanging_doll[RIGHT_LOWER_ARM], (bnd_v3){3, 10, 0}, (bnd_v3){0, -0.6, 0}, 0.05);
+  bnd_add_distance_joint(world, ramp, hanging_doll[RIGHT_LOWER_ARM], (bnd_v3){3, 10, 0}, (bnd_v3){0, -0.6, 0}, 0.05);
 }
 
 void scenario_handle_input(bnd_world *world, Camera *camera) {

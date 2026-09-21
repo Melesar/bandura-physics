@@ -148,20 +148,20 @@ ragdoll ragdoll_create(bnd_world *world, bnd_v3 position) {
 
   const float joint_margin = 0.1;
 
-  bnd_add_joint(world, head, torso, (Vector3){0, -0.4, 0}, (Vector3){0, 0.5, 0}, joint_margin);
-  bnd_add_joint(world, torso, pelvis, (Vector3){0, -0.5, 0}, (Vector3){0, 0.5, 0}, joint_margin);
+  bnd_add_distance_joint(world, head, torso, (Vector3){0, -0.4, 0}, (Vector3){0, 0.5, 0}, joint_margin);
+  bnd_add_distance_joint(world, torso, pelvis, (Vector3){0, -0.5, 0}, (Vector3){0, 0.5, 0}, joint_margin);
 
-  bnd_add_joint(world, torso, left_upper_arm, (Vector3){0.3, 0.45, 0}, (Vector3){-0.1, 0.6, 0}, joint_margin);
-  bnd_add_joint(world, left_upper_arm, left_lower_arm, (Vector3){0, -0.6, 0}, (Vector3){0, 0.6, 0}, joint_margin);
+  bnd_add_distance_joint(world, torso, left_upper_arm, (Vector3){0.3, 0.45, 0}, (Vector3){-0.1, 0.6, 0}, joint_margin);
+  bnd_add_distance_joint(world, left_upper_arm, left_lower_arm, (Vector3){0, -0.6, 0}, (Vector3){0, 0.6, 0}, joint_margin);
 
-  bnd_add_joint(world, torso, right_upper_arm, (Vector3){-0.3, 0.45, 0}, (Vector3){0.1, 0.6, 0}, joint_margin);
-  bnd_add_joint(world, right_upper_arm, right_lower_arm, (Vector3){0, -0.6, 0}, (Vector3){0, 0.6, 0}, joint_margin);
+  bnd_add_distance_joint(world, torso, right_upper_arm, (Vector3){-0.3, 0.45, 0}, (Vector3){0.1, 0.6, 0}, joint_margin);
+  bnd_add_distance_joint(world, right_upper_arm, right_lower_arm, (Vector3){0, -0.6, 0}, (Vector3){0, 0.6, 0}, joint_margin);
 
-  bnd_add_joint(world, pelvis, left_upper_leg, (Vector3){0.23, -0.5, 0}, (Vector3){0, 0.6, 0}, joint_margin);
-  bnd_add_joint(world, left_upper_leg, left_lower_leg, (Vector3){0, -0.6, 0}, (Vector3){0, 0.6, 0}, joint_margin);
+  bnd_add_distance_joint(world, pelvis, left_upper_leg, (Vector3){0.23, -0.5, 0}, (Vector3){0, 0.6, 0}, joint_margin);
+  bnd_add_distance_joint(world, left_upper_leg, left_lower_leg, (Vector3){0, -0.6, 0}, (Vector3){0, 0.6, 0}, joint_margin);
 
-  bnd_add_joint(world, pelvis, right_upper_leg, (Vector3){-0.23, -0.5, 0}, (Vector3){0, 0.6, 0}, joint_margin);
-  bnd_add_joint(world, right_upper_leg, right_lower_leg, (Vector3){0, -0.6, 0}, (Vector3){0, 0.6, 0}, joint_margin);
+  bnd_add_distance_joint(world, pelvis, right_upper_leg, (Vector3){-0.23, -0.5, 0}, (Vector3){0, 0.6, 0}, joint_margin);
+  bnd_add_distance_joint(world, right_upper_leg, right_lower_leg, (Vector3){0, -0.6, 0}, (Vector3){0, 0.6, 0}, joint_margin);
 
   ragdoll doll = malloc(BONE_COUNT * sizeof(bnd_body_handle));
   doll[HEAD] = head;

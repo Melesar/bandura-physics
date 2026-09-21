@@ -303,13 +303,6 @@ typedef struct {
   bnd_body_handle body_a, body_b;    /**< Bodies participating in the contact. */
 } bnd_contact;
 
-/** Maximum-distance constraint between two body-local contact points. */
-typedef struct {
-  bnd_body_handle bodies[2];             /**< The two constrained bodies. */
-  bnd_v3 relative_contact_positions[2];  /**< Body-local anchor points. */
-  float max_error;                       /**< Maximum allowed distance error. */
-} bnd_joint;
-
 /**
  *  Draw one collision contact.
  *
@@ -613,7 +606,7 @@ BNDAPI bnd_error bnd_remove_body(bnd_world *world, bnd_body_handle handle);
  * @retval BND_ERROR_INVALID_JOINT Both bodies are static.
  * @retval BND_ERROR_OUT_OF_MEMORY A joint buffer could not be grown.
  */
-BNDAPI bnd_result_u32 bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_v3 contact_offset_a, bnd_v3 contact_offset_b, float max_distance);
+BNDAPI bnd_result_u32 bnd_add_distance_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_v3 contact_offset_a, bnd_v3 contact_offset_b, float max_distance);
 
 /** Remove a joint by its identifier. */
 BNDAPI void bnd_remove_joint(bnd_world *world, uint32_t id);
