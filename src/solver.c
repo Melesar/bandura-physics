@@ -41,11 +41,6 @@ typedef struct {
   bnd_v3 tangent_b;
 } constraint_interim_state;
 
-typedef struct {
-  count_t *constraint_count;
-  float dt;
-} constraint_creation_context;
-
 static bnd_m3 contact_space_transform(const broad_phase_contact *contact) {
   bnd_v3 y_axis = contact->manifold.normal;
   bnd_v3 x_axis, z_axis;
@@ -77,22 +72,6 @@ static bnd_m3 contact_space_transform(const broad_phase_contact *contact) {
   return bnd_m3_from_basis(x_axis, y_axis, z_axis);
 }
 
-static bnd_v3 contact_point_local_velocity(
-  const bnd_world *world,
-  const contact_constraint *constraint,
-  const constraint_point *point,
-  const constraint_interim_state *state
-) {
-  bnd_v3 local_velocity[2] = {0};
-  for (count_t k = 0; k < state->body_count; ++k) {
-    bnd_v3 angular_velocity = bnd_m3_rotate(state->momenta[k], world->dynamics.inv_intertias[state->body_ids[k]]);
-    bnd_v3 vel = bnd_v3_add(state->velocities[k], bnd_v3_cross(angular_velocity, point->relative_position[k]));
-    local_velocity[k] = bnd_m3_rotate(vel, bnd_m3_transpose(constraint->basis));
-  }
-
-  return bnd_v3_sub(local_velocity[0], local_velocity[1]);
-}
-
 static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set *contacts, bnd_body_type type, broad_phase_contact *contact, count_t index, void *custom_data) {
   (void)contacts;
 
@@ -100,7 +79,7 @@ static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set 
     return OK;
   }
 
-  constraint_creation_context *cx = (constraint_creation_context *) custom_data;
+  count_t *constraints_count = custom_data;
   bnd_result_ptr constraint_ptr = arena_alloc(&world->arena, ALIGNMENT_CONSTRAINT, sizeof(contact_constraint));
   PROPAGATE_ERROR(constraint_ptr.error)
 
@@ -198,7 +177,7 @@ static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set 
     }
   }
 
-  *cx->constraint_count += 1;
+  *constraints_count += 1;
 
   return OK;
 }
@@ -239,6 +218,54 @@ static void write_back_constraint_state(dynamic_bodies *dynamics, const constrai
   }
 }
 
+static void write_back_impulses(bnd_world *world, const contact_constraint *constraints, count_t constraints_count) {
+  for (count_t i = 0; i < constraints_count; ++i) {
+    const contact_constraint * constraint = &constraints[i];
+    broad_contacts_set *contacts = constraint->type == BND_BODY_DYNAMIC ? &world->contacts.dynamics : &world->contacts.statics;
+
+    contact_manifold *manifold = &contacts->contacts[constraint->contact_index].manifold;
+    for (count_t j = 0; j < manifold->count; ++j) {
+      manifold->points[j].normal_impulse = constraint->points[j].normal_impulse;
+      manifold->points[j].tangential_impulse[0] = constraint->points[j].tangent_impulse[0];
+      manifold->points[j].tangential_impulse[1] = constraint->points[j].tangent_impulse[1];
+    }
+  }
+  
+}
+
+static void warm_start_solver(dynamic_bodies *dynamics, contact_constraint *constraints, count_t constraints_count) {
+  for (count_t i = 0; i < constraints_count; ++i) {
+    contact_constraint *constraint = &constraints[i];
+    constraint_interim_state interim_state = collect_interim_state(dynamics, constraint);
+
+    for (count_t p = 0; p < constraint->points_count; ++p) {
+      constraint_point *point = &constraint->points[p];
+      bnd_v3 tangent_impulse = bnd_v3_add(bnd_v3_scale(interim_state.tangent_a, point->tangent_impulse[0]), bnd_v3_scale(interim_state.tangent_b, point->tangent_impulse[1]));
+      bnd_v3 impulse = bnd_v3_add(bnd_v3_scale(interim_state.normal, point->normal_impulse), tangent_impulse);
+
+      apply_impulse(impulse, point, &interim_state);
+    }
+
+    write_back_constraint_state(dynamics, &interim_state);
+  }
+}
+
+static bnd_v3 contact_point_local_velocity(
+  const bnd_world *world,
+  const contact_constraint *constraint,
+  const constraint_point *point,
+  const constraint_interim_state *state
+) {
+  bnd_v3 local_velocity[2] = {0};
+  for (count_t k = 0; k < state->body_count; ++k) {
+    bnd_v3 angular_velocity = bnd_m3_rotate(state->momenta[k], world->dynamics.inv_intertias[state->body_ids[k]]);
+    bnd_v3 vel = bnd_v3_add(state->velocities[k], bnd_v3_cross(angular_velocity, point->relative_position[k]));
+    local_velocity[k] = bnd_m3_rotate(vel, bnd_m3_transpose(constraint->basis));
+  }
+
+  return bnd_v3_sub(local_velocity[0], local_velocity[1]);
+}
+
 bnd_error resolve_constraints(bnd_world *world, float dt) {
   bnd_arena_stack_frame stack_frame = arena_new_stack_frame(&world->arena);
 
@@ -247,8 +274,7 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
 
   {
     PROFILER_BLOCK_START("prepare_constraints");
-    constraint_creation_context cx = { &constraints_count, dt };
-    bnd_error e = for_each_broad_contact(world, constraints_from_contacts, &cx);
+    bnd_error e = for_each_broad_contact(world, constraints_from_contacts, &constraints_count);
     PROFILER_BLOCK_END;
 
     if (IS_ERROR(e)) {
@@ -272,20 +298,7 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
 
   const bnd_config_solver solver_config = world->config.solver;
 
-  for (count_t i = 0; i < constraints_count; ++i) {
-    contact_constraint *constraint = &constraints[i];
-    constraint_interim_state interim_state = collect_interim_state(dynamics, constraint);
-
-    for (count_t p = 0; p < constraint->points_count; ++p) {
-      constraint_point *point = &constraint->points[p];
-      bnd_v3 tangent_impulse = bnd_v3_add(bnd_v3_scale(interim_state.tangent_a, point->tangent_impulse[0]), bnd_v3_scale(interim_state.tangent_b, point->tangent_impulse[1]));
-      bnd_v3 impulse = bnd_v3_add(bnd_v3_scale(interim_state.normal, point->normal_impulse), tangent_impulse);
-
-      apply_impulse(impulse, point, &interim_state);
-    }
-
-    write_back_constraint_state(dynamics, &interim_state);
-  }
+  warm_start_solver(dynamics, constraints, constraints_count);
 
   for (count_t i = 0; i < solver_config.iterations_count; ++i) {
     for (count_t j = 0; j < constraints_count; ++j) {
@@ -344,17 +357,8 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
     }
   }
 
-  for (count_t i = 0; i < constraints_count; ++i) {
-    const contact_constraint * constraint = &constraints[i];
-    broad_contacts_set *contacts = constraint->type == BND_BODY_DYNAMIC ? &world->contacts.dynamics : &world->contacts.statics;
+  write_back_impulses(world, constraints, constraints_count);
 
-    contact_manifold *manifold = &contacts->contacts[constraint->contact_index].manifold;
-    for (count_t j = 0; j < manifold->count; ++j) {
-      manifold->points[j].normal_impulse = constraint->points[j].normal_impulse;
-      manifold->points[j].tangential_impulse[0] = constraint->points[j].tangent_impulse[0];
-      manifold->points[j].tangential_impulse[1] = constraint->points[j].tangent_impulse[1];
-    }
-  }
   PROFILER_BLOCK_END;
 
 
