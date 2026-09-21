@@ -358,8 +358,8 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
     contact_manifold *manifold = &contacts->contacts[constraint->contact_index].manifold;
     for (count_t j = 0; j < manifold->count; ++j) {
       manifold->points[j].normal_impulse = constraint->points[j].normal_impulse;
-      manifold->points[j].tangential_impulse[0] = constraints->points[j].tangent_impulse[0];
-      manifold->points[j].tangential_impulse[1] = constraints->points[j].tangent_impulse[1];
+      manifold->points[j].tangential_impulse[0] = constraint->points[j].tangent_impulse[0];
+      manifold->points[j].tangential_impulse[1] = constraint->points[j].tangent_impulse[1];
     }
   }
   PROFILER_BLOCK_END;

@@ -1484,8 +1484,6 @@ static void test_manifold_matches_fresh_points_and_keeps_impulses(void) {
   cached.points[0].normal_impulse = 2.0f;
   cached.points[0].tangential_impulse[0] = 1;
   cached.points[0].tangential_impulse[1] = 0;
-  cached.points[0].tangential_impulse[2] = 0;
-  cached.points[0].tangential_impulse[3] = 1;
   fresh = manifold_test_point(0.005f, 0, 0.11f);
   update_manifold(&ctx, &result, &fresh, &cached);
   assert(result.count == 1);
