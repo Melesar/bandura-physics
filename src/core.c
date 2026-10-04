@@ -33,6 +33,7 @@ BND_RESULT_FUNC_DECL(handle, bnd_body_handle)
 BND_RESULT_FUNC_DECL(material, bnd_material_handle)
 BND_RESULT_FUNC_DECL(layer, bnd_collision_layer)
 BND_RESULT_FUNC_DECL(ptr, void*)
+BND_RESULT_FUNC_DECL(joint, bnd_joint_handle)
 
 const count_t max_body_index = (count_t)~0 >> 9;
 count_t next_world_id;

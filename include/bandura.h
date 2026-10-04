@@ -129,6 +129,10 @@ typedef enum {
   BND_EVENT_TRIGGER_FINISH = 32,   /**< The body stopped intersecting a trigger */
 } bnd_event_type;
 
+typedef enum {
+  BND_JOINT_TYPE_DISTANCE,
+} bnd_joint_type;
+
 /** Set of allocation callbacks used by a world. */
 typedef struct {
   bnd_malloc_fn malloc;   /**< Required allocation callback. Used only within @ref bnd_init_with_allocator function. */
@@ -165,6 +169,19 @@ typedef uint8_t    bnd_collision_layer;
 /** Bit mask of collision layers. */
 typedef uint64_t   bnd_collision_mask;
 
+typedef struct {
+  bnd_joint_type type;
+  uint32_t world_id;
+  uint32_t id;
+} bnd_joint_handle;
+
+typedef struct {
+  bnd_v3 local_anchor_a;
+  bnd_v3 local_anchor_b;
+  float min_distance;
+  float max_distance;
+} bnd_distance_joint_config;
+ 
 /** Box dimensions along the local x, y, and z axes. */
 typedef struct {
   bnd_v3 size; /**< Full dimensions. */
@@ -376,6 +393,7 @@ BND_RESULT_TYPE(material, bnd_material_handle)
 BND_RESULT_TYPE(layer, bnd_collision_layer)
 BND_RESULT_TYPE(bool, bool)
 BND_RESULT_TYPE(handle, bnd_body_handle)
+BND_RESULT_TYPE(joint, bnd_joint_handle)
 
 #undef BND_RESULT_TYPE
 
@@ -600,16 +618,16 @@ BNDAPI bool bnd_get_layers_collision(const bnd_world *world, bnd_collision_layer
 BNDAPI bnd_error bnd_remove_body(bnd_world *world, bnd_body_handle handle);
 
 /**
- * Add a maximum-distance joint and return its numeric identifier.
+ * Add a maximum-distance joint and return its handle.
  *
  * @retval BND_ERROR_BODY_HANDLE_INVALID Either body handle is invalid.
  * @retval BND_ERROR_INVALID_JOINT Both bodies are static.
  * @retval BND_ERROR_OUT_OF_MEMORY A joint buffer could not be grown.
  */
-BNDAPI bnd_result_u32 bnd_add_distance_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_v3 contact_offset_a, bnd_v3 contact_offset_b, float max_distance);
+BNDAPI bnd_result_joint bnd_add_distance_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_distance_joint_config config);
 
-/** Remove a joint by its identifier. */
-BNDAPI void bnd_remove_joint(bnd_world *world, uint32_t id);
+/** Remove a joint by its handle. */
+BNDAPI void bnd_remove_joint(bnd_world *world, bnd_joint_handle handle);
 
 /**
  * Apply a force at the body's center of mass.

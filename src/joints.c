@@ -1,3 +1,4 @@
+#include "bandura.h"
 #include "bnd-core.h"
 
 #include <string.h>
@@ -18,12 +19,12 @@ static bnd_error joints_resize_if_needed(bnd_allocator allocator, joints *joints
   return OK;
 }
 
-bnd_result_u32 bnd_add_distance_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_v3 contact_offset_a, bnd_v3 contact_offset_b, float max_distance) {
-  PROPAGATE_RESULT(u32, bnd_handle_valid(world, body_a));
-  PROPAGATE_RESULT(u32, bnd_handle_valid(world, body_b));
+bnd_result_joint bnd_add_distance_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_distance_joint_config config) {
+  PROPAGATE_RESULT(joint, bnd_handle_valid(world, body_a));
+  PROPAGATE_RESULT(joint, bnd_handle_valid(world, body_b));
 
   if (body_a.type == BND_BODY_STATIC && body_b.type == BND_BODY_STATIC) {
-    return BND_RESULT_ERR(u32, BND_ERROR_INVALID_JOINT, "Two static bodies cannot be bound together");
+    return BND_RESULT_ERR(joint, BND_ERROR_INVALID_JOINT, "Two static bodies cannot be bound together");
   }
 
   // Let body_a always be dynamic - same as with contacts.
@@ -32,14 +33,14 @@ bnd_result_u32 bnd_add_distance_joint(bnd_world *world, bnd_body_handle body_a, 
     body_b = body_a;
     body_a = tmp_body;
 
-    bnd_v3 tmp_pos = contact_offset_b;
-    contact_offset_b = contact_offset_a;
-    contact_offset_a = tmp_pos;
+    bnd_v3 tmp_pos = config.local_anchor_a;
+    config.local_anchor_a = config.local_anchor_b;
+    config.local_anchor_b = tmp_pos;
   }
 
   joints *joints = &world->joints;
 
-  PROPAGATE_RESULT(u32, joints_resize_if_needed(world->allocator, joints));
+  PROPAGATE_RESULT(joint, joints_resize_if_needed(world->allocator, joints));
 
   count_t last_index = joints->count++;
   bool is_dynamic = body_b.type == BND_BODY_DYNAMIC;
@@ -60,23 +61,28 @@ bnd_result_u32 bnd_add_distance_joint(bnd_world *world, bnd_body_handle body_a, 
   }
 
   joints->values[index] = (bnd_joint){
-    .type = JOINT_DISTANCE,
+    .type = BND_JOINT_TYPE_DISTANCE,
     .bodies = {body_a, body_b},
-    .anchors = {contact_offset_a, contact_offset_b},
-    .max_distance = max_distance,
+    .anchors = {config.local_anchor_a, config.local_anchor_b},
+    .max_distance = config.max_distance,
   };
   joints->ids[index] = id;
 
-  return BND_RESULT_OK(u32, id);
+  bnd_joint_handle handle = { BND_JOINT_TYPE_DISTANCE, world->id, id };
+  return BND_RESULT_OK(joint, handle);
 }
 
-void bnd_remove_joint(bnd_world *world, count_t id) {
+void bnd_remove_joint(bnd_world *world, bnd_joint_handle handle) {
+  if (world->id != handle.world_id) {
+    return;
+  }
+
   joints *joints = &world->joints;
 
   count_t count = joints->count;
   count_t dynamic_count = joints->dynamic_count;
   for (count_t i = 0; i < count; ++i) {
-    if (joints->ids[i] != id) {
+    if (joints->ids[i] != handle.id) {
       continue;
     }
 

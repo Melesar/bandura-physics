@@ -39,7 +39,7 @@ typedef struct {
   bnd_v3 normal;
   bnd_v3 tangent_a;
   bnd_v3 tangent_b;
-} constraint_interim_state;
+} constraint_state;
 
 static bnd_m3 contact_space_transform(const broad_phase_contact *contact) {
   bnd_v3 y_axis = contact->manifold.normal;
@@ -182,7 +182,7 @@ static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set 
   return OK;
 }
 
-static void apply_impulse(bnd_v3 impulse, const constraint_point *point, constraint_interim_state *state) {
+static void apply_impulse(bnd_v3 impulse, const constraint_point *point, constraint_state *state) {
   float sign = 1.0;
   for (count_t k = 0; k < state->body_count; ++k) {
     state->velocities[k] = bnd_v3_add(state->velocities[k], bnd_v3_scale(impulse, state->inv_masses[k] * sign));
@@ -192,8 +192,8 @@ static void apply_impulse(bnd_v3 impulse, const constraint_point *point, constra
   }
 }
 
-static constraint_interim_state collect_interim_state(const dynamic_bodies *dynamics, const contact_constraint *constraint) {
-  constraint_interim_state s = {
+static constraint_state collect_constraint_state(const dynamic_bodies *dynamics, const contact_constraint *constraint) {
+  constraint_state s = {
     .body_count = 1 + (constraint->type == BND_BODY_DYNAMIC),
     .body_ids = { constraint->body_a, constraint->body_b },
 
@@ -211,7 +211,7 @@ static constraint_interim_state collect_interim_state(const dynamic_bodies *dyna
   return s;
 }
 
-static void write_back_constraint_state(dynamic_bodies *dynamics, const constraint_interim_state *state) {
+static void write_back_constraint_state(dynamic_bodies *dynamics, const constraint_state *state) {
   for (count_t k = 0; k < state->body_count; ++k) {
     dynamics->velocities[state->body_ids[k]] = state->velocities[k];
     dynamics->angular_momenta[state->body_ids[k]] = state->momenta[k];
@@ -236,17 +236,17 @@ static void write_back_impulses(bnd_world *world, const contact_constraint *cons
 static void warm_start_solver(dynamic_bodies *dynamics, contact_constraint *constraints, count_t constraints_count) {
   for (count_t i = 0; i < constraints_count; ++i) {
     contact_constraint *constraint = &constraints[i];
-    constraint_interim_state interim_state = collect_interim_state(dynamics, constraint);
+    constraint_state state = collect_constraint_state(dynamics, constraint);
 
     for (count_t p = 0; p < constraint->points_count; ++p) {
       constraint_point *point = &constraint->points[p];
-      bnd_v3 tangent_impulse = bnd_v3_add(bnd_v3_scale(interim_state.tangent_a, point->tangent_impulse[0]), bnd_v3_scale(interim_state.tangent_b, point->tangent_impulse[1]));
-      bnd_v3 impulse = bnd_v3_add(bnd_v3_scale(interim_state.normal, point->normal_impulse), tangent_impulse);
+      bnd_v3 tangent_impulse = bnd_v3_add(bnd_v3_scale(state.tangent_a, point->tangent_impulse[0]), bnd_v3_scale(state.tangent_b, point->tangent_impulse[1]));
+      bnd_v3 impulse = bnd_v3_add(bnd_v3_scale(state.normal, point->normal_impulse), tangent_impulse);
 
-      apply_impulse(impulse, point, &interim_state);
+      apply_impulse(impulse, point, &state);
     }
 
-    write_back_constraint_state(dynamics, &interim_state);
+    write_back_constraint_state(dynamics, &state);
   }
 }
 
@@ -254,7 +254,7 @@ static bnd_v3 contact_point_local_velocity(
   const bnd_world *world,
   const contact_constraint *constraint,
   const constraint_point *point,
-  const constraint_interim_state *state
+  const constraint_state *state
 ) {
   bnd_v3 local_velocity[2] = {0};
   for (count_t k = 0; k < state->body_count; ++k) {
@@ -303,7 +303,7 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
   for (count_t i = 0; i < solver_config.iterations_count; ++i) {
     for (count_t j = 0; j < constraints_count; ++j) {
       contact_constraint *constraint = &constraints[j];
-      constraint_interim_state interim_state = collect_interim_state(dynamics, constraint);
+      constraint_state interim_state = collect_constraint_state(dynamics, constraint);
 
       for (count_t p = 0; p < constraint->points_count; ++p) {
         constraint_point *point = &constraint->points[p];
