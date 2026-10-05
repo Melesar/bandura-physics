@@ -64,7 +64,8 @@ bnd_result_joint bnd_add_distance_joint(bnd_world *world, bnd_body_handle body_a
     .type = BND_JOINT_TYPE_DISTANCE,
     .bodies = {body_a, body_b},
     .anchors = {config.local_anchor_a, config.local_anchor_b},
-    .max_distance = config.max_distance,
+    .min_distance = MAX(config.min_distance, 0.0f),
+    .max_distance = MAX(config.max_distance, 0.0f),
   };
   joints->ids[index] = id;
 

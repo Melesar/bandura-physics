@@ -123,6 +123,7 @@ typedef struct {
   bnd_joint_type type;
   bnd_body_handle bodies[2];           
   bnd_v3 anchors[2];
+  float min_distance;
   float max_distance;                     
 } bnd_joint;
 

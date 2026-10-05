@@ -5,7 +5,8 @@
 
 #include <string.h>
 
-#define ALIGNMENT_CONSTRAINT 4
+#define ALIGNMENT_CONTACT_CONSTRAINT 4
+#define ALIGNMENT_JOINT_CONSTRAINT 4
 
 typedef struct {
   bnd_v3 relative_position[2];
@@ -27,6 +28,20 @@ typedef struct {
 
   constraint_point points[MAX_CONTACTS_PER_PAIR];
 } contact_constraint;
+
+typedef struct {
+  bnd_v3 Jav;
+  bnd_v3 Jbv;
+
+  bnd_v3 Jaw;
+  bnd_v3 Jbw;
+
+  float effective_mass;
+
+  float lambda;
+  float min_lambda;
+  float max_lambda;
+} joint_constraint;
 
 typedef struct {
   count_t body_count;
@@ -80,7 +95,7 @@ static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set 
   }
 
   count_t *constraints_count = custom_data;
-  bnd_result_ptr constraint_ptr = arena_alloc(&world->arena, ALIGNMENT_CONSTRAINT, sizeof(contact_constraint));
+  bnd_result_ptr constraint_ptr = arena_alloc(&world->arena, ALIGNMENT_CONTACT_CONSTRAINT, sizeof(contact_constraint));
   PROPAGATE_ERROR(constraint_ptr.error)
 
   dynamic_bodies *dynamics = &world->dynamics;
@@ -182,6 +197,57 @@ static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set 
   return OK;
 }
 
+static bnd_result_u32 constraints_from_joints(bnd_world *world) {
+  joints *joints = &world->joints;
+
+  const common_data *dynamics = (common_data *)&world->dynamics;
+  const common_data *statics  = (common_data *)&world->statics;
+
+  count_t count = 0;
+  for (count_t i = 0; i < joints->count; ++i) {
+    const bnd_joint *j = &joints->values[i];
+
+    const common_data *data_a = dynamics;
+    const common_data *data_b = i < joints->dynamic_count ? dynamics : statics;
+
+    const count_t index_a = data_a->outer_lookup[j->bodies[0].index].index;
+    const count_t index_b = data_b->outer_lookup[j->bodies[1].index].index;
+
+    bnd_v3 position_a = data_a->positions[index_a];
+    bnd_v3 position_b = data_b->positions[index_b];
+
+    bnd_quat rotation_a = data_a->rotations[index_a];
+    bnd_quat rotation_b = data_b->rotations[index_b];
+
+    switch (j->type) {
+      case BND_JOINT_TYPE_DISTANCE: {
+        bnd_v3 pa = bnd_v3_add(position_a, bnd_v3_rotate(j->anchors[0], rotation_a));
+        bnd_v3 pb = bnd_v3_add(position_b, bnd_v3_rotate(j->anchors[1], rotation_b));
+
+        bnd_v3 offset = bnd_v3_sub(pa, pb);
+        float distance_sqr = bnd_v3_lensqr(offset);
+        float threshold_min = j->min_distance * j->min_distance;
+        float threshold_max = j->max_distance * j->max_distance;
+
+        if (distance_sqr <= threshold_max && distance_sqr >= threshold_min) {
+          continue;
+        }
+
+        bnd_result_ptr allocation = arena_alloc(&world->arena, ALIGNMENT_JOINT_CONSTRAINT, sizeof(joint_constraint));
+        PROPAGATE_RESULT(u32, allocation.error);
+
+        joint_constraint *constraint = allocation.value;
+
+      } break;
+
+      default:
+        continue;
+    }
+  }
+
+  return BND_RESULT_OK(u32, count);
+}
+
 static void apply_impulse(bnd_v3 impulse, const constraint_point *point, constraint_state *state) {
   float sign = 1.0;
   for (count_t k = 0; k < state->body_count; ++k) {
@@ -270,7 +336,7 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
   bnd_arena_stack_frame stack_frame = arena_new_stack_frame(&world->arena);
 
   count_t constraints_count = 0;
-  uint64_t arena_offset = AlignTo(stack_frame.arena->offset, ALIGNMENT_CONSTRAINT);
+  uint64_t contacts_arena_offset = AlignTo(stack_frame.arena->offset, ALIGNMENT_CONTACT_CONSTRAINT);
 
   {
     PROFILER_BLOCK_START("prepare_constraints");
@@ -294,15 +360,25 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
   float inv_dt = 1.0f / dt;
   dynamic_bodies *dynamics = &world->dynamics;
 
-  contact_constraint *constraints = (contact_constraint *)(stack_frame.arena->buffer + arena_offset);
+  contact_constraint *contact_constraints = (contact_constraint *)(stack_frame.arena->buffer + contacts_arena_offset);
+
+  uint64_t joints_arena_offset = AlignTo(stack_frame.arena->offset, ALIGNMENT_JOINT_CONSTRAINT);
+
+  bnd_result_u32 result_joints_count = constraints_from_joints(world);
+  if (IS_ERROR(result_joints_count.error)) {
+    arena_release_stack_frame(stack_frame);
+    return result_joints_count.error;
+  }
+
+  joint_constraint *joint_constraints = (joint_constraint *)(stack_frame.arena->buffer + joints_arena_offset);
 
   const bnd_config_solver solver_config = world->config.solver;
 
-  warm_start_solver(dynamics, constraints, constraints_count);
+  warm_start_solver(dynamics, contact_constraints, constraints_count);
 
   for (count_t i = 0; i < solver_config.iterations_count; ++i) {
     for (count_t j = 0; j < constraints_count; ++j) {
-      contact_constraint *constraint = &constraints[j];
+      contact_constraint *constraint = &contact_constraints[j];
       constraint_state interim_state = collect_constraint_state(dynamics, constraint);
 
       for (count_t p = 0; p < constraint->points_count; ++p) {
@@ -357,7 +433,7 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
     }
   }
 
-  write_back_impulses(world, constraints, constraints_count);
+  write_back_impulses(world, contact_constraints, constraints_count);
 
   PROFILER_BLOCK_END;
 
