@@ -125,6 +125,7 @@ typedef struct {
   bnd_v3 anchors[2];
   float min_distance;
   float max_distance;                     
+  float impulse;
 } bnd_joint;
 
 typedef struct {

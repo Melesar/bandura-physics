@@ -3,6 +3,7 @@
 #include "bnd-math.h"
 #include "profiler.h"
 
+#include <math.h>
 #include <string.h>
 
 #define ALIGNMENT_CONTACT_CONSTRAINT 4
@@ -30,11 +31,19 @@ typedef struct {
 } contact_constraint;
 
 typedef struct {
+  bnd_body_type type;
+  count_t joint_index;
+
+  count_t body_a, body_b;
+  bnd_v3 axis;
+
   bnd_v3 Jav;
   bnd_v3 Jbv;
 
   bnd_v3 Jaw;
   bnd_v3 Jbw;
+
+  bnd_v3 relative_positions[2];
 
   float effective_mass;
 
@@ -200,15 +209,16 @@ static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set 
 static bnd_result_u32 constraints_from_joints(bnd_world *world) {
   joints *joints = &world->joints;
 
-  const common_data *dynamics = (common_data *)&world->dynamics;
+  const dynamic_bodies *dynamics = &world->dynamics;
   const common_data *statics  = (common_data *)&world->statics;
 
   count_t count = 0;
   for (count_t i = 0; i < joints->count; ++i) {
     const bnd_joint *j = &joints->values[i];
 
-    const common_data *data_a = dynamics;
-    const common_data *data_b = i < joints->dynamic_count ? dynamics : statics;
+    const bool is_dynamic = i < joints->dynamic_count;
+    const common_data *data_a = (common_data *)dynamics;
+    const common_data *data_b = is_dynamic ? (common_data *)dynamics : statics;
 
     const count_t index_a = data_a->outer_lookup[j->bodies[0].index].index;
     const count_t index_b = data_b->outer_lookup[j->bodies[1].index].index;
@@ -219,11 +229,14 @@ static bnd_result_u32 constraints_from_joints(bnd_world *world) {
     bnd_quat rotation_a = data_a->rotations[index_a];
     bnd_quat rotation_b = data_b->rotations[index_b];
 
+    bnd_v3 pa = bnd_v3_add(position_a, bnd_v3_rotate(j->anchors[0], rotation_a));
+    bnd_v3 pb = bnd_v3_add(position_b, bnd_v3_rotate(j->anchors[1], rotation_b));
+
+    bnd_v3 offset_a = bnd_v3_sub(pa, position_a);
+    bnd_v3 offset_b = bnd_v3_sub(pb, position_b);
+
     switch (j->type) {
       case BND_JOINT_TYPE_DISTANCE: {
-        bnd_v3 pa = bnd_v3_add(position_a, bnd_v3_rotate(j->anchors[0], rotation_a));
-        bnd_v3 pb = bnd_v3_add(position_b, bnd_v3_rotate(j->anchors[1], rotation_b));
-
         bnd_v3 offset = bnd_v3_sub(pa, pb);
         float distance_sqr = bnd_v3_lensqr(offset);
         float threshold_min = j->min_distance * j->min_distance;
@@ -233,10 +246,60 @@ static bnd_result_u32 constraints_from_joints(bnd_world *world) {
           continue;
         }
 
+        count += 1;
+
+        bnd_v3 normal = distance_sqr > EPSILON * EPSILON
+          ? bnd_v3_scale(offset, 1.0f / sqrtf(distance_sqr))
+          : bnd_v3_normalize(bnd_v3_sub(position_a, position_b));
+
+        bnd_v3 ra_n = bnd_v3_cross(offset_a, normal);
+        bnd_v3 rb_n = bnd_v3_cross(offset_b, normal);
+
         bnd_result_ptr allocation = arena_alloc(&world->arena, ALIGNMENT_JOINT_CONSTRAINT, sizeof(joint_constraint));
         PROPAGATE_RESULT(u32, allocation.error);
 
         joint_constraint *constraint = allocation.value;
+        constraint->type = is_dynamic ? BND_BODY_DYNAMIC : BND_BODY_STATIC;
+        constraint->joint_index = i;
+        constraint->body_a = index_a;
+        constraint->body_b = index_b;
+        constraint->axis = normal;
+
+        constraint->relative_positions[0] = offset_a;
+        constraint->relative_positions[1] = offset_b;
+
+        constraint->Jav = normal;
+        constraint->Jaw = ra_n;
+
+        if (is_dynamic) {
+          constraint->Jbv = bnd_v3_negate(normal);
+          constraint->Jbw = bnd_v3_negate(rb_n);
+        } else {
+          constraint->Jbv = constraint->Jbw = bnd_v3_zero();
+        }
+
+        bnd_m3 inv_inertia_a = bnd_m3_inertia(dynamics->inv_inertia_tensors[index_a], rotation_a);
+
+        float K = dynamics->inv_masses[index_a];
+        K += bnd_v3_dot(ra_n, bnd_m3_rotate(ra_n, inv_inertia_a));
+
+        if (is_dynamic) {
+          bnd_m3 inv_inertia_b = bnd_m3_inertia(dynamics->inv_inertia_tensors[index_b], rotation_b);
+
+          K += dynamics->inv_masses[index_b];
+          K += bnd_v3_dot(rb_n, bnd_m3_rotate(rb_n, inv_inertia_b));
+        }
+
+        constraint->effective_mass = K > EPSILON ? 1.0f / K : 0.0f;
+        constraint->lambda = j->impulse;
+
+        if (distance_sqr < threshold_min) {
+          constraint->min_lambda = 0.0f;
+          constraint->max_lambda = INFINITY;
+        } else if (distance_sqr > threshold_max) {
+          constraint->min_lambda = -INFINITY;
+          constraint->max_lambda = 0.0f;
+        }
 
       } break;
 
@@ -248,17 +311,34 @@ static bnd_result_u32 constraints_from_joints(bnd_world *world) {
   return BND_RESULT_OK(u32, count);
 }
 
-static void apply_impulse(bnd_v3 impulse, const constraint_point *point, constraint_state *state) {
+static void apply_impulse(bnd_v3 impulse, const bnd_v3 *relative_positions, constraint_state *state) {
   float sign = 1.0;
   for (count_t k = 0; k < state->body_count; ++k) {
     state->velocities[k] = bnd_v3_add(state->velocities[k], bnd_v3_scale(impulse, state->inv_masses[k] * sign));
-    state->momenta[k] = bnd_v3_add(state->momenta[k], bnd_v3_scale(bnd_v3_cross(point->relative_position[k], impulse), sign));
+    state->momenta[k] = bnd_v3_add(state->momenta[k], bnd_v3_scale(bnd_v3_cross(relative_positions[k], impulse), sign));
 
     sign = -1;
   }
 }
 
-static constraint_state collect_constraint_state(const dynamic_bodies *dynamics, const contact_constraint *constraint) {
+static constraint_state joint_constraint_state(const dynamic_bodies *dynamics, const joint_constraint *constraint) {
+  constraint_state s = {
+    .body_count = 1 + (constraint->type == BND_BODY_DYNAMIC),
+    .body_ids = { constraint->body_a, constraint->body_b },
+
+    .normal = constraint->axis,
+  };
+  
+  for (count_t k = 0; k < 2; ++k) {
+    s.velocities[k] = dynamics->velocities[s.body_ids[k]];
+    s.momenta[k] = dynamics->angular_momenta[s.body_ids[k]];
+    s.inv_masses[k] = dynamics->inv_masses[s.body_ids[k]];
+  }
+
+  return s;
+}
+
+static constraint_state contact_constraint_state(const dynamic_bodies *dynamics, const contact_constraint *constraint) {
   constraint_state s = {
     .body_count = 1 + (constraint->type == BND_BODY_DYNAMIC),
     .body_ids = { constraint->body_a, constraint->body_b },
@@ -299,19 +379,28 @@ static void write_back_impulses(bnd_world *world, const contact_constraint *cons
   
 }
 
-static void warm_start_solver(dynamic_bodies *dynamics, contact_constraint *constraints, count_t constraints_count) {
-  for (count_t i = 0; i < constraints_count; ++i) {
-    contact_constraint *constraint = &constraints[i];
-    constraint_state state = collect_constraint_state(dynamics, constraint);
+static void warm_start_solver(dynamic_bodies *dynamics, contact_constraint *contact_constraints, count_t contacts_count, joint_constraint *joint_constraints, count_t joints_count) {
+  for (count_t i = 0; i < contacts_count; ++i) {
+    contact_constraint *constraint = &contact_constraints[i];
+    constraint_state state = contact_constraint_state(dynamics, constraint);
 
     for (count_t p = 0; p < constraint->points_count; ++p) {
       constraint_point *point = &constraint->points[p];
       bnd_v3 tangent_impulse = bnd_v3_add(bnd_v3_scale(state.tangent_a, point->tangent_impulse[0]), bnd_v3_scale(state.tangent_b, point->tangent_impulse[1]));
       bnd_v3 impulse = bnd_v3_add(bnd_v3_scale(state.normal, point->normal_impulse), tangent_impulse);
 
-      apply_impulse(impulse, point, &state);
+      apply_impulse(impulse, point->relative_position, &state);
     }
 
+    write_back_constraint_state(dynamics, &state);
+  }
+
+  for (count_t i = 0; i < joints_count; ++i) {
+    joint_constraint *constraint = &joint_constraints[i];
+    constraint_state state = joint_constraint_state(dynamics, constraint);
+
+    bnd_v3 impulse = bnd_v3_scale(state.normal, constraint->lambda);
+    apply_impulse(impulse, constraint->relative_positions, &state);
     write_back_constraint_state(dynamics, &state);
   }
 }
@@ -335,12 +424,12 @@ static bnd_v3 contact_point_local_velocity(
 bnd_error resolve_constraints(bnd_world *world, float dt) {
   bnd_arena_stack_frame stack_frame = arena_new_stack_frame(&world->arena);
 
-  count_t constraints_count = 0;
+  count_t contacts_count = 0;
   uint64_t contacts_arena_offset = AlignTo(stack_frame.arena->offset, ALIGNMENT_CONTACT_CONSTRAINT);
 
   {
     PROFILER_BLOCK_START("prepare_constraints");
-    bnd_error e = for_each_broad_contact(world, constraints_from_contacts, &constraints_count);
+    bnd_error e = for_each_broad_contact(world, constraints_from_contacts, &contacts_count);
     PROFILER_BLOCK_END;
 
     if (IS_ERROR(e)) {
@@ -349,7 +438,7 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
     }
   }
 
-  world->stats.contacts_count = constraints_count;
+  world->stats.contacts_count = contacts_count;
 
   if (dt <= 0.0f) {
     arena_release_stack_frame(stack_frame);
@@ -374,12 +463,12 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
 
   const bnd_config_solver solver_config = world->config.solver;
 
-  warm_start_solver(dynamics, contact_constraints, constraints_count);
+  warm_start_solver(dynamics, contact_constraints, contacts_count, joint_constraints, result_joints_count.value);
 
   for (count_t i = 0; i < solver_config.iterations_count; ++i) {
-    for (count_t j = 0; j < constraints_count; ++j) {
+    for (count_t j = 0; j < contacts_count; ++j) {
       contact_constraint *constraint = &contact_constraints[j];
-      constraint_state interim_state = collect_constraint_state(dynamics, constraint);
+      constraint_state interim_state = contact_constraint_state(dynamics, constraint);
 
       for (count_t p = 0; p < constraint->points_count; ++p) {
         constraint_point *point = &constraint->points[p];
@@ -393,7 +482,7 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
         point->normal_impulse = new_impulse;
 
         bnd_v3 impulse = bnd_v3_scale(interim_state.normal, normal_impulse);
-        apply_impulse(impulse, point, &interim_state);
+        apply_impulse(impulse, point->relative_position, &interim_state);
       }
 
       for (count_t p = 0; p < constraint->points_count; ++p) {
@@ -426,14 +515,14 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
 
         bnd_v3 impulse = bnd_v3_add(bnd_v3_scale(interim_state.tangent_a, lambda[0]), bnd_v3_scale(interim_state.tangent_b, lambda[1]));
 
-        apply_impulse(impulse, point, &interim_state);
+        apply_impulse(impulse, point->relative_position, &interim_state);
       }
 
       write_back_constraint_state(dynamics, &interim_state);
     }
   }
 
-  write_back_impulses(world, contact_constraints, constraints_count);
+  write_back_impulses(world, contact_constraints, contacts_count);
 
   PROFILER_BLOCK_END;
 
