@@ -7,7 +7,7 @@
 #include <string.h>
 
 #define ALIGNMENT_CONTACT_CONSTRAINT 4
-#define ALIGNMENT_JOINT_CONSTRAINT 4
+#define ALIGNMENT_JOINT_CONSTRAINT   4
 
 typedef struct {
   bnd_v3 relative_position[2];
@@ -46,6 +46,7 @@ typedef struct {
   bnd_v3 relative_positions[2];
 
   float effective_mass;
+  float bias;
 
   float lambda;
   float min_lambda;
@@ -53,11 +54,28 @@ typedef struct {
 } joint_constraint;
 
 typedef struct {
+  float inv_dt;
+  dynamic_bodies *dynamics;
+
+  count_t current_iteration;
+
+  contact_constraint *contacts;
+  joint_constraint   *joints;
+
+  count_t contacts_count;
+  count_t joints_count;
+  
+  bnd_config_solver config;
+} solver_context;
+
+
+typedef struct {
   count_t body_count;
   count_t body_ids[2];
 
   bnd_v3 velocities[2];
   bnd_v3 momenta[2];
+  bnd_v3 angular_velocities[2];
   float inv_masses[2];
 
   bnd_v3 normal;
@@ -209,6 +227,7 @@ static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set 
 static bnd_result_u32 constraints_from_joints(bnd_world *world) {
   joints *joints = &world->joints;
 
+  const bnd_config_solver config = world->config.solver;
   const dynamic_bodies *dynamics = &world->dynamics;
   const common_data *statics  = (common_data *)&world->statics;
 
@@ -248,8 +267,10 @@ static bnd_result_u32 constraints_from_joints(bnd_world *world) {
 
         count += 1;
 
+        float distance = distance_sqr > EPSILON * EPSILON ? sqrtf(distance_sqr) : 0.0f;
+
         bnd_v3 normal = distance_sqr > EPSILON * EPSILON
-          ? bnd_v3_scale(offset, 1.0f / sqrtf(distance_sqr))
+          ? bnd_v3_scale(offset, 1.0f / distance)
           : bnd_v3_normalize(bnd_v3_sub(position_a, position_b));
 
         bnd_v3 ra_n = bnd_v3_cross(offset_a, normal);
@@ -293,13 +314,23 @@ static bnd_result_u32 constraints_from_joints(bnd_world *world) {
         constraint->effective_mass = K > EPSILON ? 1.0f / K : 0.0f;
         constraint->lambda = j->impulse;
 
-        if (distance_sqr < threshold_min) {
+        float error;
+        if (distance_sqr < threshold_min - config.linear_slop) {
+          error = distance - j->min_distance;
           constraint->min_lambda = 0.0f;
           constraint->max_lambda = INFINITY;
-        } else if (distance_sqr > threshold_max) {
+        } else if (distance_sqr > threshold_max + config.linear_slop) {
+          error = j->max_distance - distance;
           constraint->min_lambda = -INFINITY;
           constraint->max_lambda = 0.0f;
+        } else {
+          error = constraint->max_lambda = constraint->min_lambda = 0.0f;
         }
+
+        constraint->bias = config.baumgarde_coefficient * error;
+        constraint->bias = error > 0.0f
+         ? MIN(constraint->bias, config.max_baumgarde_velocity)
+         : MAX(constraint->bias, -config.max_baumgarde_velocity);
 
       } break;
 
@@ -330,9 +361,13 @@ static constraint_state joint_constraint_state(const dynamic_bodies *dynamics, c
   };
   
   for (count_t k = 0; k < 2; ++k) {
-    s.velocities[k] = dynamics->velocities[s.body_ids[k]];
-    s.momenta[k] = dynamics->angular_momenta[s.body_ids[k]];
-    s.inv_masses[k] = dynamics->inv_masses[s.body_ids[k]];
+    count_t id = s.body_ids[k];
+    s.velocities[k] = dynamics->velocities[id];
+    s.momenta[k] = dynamics->angular_momenta[id];
+    s.inv_masses[k] = dynamics->inv_masses[id];
+
+    bnd_m3 inertia = bnd_m3_inertia(dynamics->inv_inertia_tensors[id], dynamics->rotations[id]);
+    s.angular_velocities[k] = bnd_m3_rotate(s.momenta[k], inertia);
   }
 
   return s;
@@ -364,9 +399,9 @@ static void write_back_constraint_state(dynamic_bodies *dynamics, const constrai
   }
 }
 
-static void write_back_impulses(bnd_world *world, const contact_constraint *constraints, count_t constraints_count) {
-  for (count_t i = 0; i < constraints_count; ++i) {
-    const contact_constraint * constraint = &constraints[i];
+static void write_back_impulses(bnd_world *world, solver_context *cx) {
+  for (count_t i = 0; i < cx->contacts_count; ++i) {
+    const contact_constraint * constraint = &cx->contacts[i];
     broad_contacts_set *contacts = constraint->type == BND_BODY_DYNAMIC ? &world->contacts.dynamics : &world->contacts.statics;
 
     contact_manifold *manifold = &contacts->contacts[constraint->contact_index].manifold;
@@ -376,13 +411,12 @@ static void write_back_impulses(bnd_world *world, const contact_constraint *cons
       manifold->points[j].tangential_impulse[1] = constraint->points[j].tangent_impulse[1];
     }
   }
-  
 }
 
-static void warm_start_solver(dynamic_bodies *dynamics, contact_constraint *contact_constraints, count_t contacts_count, joint_constraint *joint_constraints, count_t joints_count) {
-  for (count_t i = 0; i < contacts_count; ++i) {
-    contact_constraint *constraint = &contact_constraints[i];
-    constraint_state state = contact_constraint_state(dynamics, constraint);
+static void warm_start_solver(solver_context *cx) {
+  for (count_t i = 0; i < cx->contacts_count; ++i) {
+    contact_constraint *constraint = &cx->contacts[i];
+    constraint_state state = contact_constraint_state(cx->dynamics, constraint);
 
     for (count_t p = 0; p < constraint->points_count; ++p) {
       constraint_point *point = &constraint->points[p];
@@ -392,28 +426,28 @@ static void warm_start_solver(dynamic_bodies *dynamics, contact_constraint *cont
       apply_impulse(impulse, point->relative_position, &state);
     }
 
-    write_back_constraint_state(dynamics, &state);
+    write_back_constraint_state(cx->dynamics, &state);
   }
 
-  for (count_t i = 0; i < joints_count; ++i) {
-    joint_constraint *constraint = &joint_constraints[i];
-    constraint_state state = joint_constraint_state(dynamics, constraint);
+  for (count_t i = 0; i < cx->joints_count; ++i) {
+    joint_constraint *constraint = &cx->joints[i];
+    constraint_state state = joint_constraint_state(cx->dynamics, constraint);
 
     bnd_v3 impulse = bnd_v3_scale(state.normal, constraint->lambda);
     apply_impulse(impulse, constraint->relative_positions, &state);
-    write_back_constraint_state(dynamics, &state);
+    write_back_constraint_state(cx->dynamics, &state);
   }
 }
 
 static bnd_v3 contact_point_local_velocity(
-  const bnd_world *world,
+  const dynamic_bodies *dynamics,
   const contact_constraint *constraint,
   const constraint_point *point,
   const constraint_state *state
 ) {
   bnd_v3 local_velocity[2] = {0};
   for (count_t k = 0; k < state->body_count; ++k) {
-    bnd_v3 angular_velocity = bnd_m3_rotate(state->momenta[k], world->dynamics.inv_intertias[state->body_ids[k]]);
+    bnd_v3 angular_velocity = bnd_m3_rotate(state->momenta[k], dynamics->inv_intertias[state->body_ids[k]]);
     bnd_v3 vel = bnd_v3_add(state->velocities[k], bnd_v3_cross(angular_velocity, point->relative_position[k]));
     local_velocity[k] = bnd_m3_rotate(vel, bnd_m3_transpose(constraint->basis));
   }
@@ -421,21 +455,113 @@ static bnd_v3 contact_point_local_velocity(
   return bnd_v3_sub(local_velocity[0], local_velocity[1]);
 }
 
+static void solve_contact(solver_context *cx, count_t index) {
+  contact_constraint *constraint = &cx->contacts[index];
+  constraint_state interim_state = contact_constraint_state(cx->dynamics, constraint);
+
+  for (count_t p = 0; p < constraint->points_count; ++p) {
+    constraint_point *point = &constraint->points[p];
+    bnd_v3 local_velocity = contact_point_local_velocity(cx->dynamics, constraint, point, &interim_state);
+
+    float bias = MAX(cx->config.baumgarde_coefficient * cx->inv_dt * MIN(0.0f, point->separation + cx->config.linear_slop), -cx->config.max_baumgarde_velocity);
+    float vn = local_velocity.y;
+    float normal_impulse = -point->normal_mass * (vn + bias) * (1 + constraint->restitution);
+    float new_impulse = MAX(point->normal_impulse + normal_impulse, 0.0f);
+    normal_impulse = new_impulse - point->normal_impulse;
+    point->normal_impulse = new_impulse;
+
+    bnd_v3 impulse = bnd_v3_scale(interim_state.normal, normal_impulse);
+    apply_impulse(impulse, point->relative_position, &interim_state);
+  }
+
+  for (count_t p = 0; p < constraint->points_count; ++p) {
+    constraint_point *point = &constraint->points[p];
+    bnd_v3 local_velocity = contact_point_local_velocity(cx->dynamics, constraint, point, &interim_state);
+
+    float delta_lambda[] = {
+      -(local_velocity.x * point->tangent_mass[0] + local_velocity.z * point->tangent_mass[1]),
+      -(local_velocity.x * point->tangent_mass[2] + local_velocity.z * point->tangent_mass[3]),
+    };
+
+    float candidate_lambda[] = {
+      point->tangent_impulse[0] + delta_lambda[0],
+      point->tangent_impulse[1] + delta_lambda[1]
+    };
+
+    float max_friction = constraint->friction * point->normal_impulse;
+    float friction_impulse = sqrtf(candidate_lambda[0] * candidate_lambda[0] + candidate_lambda[1] * candidate_lambda[1]);
+    if (friction_impulse > max_friction) {
+      candidate_lambda[0] = candidate_lambda[0] / friction_impulse * max_friction;
+      candidate_lambda[1] = candidate_lambda[1] / friction_impulse * max_friction;
+    }
+
+    float lambda[] = {
+      candidate_lambda[0] - point->tangent_impulse[0],
+      candidate_lambda[1] - point->tangent_impulse[1],
+    };
+
+    memcpy(point->tangent_impulse, candidate_lambda, sizeof(candidate_lambda));
+
+    bnd_v3 impulse = bnd_v3_add(bnd_v3_scale(interim_state.tangent_a, lambda[0]), bnd_v3_scale(interim_state.tangent_b, lambda[1]));
+
+    apply_impulse(impulse, point->relative_position, &interim_state);
+  }
+
+  write_back_constraint_state(cx->dynamics, &interim_state);
+}
+
+static void solve_joint(solver_context *cx, count_t index) {
+  joint_constraint *constraint = &cx->joints[index];
+  constraint_state state = joint_constraint_state(cx->dynamics, constraint);
+
+  float bias = constraint->bias * cx->inv_dt;
+  float JV = bnd_v3_dot(constraint->Jav, state.velocities[0])
+    + bnd_v3_dot(constraint->Jbv, state.velocities[1])
+    + bnd_v3_dot(constraint->Jaw, state.angular_velocities[0])
+    + bnd_v3_dot(constraint->Jbw, state.angular_velocities[1]);
+
+  float lambda_delta = -constraint->effective_mass * (JV + bias);
+  float lambda_old = constraint->lambda;
+
+  constraint->lambda = MAX(constraint->min_lambda, MIN(lambda_old + lambda_delta, constraint->max_lambda));
+
+  float impulse_lambda = constraint->lambda - lambda_old;
+  bnd_v3 impulse = bnd_v3_scale(constraint->axis, impulse_lambda);
+
+  apply_impulse(impulse, constraint->relative_positions, &state);
+  write_back_constraint_state(cx->dynamics, &state);
+}
+
 bnd_error resolve_constraints(bnd_world *world, float dt) {
   bnd_arena_stack_frame stack_frame = arena_new_stack_frame(&world->arena);
 
   count_t contacts_count = 0;
+  count_t joints_count = 0;
+
   uint64_t contacts_arena_offset = AlignTo(stack_frame.arena->offset, ALIGNMENT_CONTACT_CONSTRAINT);
+  uint64_t joints_arena_offset = 0;
 
   {
     PROFILER_BLOCK_START("prepare_constraints");
-    bnd_error e = for_each_broad_contact(world, constraints_from_contacts, &contacts_count);
-    PROFILER_BLOCK_END;
 
+    bnd_error e = for_each_broad_contact(world, constraints_from_contacts, &contacts_count);
     if (IS_ERROR(e)) {
       arena_release_stack_frame(stack_frame);
+      PROFILER_BLOCK_END;
       return e;
     }
+
+    joints_arena_offset = AlignTo(stack_frame.arena->offset, ALIGNMENT_JOINT_CONSTRAINT);
+
+    bnd_result_u32 result_joints_count = constraints_from_joints(world);
+    if (IS_ERROR(result_joints_count.error)) {
+      arena_release_stack_frame(stack_frame);
+      PROFILER_BLOCK_END;
+      return result_joints_count.error;
+    }
+    joints_count = result_joints_count.value;
+
+    PROFILER_BLOCK_END;
   }
 
   world->stats.contacts_count = contacts_count;
@@ -446,86 +572,42 @@ bnd_error resolve_constraints(bnd_world *world, float dt) {
   }
   
   PROFILER_BLOCK_START("resolve_constraints");
-  float inv_dt = 1.0f / dt;
-  dynamic_bodies *dynamics = &world->dynamics;
 
   contact_constraint *contact_constraints = (contact_constraint *)(stack_frame.arena->buffer + contacts_arena_offset);
+  joint_constraint *joint_constraints     = (joint_constraint *)(stack_frame.arena->buffer + joints_arena_offset);
 
-  uint64_t joints_arena_offset = AlignTo(stack_frame.arena->offset, ALIGNMENT_JOINT_CONSTRAINT);
+  solver_context scx = {
+    .inv_dt            = 1.0f / dt,
+    .current_iteration = 0,
+    .dynamics          = &world->dynamics,
+    .config            = world->config.solver,
+    .contacts          = contact_constraints,
+    .joints            = joint_constraints,
+    .contacts_count    = contacts_count,
+    .joints_count      = joints_count
+  };
 
-  bnd_result_u32 result_joints_count = constraints_from_joints(world);
-  if (IS_ERROR(result_joints_count.error)) {
-    arena_release_stack_frame(stack_frame);
-    return result_joints_count.error;
+  if (scx.config.warm_start) {
+    warm_start_solver(&scx);
   }
 
-  joint_constraint *joint_constraints = (joint_constraint *)(stack_frame.arena->buffer + joints_arena_offset);
+  for (count_t i = 0; i < scx.config.iterations_count; ++i) {
+    scx.current_iteration = i;
 
-  const bnd_config_solver solver_config = world->config.solver;
+    for (count_t j = 0; j < scx.contacts_count; ++j) {
+      solve_contact(&scx, j);
+    }
 
-  warm_start_solver(dynamics, contact_constraints, contacts_count, joint_constraints, result_joints_count.value);
-
-  for (count_t i = 0; i < solver_config.iterations_count; ++i) {
-    for (count_t j = 0; j < contacts_count; ++j) {
-      contact_constraint *constraint = &contact_constraints[j];
-      constraint_state interim_state = contact_constraint_state(dynamics, constraint);
-
-      for (count_t p = 0; p < constraint->points_count; ++p) {
-        constraint_point *point = &constraint->points[p];
-        bnd_v3 local_velocity = contact_point_local_velocity(world, constraint, point, &interim_state);
-
-        float bias = MAX(solver_config.baumgarde_coefficient * inv_dt * MIN(0.0f, point->separation + solver_config.linear_slop), -solver_config.max_baumgarde_velocity);
-        float vn = local_velocity.y;
-        float normal_impulse = -point->normal_mass * (vn + bias) * (1 + constraint->restitution);
-        float new_impulse = MAX(point->normal_impulse + normal_impulse, 0.0f);
-        normal_impulse = new_impulse - point->normal_impulse;
-        point->normal_impulse = new_impulse;
-
-        bnd_v3 impulse = bnd_v3_scale(interim_state.normal, normal_impulse);
-        apply_impulse(impulse, point->relative_position, &interim_state);
-      }
-
-      for (count_t p = 0; p < constraint->points_count; ++p) {
-        constraint_point *point = &constraint->points[p];
-        bnd_v3 local_velocity = contact_point_local_velocity(world, constraint, point, &interim_state);
-
-        float delta_lambda[] = {
-          -(local_velocity.x * point->tangent_mass[0] + local_velocity.z * point->tangent_mass[1]),
-          -(local_velocity.x * point->tangent_mass[2] + local_velocity.z * point->tangent_mass[3]),
-        };
-
-        float candidate_lambda[] = {
-          point->tangent_impulse[0] + delta_lambda[0],
-          point->tangent_impulse[1] + delta_lambda[1]
-        };
-
-        float max_friction = constraint->friction * point->normal_impulse;
-        float friction_impulse = sqrtf(candidate_lambda[0] * candidate_lambda[0] + candidate_lambda[1] * candidate_lambda[1]);
-        if (friction_impulse > max_friction) {
-          candidate_lambda[0] = candidate_lambda[0] / friction_impulse * max_friction;
-          candidate_lambda[1] = candidate_lambda[1] / friction_impulse * max_friction;
-        }
-
-        float lambda[] = {
-          candidate_lambda[0] - point->tangent_impulse[0],
-          candidate_lambda[1] - point->tangent_impulse[1],
-        };
-
-        memcpy(point->tangent_impulse, candidate_lambda, sizeof(candidate_lambda));
-
-        bnd_v3 impulse = bnd_v3_add(bnd_v3_scale(interim_state.tangent_a, lambda[0]), bnd_v3_scale(interim_state.tangent_b, lambda[1]));
-
-        apply_impulse(impulse, point->relative_position, &interim_state);
-      }
-
-      write_back_constraint_state(dynamics, &interim_state);
+    for (count_t j = 0; j < scx.joints_count; ++j) {
+      solve_joint(&scx, j);
     }
   }
 
-  write_back_impulses(world, contact_constraints, contacts_count);
+  if (scx.config.warm_start) {
+    write_back_impulses(world, &scx);
+  }
 
   PROFILER_BLOCK_END;
-
 
   arena_release_stack_frame(stack_frame);
 

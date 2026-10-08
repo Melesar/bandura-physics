@@ -280,10 +280,11 @@ typedef struct {
 } bnd_config_simulation;
 
 typedef struct {
-  uint32_t iterations_count;        /**< Higher number means higher precision and stability but more time spent by the solver. */
-  float baumgarde_coefficient;      /**< How hard the solver tryies to push away penetrating bodies. */
-  float linear_slop;                /**< Minimum penetration depth for the solver to act upon. */
-  float max_baumgarde_velocity;     /**< Maximum separation velocity to apply to penetrating bodies. */
+  uint32_t iterations_count;           /**< Higher number means higher precision and stability but more time spent by the solver. */
+  float    baumgarde_coefficient;      /**< How hard the solver tryies to push away penetrating bodies. */
+  float    linear_slop;                /**< Minimum penetration depth for the solver to act upon. */
+  float    max_baumgarde_velocity;     /**< Maximum separation velocity to apply to penetrating bodies. */
+  bool     warm_start;                 /**< Whether the solver should apply impulses from previous ticks (improves stability). */
 } bnd_config_solver;
 
 typedef struct {

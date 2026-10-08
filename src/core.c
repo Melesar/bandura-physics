@@ -248,6 +248,7 @@ bnd_config bnd_default_config(void) {
       .baumgarde_coefficient = 0.2f,
       .linear_slop = 0.005f,
       .max_baumgarde_velocity = 4.0f,  
+      .warm_start = true,
     },
     .collision_detection = {
       .max_gjk_iterations = 100,
@@ -260,7 +261,20 @@ bnd_config bnd_default_config(void) {
   };
 }
 
+static void sanitize_config(bnd_config *config) {
+  bnd_config_solver *solver = &config->solver;
+
+  solver->linear_slop = MAX(solver->linear_slop, 0.0f);
+  solver->baumgarde_coefficient = MAX(0.0f, MIN(solver->baumgarde_coefficient, 1.0f));
+  solver->iterations_count = MAX(solver->iterations_count, 0);
+  solver->max_baumgarde_velocity = MAX(solver->max_baumgarde_velocity, 0.0f);
+
+  // TODO: other categories.
+}
+
 static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allocator allocator) {
+  sanitize_config(&config);
+
   world->allocator = allocator;
   world->config = config;
   world->id = next_world_id++; // TODO: make this thread-safe.
