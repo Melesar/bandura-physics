@@ -411,6 +411,14 @@ static void write_back_impulses(bnd_world *world, solver_context *cx) {
       manifold->points[j].tangential_impulse[1] = constraint->points[j].tangent_impulse[1];
     }
   }
+
+  for (count_t i = 0; i < cx->joints_count; ++i) {
+    const joint_constraint *constraint = &cx->joints[i];
+    bnd_joint *j = &world->joints.values[constraint->joint_index];
+
+    j->impulse = constraint->lambda;
+  }
+
 }
 
 static void warm_start_solver(solver_context *cx) {
