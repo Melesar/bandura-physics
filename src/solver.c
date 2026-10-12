@@ -256,7 +256,7 @@ static bnd_result_u32 constraints_from_joints(bnd_world *world) {
 
     switch (j->type) {
       case BND_JOINT_TYPE_DISTANCE: {
-        bnd_v3 offset = bnd_v3_sub(pa, pb);
+        bnd_v3 offset = bnd_v3_sub(pb, pa);
         float distance_sqr = bnd_v3_lensqr(offset);
         float threshold_min = j->min_distance * j->min_distance;
         float threshold_max = j->max_distance * j->max_distance;
@@ -271,7 +271,7 @@ static bnd_result_u32 constraints_from_joints(bnd_world *world) {
 
         bnd_v3 normal = distance_sqr > EPSILON * EPSILON
           ? bnd_v3_scale(offset, 1.0f / distance)
-          : bnd_v3_normalize(bnd_v3_sub(position_a, position_b));
+          : bnd_v3_normalize(bnd_v3_sub(position_b, position_b));
 
         bnd_v3 ra_n = bnd_v3_cross(offset_a, normal);
         bnd_v3 rb_n = bnd_v3_cross(offset_b, normal);
@@ -317,12 +317,12 @@ static bnd_result_u32 constraints_from_joints(bnd_world *world) {
         float error;
         if (distance_sqr < threshold_min - config.linear_slop) {
           error = distance - j->min_distance;
-          constraint->min_lambda = 0.0f;
-          constraint->max_lambda = INFINITY;
-        } else if (distance_sqr > threshold_max + config.linear_slop) {
-          error = j->max_distance - distance;
           constraint->min_lambda = -INFINITY;
           constraint->max_lambda = 0.0f;
+        } else if (distance_sqr > threshold_max + config.linear_slop) {
+          error = j->max_distance - distance;
+          constraint->min_lambda = 0.0f;
+          constraint->max_lambda = INFINITY;
         } else {
           error = constraint->max_lambda = constraint->min_lambda = 0.0f;
         }
