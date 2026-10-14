@@ -1199,6 +1199,7 @@ static collision_detection_context manifold_test_context(bnd_world *world) {
   add_static_sphere(world, 1);
   return (collision_detection_context) {
     .world = world, .data_a = (common_data *)&world->dynamics, .data_b = (common_data *)&world->statics,
+    .shape_a.rotation = bnd_quat_identity(), .shape_b.rotation = bnd_quat_identity(),
   };
 }
 
@@ -1279,10 +1280,10 @@ static void test_manifold_discards_invalid_cached_points(void) {
   update_manifold(&ctx, &result, &fresh, &cached);
   assert(result.count == 1); // Tangential drift.
   world->dynamics.positions[0] = bnd_v3_zero();
-  cached.normal = bnd_v3_right();
+  cached.local_normal = bnd_v3_right();
   update_manifold(&ctx, &result, &fresh, &cached);
   assert(result.count == 1); // Different contact face.
-  cached.normal = bnd_v3_up();
+  cached.local_normal = bnd_v3_up();
   update_manifold(&ctx, &result, &empty, &cached);
   assert(result.count == 0); // A narrow-phase miss clears the cache.
   bnd_teardown(world);

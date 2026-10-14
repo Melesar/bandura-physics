@@ -1,7 +1,7 @@
 #include "scenario-core.h"
 #include "load-testing.h"
 
-#define NUM_ANCHORS 12
+#define NUM_ANCHORS 16
 bnd_body_handle *anchors;
 
 void scenario_configure(program_config *config, bnd_config *physics_config) {
@@ -15,10 +15,10 @@ void scenario_initialize(bnd_world *world) {
 }
 
 void scenario_setup_scene(bnd_world *world) {
-  // sparse_awake_grid(world, 16, 16, 16);
-  dense_settling_pile(world, 8);
+  // sparse_awake_grid(world, 8, 8, 8);
+  // dense_settling_pile(world, 8);
   // compound_crowd(world, 4, 8, 4);
-  // joints_lattice(world, NUM_ANCHORS, anchors);
+  joints_lattice(world, NUM_ANCHORS, anchors);
 }
 
 void scenario_handle_input(bnd_world *world, Camera *camera) { }

@@ -109,6 +109,8 @@ static void joints_lattice(bnd_world *world, uint32_t side, bnd_body_handle *anc
   const float spacing = 1.20f;
   const float max_joint_distance = 1.00f;
   const float anchor_distance = 0.40f;
+  const bnd_distance_joint_config lattice_joint = {.max_distance = max_joint_distance};
+  const bnd_distance_joint_config anchor_joint = {.max_distance = 0.20f};
   bnd_body_handle *bodies = (bnd_body_handle*)malloc(side * side * sizeof(bnd_body_handle));
 
   for (uint32_t y = 0; y < side; ++y) {
@@ -129,17 +131,16 @@ static void joints_lattice(bnd_world *world, uint32_t side, bnd_body_handle *anc
     for (unsigned int x = 0; x < side; ++x) {
       const bnd_body_handle body = bodies[y * side + x];
       if (x + 1U < side) {
-        bnd_add_distance_joint(world, body, bodies[y * side + x + 1U], (bnd_v3){0.0f, 0.0f, 0.0f}, (bnd_v3){0.0f, 0.0f, 0.0f}, max_joint_distance);
+        bnd_add_distance_joint(world, body, bodies[y * side + x + 1U], lattice_joint);
       }
       if (y + 1U < side) {
-        bnd_add_distance_joint(world, body,
-          bodies[(y + 1U) * side + x], (bnd_v3){0.0f, 0.0f, 0.0f}, (bnd_v3){0.0f, 0.0f, 0.0f}, max_joint_distance);
+        bnd_add_distance_joint(world, body, bodies[(y + 1U) * side + x], lattice_joint);
       }
     }
   }
 
   for (unsigned int x = 0; x < side; ++x) {
-    bnd_add_distance_joint(world, bodies[(side - 1U) * side + x], anchors[x], (bnd_v3){0.0f, 0.0f, 0.0f}, (bnd_v3){0.0f, 0.0f, 0.0f}, 0.20f);
+    bnd_add_distance_joint(world, bodies[(side - 1U) * side + x], anchors[x], anchor_joint);
   }
 
   free(bodies);

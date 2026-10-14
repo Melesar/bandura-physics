@@ -385,9 +385,9 @@ REGISTER_SCENE(DenseSettlingPile_10, kPile10);
 REGISTER_SCENE(CompoundCrowd_32, kCrowd32);
 REGISTER_SCENE(CompoundCrowd_64, kCrowd64);
 REGISTER_SCENE(CompoundCrowd_128, kCrowd128);
-// REGISTER_SCENE(DrivenJointLattice_8, kLattice8);
-// REGISTER_SCENE(DrivenJointLattice_12, kLattice12);
-// REGISTER_SCENE(DrivenJointLattice_16, kLattice16);
+REGISTER_SCENE(DrivenJointLattice_8, kLattice8);
+REGISTER_SCENE(DrivenJointLattice_12, kLattice12);
+REGISTER_SCENE(DrivenJointLattice_16, kLattice16);
 
 #undef REGISTER_SCENE
 
