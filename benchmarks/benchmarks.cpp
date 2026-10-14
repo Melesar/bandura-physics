@@ -107,6 +107,14 @@ bool AddStaticEnclosure(SceneInstance *instance, float half_extent,
 
 unsigned int RoundUpTo64(unsigned int value) { return (value + 63U) & ~63U; }
 
+unsigned int RoundUpToPowerOfTwo(unsigned int value) {
+  unsigned int result = 1;
+  while (result < value) {
+    result <<= 1;
+  }
+  return result;
+}
+
 bnd_config MakeConfig(const SceneDefinition &definition) {
   bnd_config config = bnd_default_config();
   const unsigned int dynamic_count =
@@ -146,7 +154,7 @@ bnd_config MakeConfig(const SceneDefinition &definition) {
       definition.kind == SceneKind::CompoundCrowd
           ? RoundUpTo64(dynamic_count + 16U)
           : 64U;
-  config.memory.hash_table_capacity = contacts_capacity * 2U;
+  config.memory.hash_table_capacity = RoundUpToPowerOfTwo(contacts_capacity * 2U);
   config.memory.internal_allocator_capacity_bytes = 1 << 20;
 
   if (definition.kind == SceneKind::SparseAwakeGrid ||
@@ -183,7 +191,7 @@ bool BuildCompoundCrowd(SceneInstance *instance, const SceneDefinition &definiti
 }
 
 bool BuildDrivenJointLattice(SceneInstance *instance, unsigned int side) {
-  instance->anchors.reserve(side);
+  instance->anchors.resize(side);
 
   joints_lattice(instance->world, side, instance->anchors.data());
 
