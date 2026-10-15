@@ -1520,7 +1520,7 @@ count_t               ephemeral_body_index(const common_data *data);
 bnd_error             events_init(bnd_world *world);
 void                  events_teardown(bnd_world *world);
 void                  events_reset(bnd_world *world);
-bool                  events_subscribed(const common_data *data, count_t index, bnd_event_type event_type);
+bool                  events_subscribed(const common_data *data, count_t index, int mask);
 bnd_error             events_push(bnd_world *world, common_data *data, count_t index, bnd_event event);
 bnd_error             events_emit_contacts(bnd_world *world);
 
@@ -2074,8 +2074,6 @@ static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set 
 
   bnd_v3 position[2];
   bnd_quat rotation[2];
-  bnd_v3 velocity[2];
-  bnd_v3 angular_momentum[2];
   bnd_m3 inv_inertia_tensor[2];
   bnd_m3 inv_inertia[2];
   float inv_mass[2] = {0};
@@ -2085,8 +2083,6 @@ static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set 
     inv_mass[k] = dynamics->inv_masses[body_index];
     position[k] = dynamics->positions[body_index];
     rotation[k] = dynamics->rotations[body_index];
-    velocity[k] = dynamics->velocities[body_index];
-    angular_momentum[k] = dynamics->angular_momenta[body_index];
     inv_inertia_tensor[k] = dynamics->inv_inertia_tensors[body_index];
     inv_inertia[k] = bnd_m3_inertia(inv_inertia_tensor[k], rotation[k]);
 
@@ -8364,8 +8360,8 @@ void events_reset(bnd_world *world) {
   memset(world->statics.event_links, 0, world->statics.count * sizeof(event_link));
 }
 
-bool events_subscribed(const common_data *data, count_t index, bnd_event_type event_type) {
-  return data->event_masks[index] & event_type;
+bool events_subscribed(const common_data *data, count_t index, int mask) {
+  return data->event_masks[index] & mask;
 }
 
 bnd_error events_push(bnd_world *world, common_data *data, count_t index, bnd_event event) {
