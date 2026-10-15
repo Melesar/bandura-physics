@@ -255,22 +255,48 @@ Bandura supports imposing constraints on the bodies, so that they cannot move fu
   bnd_set_position(world, right_lower_arm, (bnd_v3){-0.43, 2.63, -0.3});
   bnd_set_rotation(world, right_lower_arm, (bnd_quat) { sinf(pi / 12), 0, 0, cosf(pi / 12) });
 
-  const float joint_margin = 0.1;
+  bnd_distance_joint_config joint = { .max_distance = 0.1f };
 
-  bnd_add_joint(world, head, torso, (bnd_v3){0, -0.4, 0}, (bnd_v3){0, 0.5, 0}, joint_margin);
-  bnd_add_joint(world, torso, pelvis, (bnd_v3){0, -0.5, 0}, (bnd_v3){0, 0.5, 0}, joint_margin);
+  joint.local_anchor_a = (bnd_v3){0, -0.4, 0};
+  joint.local_anchor_b = (bnd_v3){0, 0.5, 0};
+  bnd_result_joint neck = bnd_add_distance_joint(world, head, torso, joint);
+  // Check neck.error before using neck.value as a joint handle.
 
-  bnd_add_joint(world, torso, left_upper_arm, (bnd_v3){0.3, 0.45, 0}, (bnd_v3){-0.1, 0.6, 0}, joint_margin);
-  bnd_add_joint(world, left_upper_arm, left_lower_arm, (bnd_v3){0, -0.6, 0}, (bnd_v3){0, 0.6, 0}, joint_margin);
+  joint.local_anchor_a = (bnd_v3){0, -0.5, 0};
+  joint.local_anchor_b = (bnd_v3){0, 0.5, 0};
+  bnd_add_distance_joint(world, torso, pelvis, joint);
 
-  bnd_add_joint(world, torso, right_upper_arm, (bnd_v3){-0.3, 0.45, 0}, (bnd_v3){0.1, 0.6, 0}, joint_margin);
-  bnd_add_joint(world, right_upper_arm, right_lower_arm, (bnd_v3){0, -0.6, 0}, (bnd_v3){0, 0.6, 0}, joint_margin);
+  joint.local_anchor_a = (bnd_v3){0.3, 0.45, 0};
+  joint.local_anchor_b = (bnd_v3){-0.1, 0.6, 0};
+  bnd_add_distance_joint(world, torso, left_upper_arm, joint);
 
-  bnd_add_joint(world, pelvis, left_upper_leg, (bnd_v3){0.23, -0.5, 0}, (bnd_v3){0, 0.6, 0}, joint_margin);
-  bnd_add_joint(world, left_upper_leg, left_lower_leg, (bnd_v3){0, -0.6, 0}, (bnd_v3){0, 0.6, 0}, joint_margin);
+  joint.local_anchor_a = (bnd_v3){0, -0.6, 0};
+  joint.local_anchor_b = (bnd_v3){0, 0.6, 0};
+  bnd_add_distance_joint(world, left_upper_arm, left_lower_arm, joint);
 
-  bnd_add_joint(world, pelvis, right_upper_leg, (bnd_v3){-0.23, -0.5, 0}, (bnd_v3){0, 0.6, 0}, joint_margin);
-  bnd_add_joint(world, right_upper_leg, right_lower_leg, (bnd_v3){0, -0.6, 0}, (bnd_v3){0, 0.6, 0}, joint_margin);
+  joint.local_anchor_a = (bnd_v3){-0.3, 0.45, 0};
+  joint.local_anchor_b = (bnd_v3){0.1, 0.6, 0};
+  bnd_add_distance_joint(world, torso, right_upper_arm, joint);
+
+  joint.local_anchor_a = (bnd_v3){0, -0.6, 0};
+  joint.local_anchor_b = (bnd_v3){0, 0.6, 0};
+  bnd_add_distance_joint(world, right_upper_arm, right_lower_arm, joint);
+
+  joint.local_anchor_a = (bnd_v3){0.23, -0.5, 0};
+  joint.local_anchor_b = (bnd_v3){0, 0.6, 0};
+  bnd_add_distance_joint(world, pelvis, left_upper_leg, joint);
+
+  joint.local_anchor_a = (bnd_v3){0, -0.6, 0};
+  joint.local_anchor_b = (bnd_v3){0, 0.6, 0};
+  bnd_add_distance_joint(world, left_upper_leg, left_lower_leg, joint);
+
+  joint.local_anchor_a = (bnd_v3){-0.23, -0.5, 0};
+  joint.local_anchor_b = (bnd_v3){0, 0.6, 0};
+  bnd_add_distance_joint(world, pelvis, right_upper_leg, joint);
+
+  joint.local_anchor_a = (bnd_v3){0, -0.6, 0};
+  joint.local_anchor_b = (bnd_v3){0, 0.6, 0};
+  bnd_add_distance_joint(world, right_upper_leg, right_lower_leg, joint);
 
   bnd_body_handle ragdoll[11];
   ragdoll[0] = head;
@@ -285,6 +311,8 @@ Bandura supports imposing constraints on the bodies, so that they cannot move fu
   ragdoll[9] = right_upper_leg;
   ragdoll[10] = right_lower_leg;
 ```
+
+The local anchors are relative to their respective bodies. `min_distance` defaults to zero in the configuration above; set it as well if the anchors must stay a minimum distance apart. `bnd_add_distance_joint` returns a `bnd_result_joint`. After checking its `error`, you can retain its `value` as a `bnd_joint_handle` and pass it to `bnd_remove_joint(world, handle)` later.
 
 ### Using meshes as body shapes
 
@@ -426,8 +454,10 @@ It's possible to subscribe to collision events for the particular body and react
 bnd_body_handle b = bnd_add_sphere_dynamic(world, 5, 0.5).value;
 bnd_set_position(world, b, (bnd_v3){0, 5, 0});
 
-// Makes the engine report collision events for this body during the simulation.
-bnd_event_subscribe(world, b, BND_EVENT_COLLISION);
+// Subscribe to the start, continuation, and end of a collision.
+bnd_event_subscribe(world, b, BND_EVENT_COLLISION_ENTER |
+                              BND_EVENT_COLLISION |
+                              BND_EVENT_COLLISION_FINISH);
 
 bnd_simulate(world, dt);
 
@@ -438,12 +468,22 @@ while (bnd_event_next(world, &enumerator)) {
   bnd_event e = enumerator.e;
   bnd_contact contact = e.collision;
 
-  // Process the collision
+  if (e.type == BND_EVENT_COLLISION_ENTER) {
+    // The bodies started touching.
+  } else if (e.type == BND_EVENT_COLLISION) {
+    // The bodies remain in contact.
+  } else if (e.type == BND_EVENT_COLLISION_FINISH) {
+    // The bodies stopped touching.
+  }
 }
 
 // To stop receiving collision events:
-bnd_event_unsubscribe(world, b, BND_EVENT_COLLISION);
+bnd_event_unsubscribe(world, b, BND_EVENT_COLLISION_ENTER |
+                                BND_EVENT_COLLISION |
+                                BND_EVENT_COLLISION_FINISH);
 ```
+
+Event types can be combined when subscribing. Each event's `type` identifies the phase; the `collision` field contains its contact data. Enumerate events after every simulation step you want to observe.
 
 ### Triggers
 
@@ -451,12 +491,14 @@ Static bodies can be made triggers. A trigger doesn't collide with other bodies,
 
 ```c
 bnd_body_handle trigger_area = bnd_add_box_static(world, (bnd_v3) { 5, 2, 5 }).value; // Only static bodies can be made triggers.
-bnd_body_handle ball = bnd_add_sphere_dynamic(world, 5, 3);
+bnd_body_handle ball = bnd_add_sphere_dynamic(world, 5, 3).value;
 bnd_set_position(world, ball, (bnd_v3) { 0, 10, 0 });
 
 bnd_set_trigger(world, trigger_area, true); // If last parameter is set to `false`, the body becomes a regular rigidbody. 
 
-bnd_event_subscribe(world, trigger_area, BND_EVENT_TRIGGER); // You can subcribe to either body to receive trigger events.
+bnd_event_subscribe(world, trigger_area, BND_EVENT_TRIGGER_ENTER |
+                                         BND_EVENT_TRIGGER |
+                                         BND_EVENT_TRIGGER_FINISH); // You can subscribe to either body.
 
 for (int i = 0; i < 10; i++) {
   // Make the sphere fall onto a box.
@@ -466,12 +508,17 @@ for (int i = 0; i < 10; i++) {
   bnd_event_enumerator enumerator;
   bnd_event_enumerate(world, trigger_area, &enumerator);
 
-  // Trigger events are reported for as long as two bodies intersect.
   while (bnd_event_next(world, &enumerator)) {
     bnd_event e = enumerator.e;
     bnd_trigger trigger_event = e.trigger;
 
-    printf("Body with index %u is intersecting the trigger area\n", trigger_event.other.index);
+    if (e.type == BND_EVENT_TRIGGER_ENTER) {
+      printf("Body with index %u entered the trigger area\n", trigger_event.other.index);
+    } else if (e.type == BND_EVENT_TRIGGER) {
+      printf("Body with index %u remains in the trigger area\n", trigger_event.other.index);
+    } else if (e.type == BND_EVENT_TRIGGER_FINISH) {
+      printf("Body with index %u left the trigger area\n", trigger_event.other.index);
+    }
   }
 }
 ```
@@ -527,11 +574,14 @@ If you know  the upper limit for your body count in advance, you can adjust this
 
 * `dynamics_capacity` - number of dynamic bodies.
 * `statics_capacity` - number of static bodies.
-* `contacts_capacity` - maximum number of contacts per simulation frame.
+* `contacts_capacity` - initial capacity for persistent broad-phase contact pairs.
 * `joints_capacity` - number of joints.
 * `meshes_capacity` - number of meshes imported with `bnd_import_mesh`.
 * `events_capacity` - maximum number of events produced per simulation frame.
 * `materials_capacity` - number of material definitions, including the default material.
+* `hash_table_capacity` - initial capacity of the broad-phase contact lookup table.
+* `shapes_brackets_capacity` - initial capacities of the five compound-shape storage brackets.
+* `internal_allocator_capacity_bytes` - size in bytes of the internal scratch arena used during simulation.
 
 ### Simulation
 
@@ -543,11 +593,13 @@ These parameters affect the physics simulation. You may want to adjust them for 
 * `bounciness` - the restitution of the default material assigned to new bodies. Should be the value from 0 to 1. Default is `0.2` which means that the bounce velocity will be 20% of the collision velocity.
 * `friction` - the dynamic friction of the default material assigned to new bodies. Should be the value between 0 and 1, where the bigger value means stronger friction. Default is `0.9`.
 * `sleep_base_bias` and `sleep_threshold` control how quickly the bodies go to sleep. Sleeping bodies are dynamic bodies which currently don't move. While in this state they consume almost no CPU resources for simulation, so this is benefitial for the game performance. To determine which body has to fall asleep, the engine uses the biased average of its velocity values across multiple frames. `sleep_base_bias` specifies which velocities are more important: values closer to 0 favour previous velocities, while values closer to 1 favour the current velocity. Once this biased average crosses `sleep_threshold`, the body falls asleep. 
-* `min_bounce_velocity` defines the minimum velocity at which the body will bounce. Adjusting this may be useful for getting the more stable resting bodies. Default value is `0.25`.
+### Solver
 
-### Advanced
+`config.solver` controls the constraint solver. `iterations_count` trades simulation time for precision and stability (default `8`); `warm_start` reuses contact impulses from previous steps (enabled by default). `baumgarde_coefficient`, `linear_slop`, and `max_baumgarde_velocity` control how penetration is corrected. Their defaults are `0.2`, `0.005`, and `4.0`, respectively.
 
-These options affect the internal systems of the engine, such as collision detection algorithms, contact solver and supporting data structures. Adjust them if you know what you are doing.
+### Collision detection
+
+`config.collision_detection` contains `max_gjk_iterations` (default `100`), `epa_tolerance` (default `0.01`), and `epa_max_nodes` (default `128`). `feature_distance_threshold` (default `0.02`) and `separation_threshold` (default `0.05`) control reuse of cached contact points.
 
 ## Handling errors
 
