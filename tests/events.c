@@ -133,6 +133,87 @@ static void test_generic_static_plane_can_be_a_trigger(void) {
   bnd_teardown(world);
 }
 
+static void expect_single_event_type(bnd_world *world, bnd_body_handle body, bnd_event_type type) {
+  bnd_event_enumerator enumerator;
+  assert(bnd_event_enumerate(world, body, &enumerator).value);
+  assert(bnd_event_next(world, &enumerator));
+  assert(enumerator.e.type == type);
+  assert(!bnd_event_next(world, &enumerator));
+}
+
+static void test_collision_finish_events_cover_narrow_and_broad_phase_separation(void) {
+  bnd_world *world = test_world();
+  bnd_body_handle dynamic = add_dynamic_sphere(world, 1.0f);
+  bnd_body_handle static_body = add_static_sphere(world, 1.0f);
+  expect_ok(bnd_set_position(world, static_body, (bnd_v3){1.5f, 0, 0}));
+  expect_ok(bnd_event_subscribe(world, dynamic, BND_EVENT_COLLISION_ENTER | BND_EVENT_COLLISION | BND_EVENT_COLLISION_FINISH));
+
+  bnd_simulate(world, 0.0f);
+  expect_single_event_type(world, dynamic, BND_EVENT_COLLISION_ENTER);
+  bnd_simulate(world, 0.0f);
+  expect_single_event_type(world, dynamic, BND_EVENT_COLLISION);
+
+  // The AABBs still overlap, but the spheres do not.
+  expect_ok(bnd_set_position(world, static_body, (bnd_v3){1.5f, 1.5f, 0}));
+  bnd_simulate(world, 0.0f);
+  expect_single_event_type(world, dynamic, BND_EVENT_COLLISION_FINISH);
+  bnd_simulate(world, 0.0f);
+  assert(!bnd_event_any(world, dynamic).value);
+
+  expect_ok(bnd_set_position(world, static_body, (bnd_v3){1.5f, 0, 0}));
+  bnd_simulate(world, 0.0f);
+  expect_single_event_type(world, dynamic, BND_EVENT_COLLISION_ENTER);
+
+  // The broad phase removes the pair entirely.
+  expect_ok(bnd_set_position(world, static_body, (bnd_v3){3.0f, 0, 0}));
+  bnd_simulate(world, 0.0f);
+  expect_single_event_type(world, dynamic, BND_EVENT_COLLISION_FINISH);
+  bnd_teardown(world);
+}
+
+static void test_trigger_finish_events_cover_narrow_and_broad_phase_separation(void) {
+  bnd_world *world = test_world();
+  bnd_body_handle dynamic = add_dynamic_sphere(world, 1.0f);
+  bnd_body_handle trigger = add_static_sphere(world, 1.0f);
+  expect_ok(bnd_set_position(world, trigger, (bnd_v3){1.5f, 0, 0}));
+  expect_ok(bnd_set_trigger(world, trigger, true));
+  expect_ok(bnd_event_subscribe(world, dynamic, BND_EVENT_TRIGGER_ENTER | BND_EVENT_TRIGGER | BND_EVENT_TRIGGER_FINISH));
+
+  bnd_simulate(world, 0.0f);
+  expect_single_event_type(world, dynamic, BND_EVENT_TRIGGER_ENTER);
+  expect_ok(bnd_set_position(world, trigger, (bnd_v3){1.5f, 1.5f, 0}));
+  bnd_simulate(world, 0.0f);
+  expect_single_event_type(world, dynamic, BND_EVENT_TRIGGER_FINISH);
+
+  expect_ok(bnd_set_position(world, trigger, (bnd_v3){1.5f, 0, 0}));
+  bnd_simulate(world, 0.0f);
+  expect_single_event_type(world, dynamic, BND_EVENT_TRIGGER_ENTER);
+  expect_ok(bnd_set_position(world, trigger, (bnd_v3){3.0f, 0, 0}));
+  bnd_simulate(world, 0.0f);
+  expect_single_event_type(world, dynamic, BND_EVENT_TRIGGER_FINISH);
+  bnd_teardown(world);
+}
+
+static void test_compound_trigger_emits_one_finish_event_per_body_pair(void) {
+  bnd_world *world = test_world();
+  bnd_body_handle dynamic = add_dynamic_sphere(world, 1.0f);
+  bnd_body_shape shapes[] = {
+    { .type = BND_SPHERE, .value.sphere = { .radius = 1.0f }, .offset = {0, 0, -0.5f}, .rotation = bnd_quat_identity() },
+    { .type = BND_SPHERE, .value.sphere = { .radius = 1.0f }, .offset = {0, 0, 0.5f}, .rotation = bnd_quat_identity() },
+  };
+  bnd_result_handle result = bnd_add_compound_body_static(world, shapes, 2);
+  expect_ok(result.error);
+  bnd_body_handle trigger = result.value;
+  expect_ok(bnd_set_trigger(world, trigger, true));
+  expect_ok(bnd_event_subscribe(world, dynamic, BND_EVENT_TRIGGER_FINISH));
+
+  bnd_simulate(world, 0.0f);
+  expect_ok(bnd_set_position(world, trigger, (bnd_v3){5.0f, 0, 0}));
+  bnd_simulate(world, 0.0f);
+  expect_single_event_type(world, dynamic, BND_EVENT_TRIGGER_FINISH);
+  bnd_teardown(world);
+}
+
 void events_tests(void) {
   TESTS_BEGIN("Events")
     TEST(test_collision_events_enumerate_for_each_subscribed_body)
@@ -140,5 +221,8 @@ void events_tests(void) {
     TEST(test_trigger_events_respect_collision_layers)
     TEST(test_compound_trigger_emits_one_event_per_body_pair)
     TEST(test_generic_static_plane_can_be_a_trigger)
+    TEST(test_collision_finish_events_cover_narrow_and_broad_phase_separation)
+    TEST(test_trigger_finish_events_cover_narrow_and_broad_phase_separation)
+    TEST(test_compound_trigger_emits_one_finish_event_per_body_pair)
   TESTS_END;
 }
