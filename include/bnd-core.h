@@ -588,7 +588,7 @@ count_t               ephemeral_body_index(const common_data *data);
 bnd_error             events_init(bnd_world *world);
 void                  events_teardown(bnd_world *world);
 void                  events_reset(bnd_world *world);
-bool                  events_subscribed(const common_data *data, count_t index, bnd_event_type event_type);
+bool                  events_subscribed(const common_data *data, count_t index, int mask);
 bnd_error             events_push(bnd_world *world, common_data *data, count_t index, bnd_event event);
 bnd_error             events_emit_contacts(bnd_world *world);
 

@@ -152,8 +152,6 @@ static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set 
 
   bnd_v3 position[2];
   bnd_quat rotation[2];
-  bnd_v3 velocity[2];
-  bnd_v3 angular_momentum[2];
   bnd_m3 inv_inertia_tensor[2];
   bnd_m3 inv_inertia[2];
   float inv_mass[2] = {0};
@@ -163,8 +161,6 @@ static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set 
     inv_mass[k] = dynamics->inv_masses[body_index];
     position[k] = dynamics->positions[body_index];
     rotation[k] = dynamics->rotations[body_index];
-    velocity[k] = dynamics->velocities[body_index];
-    angular_momentum[k] = dynamics->angular_momenta[body_index];
     inv_inertia_tensor[k] = dynamics->inv_inertia_tensors[body_index];
     inv_inertia[k] = bnd_m3_inertia(inv_inertia_tensor[k], rotation[k]);
 

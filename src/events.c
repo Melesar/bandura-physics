@@ -119,8 +119,8 @@ void events_reset(bnd_world *world) {
   memset(world->statics.event_links, 0, world->statics.count * sizeof(event_link));
 }
 
-bool events_subscribed(const common_data *data, count_t index, bnd_event_type event_type) {
-  return data->event_masks[index] & event_type;
+bool events_subscribed(const common_data *data, count_t index, int mask) {
+  return data->event_masks[index] & mask;
 }
 
 bnd_error events_push(bnd_world *world, common_data *data, count_t index, bnd_event event) {
