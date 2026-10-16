@@ -15,6 +15,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .link_libc = true,
+        .sanitize_c = .off,
     });
     module.addIncludePath(header.getOutputDir());
     module.addIncludePath(b.path("CUnit/Headers"));
@@ -38,5 +39,19 @@ pub fn build(b: *std.Build) void {
         .linkage = .static,
         .root_module = module,
     });
+    lib.installHeader(header.getOutputFile(), "CUnit/CUnit.h");
+    for ([_][]const u8{
+        "Automated.h",
+        "Basic.h",
+        "Console.h",
+        "CUError.h",
+        "CUnit_intl.h",
+        "MyMem.h",
+        "TestDB.h",
+        "TestRun.h",
+        "Util.h",
+    }) |name| {
+        lib.installHeader(b.path(b.fmt("CUnit/Headers/{s}", .{name})), b.fmt("CUnit/{s}", .{name}));
+    }
     b.installArtifact(lib);
 }

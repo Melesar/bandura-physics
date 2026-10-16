@@ -68,10 +68,12 @@ pub fn build(b: *std.Build) !void {
 
     try defaultStep(b, tmpPath, options);
 
-    const banduraTestsModule = try bandura.createBaseModule(b, options.forBandura(), .full);
+    var testBanduraOptions = options.forBandura();
+    testBanduraOptions.linkage = .static;
+    const banduraTestsModule = try bandura.createBaseModule(b, testBanduraOptions, .full);
     common.enableTests(b, banduraTestsModule);
 
-    const testStep = try testsStep(b, bandura.addLibrary(b, banduraTestsModule, options.forBandura()), options);
+    const testStep = try testsStep(b, bandura.addLibrary(b, banduraTestsModule, testBanduraOptions), options);
     try targets.append(b.allocator, testStep);
 
     const scenarioOptions = options.forScenarios();
@@ -110,13 +112,15 @@ fn defaultStep(b: *std.Build, tempPath: std.Build.LazyPath, options: Options) !v
 
 fn testsStep(b: *std.Build, banduraLib: *std.Build.Step.Compile, options: Options) !*std.Build.Step.Compile {
     const testsOpts = options.forTests();
+    const cunit = b.dependency("cunit", .{
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    banduraLib.root_module.linkLibrary(cunit.artifact("cunit"));
     const testsModule = try tests.createModule(b, testsOpts);
     testsModule.addCMacro("COLLISION_TEST_SUITE_PATH", "\"tests/collision_test_cases.yaml\"");
     testsModule.linkLibrary(banduraLib);
-
-    if (options.linkage == .dynamic) {
-        testsModule.addCMacro("BND_USE_DLL", "");
-    }
+    testsModule.linkLibrary(cunit.artifact("cunit"));
 
     common.enableTests(b, testsModule);
 

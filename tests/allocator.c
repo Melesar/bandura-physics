@@ -1,5 +1,5 @@
 #include "library_testing.h"
-#include "testing.h"
+#include <CUnit/CUnit.h>
 
 #include <stdlib.h>
 
@@ -18,7 +18,7 @@ typedef struct {
 static allocation_tracker tracker;
 
 static void tracker_reset(void) {
-  assert(tracker.count == 0);
+  CU_ASSERT_EQUAL_FATAL(tracker.count, 0);
   tracker = (allocation_tracker){0};
 }
 
@@ -29,13 +29,13 @@ static uint32_t tracker_find(void *pointer) {
     }
   }
 
-  assert(false);
-  return 0;
+  CU_FAIL("Allocator pointer was not tracked");
+  return UINT32_MAX;
 }
 
 static void tracker_store(void *pointer, uint64_t size) {
-  assert(pointer != NULL);
-  assert(tracker.count < 256);
+  CU_ASSERT(pointer != NULL);
+  CU_ASSERT(tracker.count < 256);
   tracker.records[tracker.count++] = (allocation_record){pointer, size};
   tracker.active_bytes += size;
   if (tracker.active_bytes > tracker.peak_bytes) {
@@ -44,7 +44,11 @@ static void tracker_store(void *pointer, uint64_t size) {
 }
 
 static void *tracking_malloc(uint64_t alignment, uint64_t size) {
-  assert(alignment == 1 || alignment == 2 || alignment == 4 || alignment == 8);
+  CU_ASSERT(alignment == 1 || alignment == 2 || alignment == 4 || alignment == 8);
+  if (tracker.count == 256) {
+    CU_FAIL("Allocator tracker is full");
+    return NULL;
+  }
   void *pointer = malloc(size);
   if (pointer != NULL) {
     tracker_store(pointer, size);
@@ -53,9 +57,10 @@ static void *tracking_malloc(uint64_t alignment, uint64_t size) {
 }
 
 static void *tracking_realloc(void *pointer, uint64_t alignment, uint64_t old_size, uint64_t new_size) {
-  assert(alignment == 1 || alignment == 2 || alignment == 4 || alignment == 8);
+  CU_ASSERT(alignment == 1 || alignment == 2 || alignment == 4 || alignment == 8);
   uint32_t index = tracker_find(pointer);
-  assert(tracker.records[index].size == old_size);
+  if (index == UINT32_MAX) return NULL;
+  CU_ASSERT(tracker.records[index].size == old_size);
 
   void *replacement = realloc(pointer, new_size);
   if (replacement == NULL) {
@@ -73,7 +78,8 @@ static void *tracking_realloc(void *pointer, uint64_t alignment, uint64_t old_si
 
 static void tracking_free(void *pointer, uint64_t size) {
   uint32_t index = tracker_find(pointer);
-  assert(tracker.records[index].size == size);
+  if (index == UINT32_MAX) return;
+  CU_ASSERT(tracker.records[index].size == size);
   tracker.active_bytes -= size;
   tracker.records[index] = tracker.records[--tracker.count];
   free(pointer);
@@ -99,12 +105,13 @@ static void test_required_memory_covers_initial_allocation(void) {
 
   uint32_t required = bnd_required_memory(&config);
   bnd_result_world result = bnd_init_with_allocator(config, tracking_allocator(true));
+  test_world_track(result.value);
   expect_ok(result.error);
-  assert(required >= tracker.peak_bytes);
+  CU_ASSERT(required >= tracker.peak_bytes);
 
-  bnd_teardown(result.value);
-  assert(tracker.count == 0);
-  assert(tracker.active_bytes == 0);
+  test_world_teardown(result.value);
+  CU_ASSERT(tracker.count == 0);
+  CU_ASSERT(tracker.active_bytes == 0);
 }
 
 static void test_allocator_tracks_growth_and_exact_teardown_sizes(void) {
@@ -115,6 +122,7 @@ static void test_allocator_tracks_growth_and_exact_teardown_sizes(void) {
   config.memory.joints_capacity = 1;
 
   bnd_result_world result = bnd_init_with_allocator(config, tracking_allocator(true));
+  test_world_track(result.value);
   expect_ok(result.error);
   bnd_world *world = result.value;
 
@@ -123,9 +131,9 @@ static void test_allocator_tracks_growth_and_exact_teardown_sizes(void) {
   add_static_sphere(world, 1.0f);
   add_static_sphere(world, 1.0f);
 
-  bnd_teardown(world);
-  assert(tracker.count == 0);
-  assert(tracker.active_bytes == 0);
+  test_world_teardown(world);
+  CU_ASSERT(tracker.count == 0);
+  CU_ASSERT(tracker.active_bytes == 0);
 }
 
 static void test_fixed_capacity_allocator_reports_no_space(void) {
@@ -134,14 +142,15 @@ static void test_fixed_capacity_allocator_reports_no_space(void) {
   config.memory.dynamics_capacity = 1;
 
   bnd_result_world result = bnd_init_with_allocator(config, tracking_allocator(false));
+  test_world_track(result.value);
   expect_ok(result.error);
   add_dynamic_sphere(result.value, 1.0f);
 
   bnd_result_handle extra = bnd_add_sphere_dynamic(result.value, 1.0f, 1.0f);
   expect_error(extra.error, BND_ERROR_NO_SPACE_AVAILABLE);
 
-  bnd_teardown(result.value);
-  assert(tracker.count == 0);
+  test_world_teardown(result.value);
+  CU_ASSERT(tracker.count == 0);
 }
 
 static void test_allocator_requires_malloc(void) {
@@ -149,11 +158,17 @@ static void test_allocator_requires_malloc(void) {
   expect_error(result.error, BND_ERROR_INVALID_ALLOCATOR);
 }
 
-void allocator_tests(void) {
-  TESTS_BEGIN("Allocator and memory")
-    TEST(test_required_memory_covers_initial_allocation)
-    TEST(test_allocator_tracks_growth_and_exact_teardown_sizes)
-    TEST(test_fixed_capacity_allocator_reports_no_space)
-    TEST(test_allocator_requires_malloc)
-  TESTS_END;
+CU_ErrorCode register_allocator_tests(void) {
+  CU_TestInfo tests[] = {
+    {"test_required_memory_covers_initial_allocation", test_required_memory_covers_initial_allocation},
+    {"test_allocator_tracks_growth_and_exact_teardown_sizes", test_allocator_tracks_growth_and_exact_teardown_sizes},
+    {"test_fixed_capacity_allocator_reports_no_space", test_fixed_capacity_allocator_reports_no_space},
+    {"test_allocator_requires_malloc", test_allocator_requires_malloc},
+    CU_TEST_INFO_NULL
+  };
+  CU_SuiteInfo suites[] = {
+    {"Allocator and memory", NULL, NULL, NULL, test_world_cleanup, tests},
+    CU_SUITE_INFO_NULL
+  };
+  return CU_register_suites(suites);
 }

@@ -1192,11 +1192,13 @@ bnd_error run_broad_phase(bnd_world *world) {
 #ifdef BND_TESTS
 
 #include "library_testing.h"
-#include "testing.h"
+#include <CUnit/CUnit.h>
 
-static collision_detection_context manifold_test_context(bnd_world *world) {
-  add_dynamic_sphere(world, 1);
-  add_static_sphere(world, 1);
+#define manifold_test_context(world) manifold_test_context_at((world), __FILE__, __LINE__)
+
+static collision_detection_context manifold_test_context_at(bnd_world *world, const char *file, unsigned int line) {
+  add_dynamic_sphere_at(world, 1, file, line);
+  add_static_sphere_at(world, 1, file, line);
   return (collision_detection_context) {
     .world = world, .data_a = (common_data *)&world->dynamics, .data_b = (common_data *)&world->statics,
     .shape_a.rotation = bnd_quat_identity(), .shape_b.rotation = bnd_quat_identity(),
@@ -1235,12 +1237,12 @@ static void test_manifold_materializes_local_witnesses(void) {
   fresh.points[0].witness_a = bnd_v3_add(bnd_v3_rotate(fresh.points[0].witness_a, rotation), translation);
   fresh.points[0].witness_b = bnd_v3_add(bnd_v3_rotate(fresh.points[0].witness_b, rotation), translation);
   update_manifold(&ctx, &result, &fresh, &cached);
-  assert(result.count == 2);
+  CU_ASSERT(result.count == 2);
   expect_v3_near(result.points[1].point, bnd_v3_add(bnd_v3_rotate(cached.points[0].point, rotation), translation));
   expect_float_near(result.points[1].depth, 0.2f);
   expect_v3_near(result.points[0].witness_a, ((bnd_v3){-1, -0.1f, 0}));
   expect_v3_near(result.points[1].witness_a, cached.points[0].witness_a);
-  bnd_teardown(world);
+  test_world_teardown(world);
 }
 
 static void test_manifold_matches_fresh_points_and_keeps_impulses(void) {
@@ -1254,7 +1256,7 @@ static void test_manifold_matches_fresh_points_and_keeps_impulses(void) {
   cached.points[0].tangential_impulse[1] = 0;
   fresh = manifold_test_point(0.005f, 0, 0.11f);
   update_manifold(&ctx, &result, &fresh, &cached);
-  assert(result.count == 1);
+  CU_ASSERT(result.count == 1);
   expect_float_near(result.points[0].depth, 0.11f);
   expect_v3_near(result.points[0].point, fresh.points[0].point);
   expect_float_near(result.points[0].normal_impulse, cached.points[0].normal_impulse);
@@ -1262,7 +1264,7 @@ static void test_manifold_matches_fresh_points_and_keeps_impulses(void) {
   expect_float_near(result.points[0].tangential_impulse[1], cached.points[0].tangential_impulse[1]);
   expect_float_near(result.points[0].tangential_impulse[2], cached.points[0].tangential_impulse[2]);
   expect_float_near(result.points[0].tangential_impulse[3], cached.points[0].tangential_impulse[3]);
-  bnd_teardown(world);
+  test_world_teardown(world);
 }
 
 static void test_manifold_discards_invalid_cached_points(void) {
@@ -1275,18 +1277,18 @@ static void test_manifold_discards_invalid_cached_points(void) {
 
   world->dynamics.positions[0].y = 0.2f;
   update_manifold(&ctx, &result, &fresh, &cached);
-  assert(result.count == 1); // Normal separation.
+  CU_ASSERT(result.count == 1); // Normal separation.
   world->dynamics.positions[0] = (bnd_v3){0.1f, 0, 0};
   update_manifold(&ctx, &result, &fresh, &cached);
-  assert(result.count == 1); // Tangential drift.
+  CU_ASSERT(result.count == 1); // Tangential drift.
   world->dynamics.positions[0] = bnd_v3_zero();
   cached.local_normal = bnd_v3_right();
   update_manifold(&ctx, &result, &fresh, &cached);
-  assert(result.count == 1); // Different contact face.
+  CU_ASSERT(result.count == 1); // Different contact face.
   cached.local_normal = bnd_v3_up();
   update_manifold(&ctx, &result, &empty, &cached);
-  assert(result.count == 0); // A narrow-phase miss clears the cache.
-  bnd_teardown(world);
+  CU_ASSERT(result.count == 0); // A narrow-phase miss clears the cache.
+  test_world_teardown(world);
 }
 
 static void test_manifold_reduces_to_largest_surface(void) {
@@ -1299,10 +1301,10 @@ static void test_manifold_reduces_to_largest_surface(void) {
     update_manifold(&ctx, &result, &fresh, &cached);
     cached = result;
   }
-  assert(cached.count == 4);
+  CU_ASSERT(cached.count == 4);
   contact_manifold fresh = manifold_test_point(0, 0, 0.1f);
   update_manifold(&ctx, &result, &fresh, &cached);
-  assert(result.count == 4);
+  CU_ASSERT(result.count == 4);
   for (count_t i = 0; i < result.count; ++i) {
     expect_float_near(fabsf(result.points[i].point.x), 1);
     expect_float_near(fabsf(result.points[i].point.z), 1);
@@ -1310,12 +1312,12 @@ static void test_manifold_reduces_to_largest_surface(void) {
   // The selected points, including their local features, survive another frame unchanged.
   cached = result;
   update_manifold(&ctx, &result, &fresh, &cached);
-  assert(result.count == 4);
+  CU_ASSERT(result.count == 4);
   for (count_t i = 0; i < result.count; ++i) {
     expect_v3_near(result.points[i].point, cached.points[i].point);
     expect_v3_near(result.points[i].witness_a, cached.points[i].witness_a);
   }
-  bnd_teardown(world);
+  test_world_teardown(world);
 }
 
 static void test_manifold_inverted_dispatch_and_contact_end(void) {
@@ -1328,30 +1330,30 @@ static void test_manifold_inverted_dispatch_and_contact_end(void) {
   expect_ok(bnd_set_position(world, box.value, (bnd_v3){2, 2, 4}));
   expect_ok(run_broad_phase(world));
   expect_ok(run_narrow_phase(world));
-  assert(world->contacts.statics.first != UINT32_MAX);
+  CU_ASSERT(world->contacts.statics.first != UINT32_MAX);
   broad_phase_contact *c = &world->contacts.statics.contacts[world->contacts.statics.first];
-  assert(c->manifold.count == 1);
-  assert(c->status & CONTACT_BEGAN_TOUCHING);
-  assert(c->manifold.normal.x > 0.9f);
+  CU_ASSERT(c->manifold.count == 1);
+  CU_ASSERT(c->status & CONTACT_BEGAN_TOUCHING);
+  CU_ASSERT(c->manifold.normal.x > 0.9f);
   contact_point point = c->manifold.points[0];
   bnd_v3 a = bnd_v3_add(point.witness_a, world->dynamics.positions[0]);
   bnd_v3 b = bnd_v3_add(point.witness_b, world->statics.positions[0]);
   expect_v3_near(point.point, bnd_v3_scale(bnd_v3_add(a, b), 0.5f));
   expect_float_near(point.depth, -bnd_v3_dot(bnd_v3_sub(a, b), c->manifold.normal));
   expect_float_near(point.witness_b.x, 1);
-  assert(point.witness_a.x < 0);
+  CU_ASSERT(point.witness_a.x < 0);
   expect_ok(run_narrow_phase(world));
-  assert(c->manifold.count == 1);
-  assert(c->status & CONTACT_TOUCHING);
-  assert(!(c->status & CONTACT_BEGAN_TOUCHING));
+  CU_ASSERT(c->manifold.count == 1);
+  CU_ASSERT(c->status & CONTACT_TOUCHING);
+  CU_ASSERT(!(c->status & CONTACT_BEGAN_TOUCHING));
 
   // Keep the broad contact to verify that a narrow-phase miss clears its manifold.
   expect_ok(bnd_set_position(world, capsule.value, (bnd_v3){10, 2, 4}));
   expect_ok(run_narrow_phase(world));
-  assert(c->manifold.count == 0);
-  assert(c->status & CONTACT_FINISHED_TOUCHING);
-  assert(!(c->status & CONTACT_TOUCHING));
-  bnd_teardown(world);
+  CU_ASSERT(c->manifold.count == 0);
+  CU_ASSERT(c->status & CONTACT_FINISHED_TOUCHING);
+  CU_ASSERT(!(c->status & CONTACT_TOUCHING));
+  test_world_teardown(world);
 }
 
 
@@ -1463,26 +1465,31 @@ static bnd_body_handle add_two_shape_static(bnd_world *world) {
   return result.value;
 }
 
-static void broad_phase_assert_set_links(const broad_contacts_set *set) {
+#define broad_phase_assert_set_links(set) broad_phase_assert_set_links_at((set), __FILE__, __LINE__)
+#define CHECK_LINK(condition) CU_assertImplementation((condition), line, #condition, file, "", CU_FALSE)
+
+static void broad_phase_assert_set_links_at(const broad_contacts_set *set, const char *file, unsigned int line) {
   count_t roots = 0;
   count_t shape_entries = 0;
   count_t previous = UINT32_MAX;
 
   for (count_t index = set->first; index != UINT32_MAX; index = set->contacts[index].next_body) {
     const broad_phase_contact *root = &set->contacts[index];
-    assert(index != UINT32_MAX);
-    assert(root->next_body == UINT32_MAX || set->contacts[root->next_body].key != 0);
-    assert(root->key & UINT64_C(0x8000000000000000));
-    assert(previous == UINT32_MAX || set->contacts[previous].next_body == index);
+    CHECK_LINK(index != UINT32_MAX);
+    CHECK_LINK(root->next_body == UINT32_MAX || set->contacts[root->next_body].key != 0);
+    CHECK_LINK((root->key & UINT64_C(0x8000000000000000)) != 0);
+    CHECK_LINK(previous == UINT32_MAX || set->contacts[previous].next_body == index);
     shape_entries += broad_phase_chain_count(set, index);
     previous = index;
     roots += 1;
   }
 
-  assert((roots == 0) == (set->first == UINT32_MAX && set->last == UINT32_MAX));
-  assert((roots > 0) == (set->last != UINT32_MAX));
-  assert(set->next >= shape_entries + broad_phase_free_count(set));
+  CHECK_LINK((roots == 0) == (set->first == UINT32_MAX && set->last == UINT32_MAX));
+  CHECK_LINK((roots > 0) == (set->last != UINT32_MAX));
+  CHECK_LINK(set->next >= shape_entries + broad_phase_free_count(set));
 }
+
+#undef CHECK_LINK
 
 static void test_broad_phase_creates_and_deduplicates_contacts(void) {
   bnd_world *world = test_world();
@@ -1492,25 +1499,25 @@ static void test_broad_phase_creates_and_deduplicates_contacts(void) {
   broad_phase_refresh(world);
 
   broad_contacts_set *set = &world->contacts.dynamics;
-  assert(world->contacts.hash_table_entry_count == 1);
-  assert(broad_phase_root_count(set) == 1);
-  assert(set->first == set->last);
-  assert(set->next == 1);
-  assert(set->free_list == UINT32_MAX);
+  CU_ASSERT(world->contacts.hash_table_entry_count == 1);
+  CU_ASSERT(broad_phase_root_count(set) == 1);
+  CU_ASSERT(set->first == set->last);
+  CU_ASSERT(set->next == 1);
+  CU_ASSERT(set->free_list == UINT32_MAX);
 
   broad_phase_contact *contact = broad_phase_contact_for_pair(world, a, b, BND_BODY_DYNAMIC);
-  assert(contact != NULL);
-  assert(contact->shape_a == 0 && contact->shape_b == 0);
-  assert(contact->next == UINT32_MAX && contact->next_body == UINT32_MAX);
-  assert(contact->key & UINT64_C(0x8000000000000000));
+  CU_ASSERT_PTR_NOT_NULL_FATAL(contact);
+  CU_ASSERT(contact->shape_a == 0 && contact->shape_b == 0);
+  CU_ASSERT(contact->next == UINT32_MAX && contact->next_body == UINT32_MAX);
+  CU_ASSERT((contact->key & UINT64_C(0x8000000000000000)) != 0);
 
   count_t first = set->first;
   broad_phase_refresh(world);
-  assert(world->contacts.hash_table_entry_count == 1);
-  assert(set->first == first && set->next == 1);
+  CU_ASSERT(world->contacts.hash_table_entry_count == 1);
+  CU_ASSERT(set->first == first && set->next == 1);
   broad_phase_assert_set_links(set);
 
-  bnd_teardown(world);
+  test_world_teardown(world);
 }
 
 static void test_broad_phase_keeps_dynamic_and_static_sets_independent(void) {
@@ -1521,15 +1528,15 @@ static void test_broad_phase_keeps_dynamic_and_static_sets_independent(void) {
 
   broad_phase_refresh(world);
 
-  assert(broad_phase_root_count(&world->contacts.dynamics) == 1);
-  assert(broad_phase_root_count(&world->contacts.statics) == 2);
-  assert(world->contacts.hash_table_entry_count == 3);
-  assert(broad_phase_contact_for_pair(world, dynamic_a, dynamic_b, BND_BODY_DYNAMIC) != NULL);
-  assert(broad_phase_contact_for_pair(world, dynamic_a, static_body, BND_BODY_STATIC) != NULL);
+  CU_ASSERT(broad_phase_root_count(&world->contacts.dynamics) == 1);
+  CU_ASSERT(broad_phase_root_count(&world->contacts.statics) == 2);
+  CU_ASSERT(world->contacts.hash_table_entry_count == 3);
+  CU_ASSERT(broad_phase_contact_for_pair(world, dynamic_a, dynamic_b, BND_BODY_DYNAMIC) != NULL);
+  CU_ASSERT(broad_phase_contact_for_pair(world, dynamic_a, static_body, BND_BODY_STATIC) != NULL);
   broad_phase_assert_set_links(&world->contacts.dynamics);
   broad_phase_assert_set_links(&world->contacts.statics);
 
-  bnd_teardown(world);
+  test_world_teardown(world);
 }
 
 static void test_broad_phase_uses_shape_aabbs_and_inclusive_boundaries(void) {
@@ -1543,13 +1550,13 @@ static void test_broad_phase_uses_shape_aabbs_and_inclusive_boundaries(void) {
   bnd_body_handle static_body = add_static_sphere(world, 1.0f);
 
   broad_phase_refresh(world);
-  assert(broad_phase_contact_for_pair(world, dynamic, static_body, BND_BODY_STATIC) == NULL);
+  CU_ASSERT(broad_phase_contact_for_pair(world, dynamic, static_body, BND_BODY_STATIC) == NULL);
 
   broad_phase_move_body(world, static_body, (bnd_v3){-3, 0, 0});
   broad_phase_refresh(world);
   broad_phase_contact *contact = broad_phase_contact_for_pair(world, dynamic, static_body, BND_BODY_STATIC);
-  assert(contact != NULL);
-  assert(contact->shape_a == 0 && contact->shape_b == 0);
+  CU_ASSERT_PTR_NOT_NULL_FATAL(contact);
+  CU_ASSERT(contact->shape_a == 0 && contact->shape_b == 0);
 
   bnd_body_handle boundary_dynamic = add_dynamic_sphere(world, 1.0f);
   bnd_body_handle boundary_static = add_static_sphere(world, 1.0f);
@@ -1558,9 +1565,9 @@ static void test_broad_phase_uses_shape_aabbs_and_inclusive_boundaries(void) {
   /* Two unit spheres at distance two touch and must be retained. */
   broad_phase_move_body(world, boundary_static, (bnd_v3){2, 0, 0});
   broad_phase_refresh(world);
-  assert(broad_phase_contact_for_pair(world, boundary_dynamic, boundary_static, BND_BODY_STATIC) != NULL);
+  CU_ASSERT(broad_phase_contact_for_pair(world, boundary_dynamic, boundary_static, BND_BODY_STATIC) != NULL);
 
-  bnd_teardown(world);
+  test_world_teardown(world);
 }
 
 static void test_broad_phase_promotes_root_and_removes_final_shape_contact(void) {
@@ -1578,28 +1585,28 @@ static void test_broad_phase_promotes_root_and_removes_final_shape_contact(void)
 
   broad_phase_refresh(world);
   broad_phase_contact *root = broad_phase_contact_for_pair(world, dynamic, static_body, BND_BODY_STATIC);
-  assert(root != NULL);
-  assert(broad_phase_chain_count(&world->contacts.statics, (count_t)(root - world->contacts.statics.contacts)) == 2);
-  assert(root->shape_a == 0 && root->shape_b == 0);
+  CU_ASSERT_PTR_NOT_NULL_FATAL(root);
+  CU_ASSERT(broad_phase_chain_count(&world->contacts.statics, (count_t)(root - world->contacts.statics.contacts)) == 2);
+  CU_ASSERT(root->shape_a == 0 && root->shape_b == 0);
 
   broad_phase_move_body(world, static_body, (bnd_v3){-2, 0, 0});
   broad_phase_refresh(world);
   root = broad_phase_contact_for_pair(world, dynamic, static_body, BND_BODY_STATIC);
-  assert(root != NULL);
-  assert(root->shape_a == 0 && root->shape_b == 1);
-  assert(root->next == UINT32_MAX);
-  assert(world->contacts.hash_table_entry_count == 1);
+  CU_ASSERT_PTR_NOT_NULL_FATAL(root);
+  CU_ASSERT(root->shape_a == 0 && root->shape_b == 1);
+  CU_ASSERT(root->next == UINT32_MAX);
+  CU_ASSERT(world->contacts.hash_table_entry_count == 1);
   broad_phase_assert_set_links(&world->contacts.statics);
 
   broad_phase_move_body(world, static_body, (bnd_v3){5, 0, 0});
   broad_phase_refresh(world);
-  assert(broad_phase_contact_for_pair(world, dynamic, static_body, BND_BODY_STATIC) == NULL);
-  assert(world->contacts.hash_table_entry_count == 0);
-  assert(world->contacts.statics.first == UINT32_MAX);
-  assert(world->contacts.statics.last == UINT32_MAX);
-  assert(broad_phase_free_count(&world->contacts.statics) == 2);
+  CU_ASSERT(broad_phase_contact_for_pair(world, dynamic, static_body, BND_BODY_STATIC) == NULL);
+  CU_ASSERT(world->contacts.hash_table_entry_count == 0);
+  CU_ASSERT(world->contacts.statics.first == UINT32_MAX);
+  CU_ASSERT(world->contacts.statics.last == UINT32_MAX);
+  CU_ASSERT(broad_phase_free_count(&world->contacts.statics) == 2);
 
-  bnd_teardown(world);
+  test_world_teardown(world);
 }
 
 static void test_broad_phase_repairs_body_list_when_middle_pair_is_removed(void) {
@@ -1612,21 +1619,21 @@ static void test_broad_phase_repairs_body_list_when_middle_pair_is_removed(void)
 
   broad_phase_refresh(world);
   broad_contacts_set *set = &world->contacts.dynamics;
-  assert(broad_phase_root_count(set) == 3);
-  assert(world->contacts.hash_table_entry_count == 3);
+  CU_ASSERT(broad_phase_root_count(set) == 3);
+  CU_ASSERT(world->contacts.hash_table_entry_count == 3);
 
   broad_phase_move_body(world, bodies[2], (bnd_v3){100, 0, 0});
   broad_phase_move_body(world, bodies[3], (bnd_v3){110, 0, 0});
   broad_phase_refresh(world);
-  assert(broad_phase_root_count(set) == 2);
-  assert(world->contacts.hash_table_entry_count == 2);
-  assert(set->first != UINT32_MAX && set->last != UINT32_MAX);
-  assert(set->first != set->last);
-  assert(set->contacts[set->first].next_body == set->last);
-  assert(set->contacts[set->last].next_body == UINT32_MAX);
+  CU_ASSERT(broad_phase_root_count(set) == 2);
+  CU_ASSERT(world->contacts.hash_table_entry_count == 2);
+  CU_ASSERT(set->first != UINT32_MAX && set->last != UINT32_MAX);
+  CU_ASSERT(set->first != set->last);
+  CU_ASSERT(set->contacts[set->first].next_body == set->last);
+  CU_ASSERT(set->contacts[set->last].next_body == UINT32_MAX);
   broad_phase_assert_set_links(set);
 
-  bnd_teardown(world);
+  test_world_teardown(world);
 }
 
 static void test_broad_phase_reuses_contacts_and_resizes_storage(void) {
@@ -1634,8 +1641,8 @@ static void test_broad_phase_reuses_contacts_and_resizes_storage(void) {
   config.memory.contacts_capacity = 2;
   config.memory.hash_table_capacity = 2;
   config.memory.dynamics_capacity = 8;
-  bnd_world *world = bnd_init(config);
-  assert(world != NULL);
+  bnd_world *world = test_world_init(config);
+  CU_ASSERT_PTR_NOT_NULL_FATAL(world);
 
   bnd_body_handle bodies[4];
   for (count_t i = 0; i < 4; ++i) {
@@ -1644,25 +1651,25 @@ static void test_broad_phase_reuses_contacts_and_resizes_storage(void) {
   }
 
   broad_phase_refresh(world);
-  assert(broad_phase_root_count(&world->contacts.dynamics) == 2);
-  assert(world->contacts.dynamics.capacity > 1);
-  assert(world->contacts.hash_table_capacity > 2);
-  assert(world->contacts.hash_table_entry_count == 2);
+  CU_ASSERT(broad_phase_root_count(&world->contacts.dynamics) == 2);
+  CU_ASSERT(world->contacts.dynamics.capacity > 1);
+  CU_ASSERT(world->contacts.hash_table_capacity > 2);
+  CU_ASSERT(world->contacts.hash_table_entry_count == 2);
 
   broad_phase_move_body(world, bodies[0], (bnd_v3){100, 0, 0});
   broad_phase_move_body(world, bodies[1], (bnd_v3){110, 0, 0});
   broad_phase_refresh(world);
-  assert(broad_phase_root_count(&world->contacts.dynamics) == 1);
-  assert(broad_phase_free_count(&world->contacts.dynamics) == 1);
+  CU_ASSERT(broad_phase_root_count(&world->contacts.dynamics) == 1);
+  CU_ASSERT(broad_phase_free_count(&world->contacts.dynamics) == 1);
 
   broad_phase_move_body(world, bodies[0], (bnd_v3){0, 0, 0});
   broad_phase_move_body(world, bodies[1], (bnd_v3){0, 0, 0});
   broad_phase_refresh(world);
-  assert(broad_phase_root_count(&world->contacts.dynamics) == 2);
-  assert(broad_phase_free_count(&world->contacts.dynamics) == 0);
+  CU_ASSERT(broad_phase_root_count(&world->contacts.dynamics) == 2);
+  CU_ASSERT(broad_phase_free_count(&world->contacts.dynamics) == 0);
   broad_phase_assert_set_links(&world->contacts.dynamics);
 
-  bnd_teardown(world);
+  test_world_teardown(world);
 }
 
 static void test_broad_phase_survives_dynamic_inner_reordering(void) {
@@ -1672,16 +1679,16 @@ static void test_broad_phase_survives_dynamic_inner_reordering(void) {
   bnd_body_handle unrelated = add_dynamic_sphere(world, 1.0f);
 
   broad_phase_refresh(world);
-  assert(broad_phase_contact_for_pair(world, a, b, BND_BODY_DYNAMIC) != NULL);
+  CU_ASSERT(broad_phase_contact_for_pair(world, a, b, BND_BODY_DYNAMIC) != NULL);
 
   expect_ok(bnd_put_to_sleep(world, unrelated));
   broad_phase_refresh(world);
   broad_phase_contact *contact = broad_phase_contact_for_pair(world, a, b, BND_BODY_DYNAMIC);
-  assert(contact != NULL);
-  assert(world->contacts.hash_table_entry_count == 3);
+  CU_ASSERT_PTR_NOT_NULL_FATAL(contact);
+  CU_ASSERT(world->contacts.hash_table_entry_count == 3);
   broad_phase_assert_set_links(&world->contacts.dynamics);
 
-  bnd_teardown(world);
+  test_world_teardown(world);
 }
 
 static void test_removing_dynamic_body_removes_all_its_broad_phase_contacts(void) {
@@ -1698,19 +1705,19 @@ static void test_removing_dynamic_body_removes_all_its_broad_phase_contacts(void
   broad_phase_move_body(world, far_static, (bnd_v3){10, 0, 0});
   broad_phase_refresh(world);
 
-  assert(broad_phase_contacts_for_body(world, removed) == 6);
+  CU_ASSERT(broad_phase_contacts_for_body(world, removed) == 6);
   expect_ok(bnd_remove_body(world, removed));
 
-  assert(broad_phase_contacts_for_body(world, removed) == 0);
-  assert(world->contacts.hash_table_entry_count == 6);
-  assert(broad_phase_contact_for_pair(world, peer_a, peer_b, BND_BODY_DYNAMIC) != NULL);
-  assert(broad_phase_contact_for_pair(world, far_a, far_b, BND_BODY_DYNAMIC) != NULL);
-  assert(broad_phase_contact_for_pair(world, peer_a, near_static, BND_BODY_STATIC) != NULL);
-  assert(broad_phase_contact_for_pair(world, far_a, far_static, BND_BODY_STATIC) != NULL);
+  CU_ASSERT(broad_phase_contacts_for_body(world, removed) == 0);
+  CU_ASSERT(world->contacts.hash_table_entry_count == 6);
+  CU_ASSERT(broad_phase_contact_for_pair(world, peer_a, peer_b, BND_BODY_DYNAMIC) != NULL);
+  CU_ASSERT(broad_phase_contact_for_pair(world, far_a, far_b, BND_BODY_DYNAMIC) != NULL);
+  CU_ASSERT(broad_phase_contact_for_pair(world, peer_a, near_static, BND_BODY_STATIC) != NULL);
+  CU_ASSERT(broad_phase_contact_for_pair(world, far_a, far_static, BND_BODY_STATIC) != NULL);
   broad_phase_assert_set_links(&world->contacts.dynamics);
   broad_phase_assert_set_links(&world->contacts.statics);
 
-  bnd_teardown(world);
+  test_world_teardown(world);
 }
 
 static void test_removing_static_body_removes_all_its_broad_phase_contacts(void) {
@@ -1724,17 +1731,17 @@ static void test_removing_static_body_removes_all_its_broad_phase_contacts(void)
   broad_phase_move_body(world, far_static, (bnd_v3){10, 0, 0});
   broad_phase_refresh(world);
 
-  assert(broad_phase_contacts_for_body(world, removed) == 4);
+  CU_ASSERT(broad_phase_contacts_for_body(world, removed) == 4);
   expect_ok(bnd_remove_body(world, removed));
 
-  assert(broad_phase_contacts_for_body(world, removed) == 0);
-  assert(world->contacts.hash_table_entry_count == 2);
-  assert(broad_phase_contact_for_pair(world, dynamic_a, dynamic_b, BND_BODY_DYNAMIC) != NULL);
-  assert(broad_phase_contact_for_pair(world, far_dynamic, far_static, BND_BODY_STATIC) != NULL);
+  CU_ASSERT(broad_phase_contacts_for_body(world, removed) == 0);
+  CU_ASSERT(world->contacts.hash_table_entry_count == 2);
+  CU_ASSERT(broad_phase_contact_for_pair(world, dynamic_a, dynamic_b, BND_BODY_DYNAMIC) != NULL);
+  CU_ASSERT(broad_phase_contact_for_pair(world, far_dynamic, far_static, BND_BODY_STATIC) != NULL);
   broad_phase_assert_set_links(&world->contacts.dynamics);
   broad_phase_assert_set_links(&world->contacts.statics);
 
-  bnd_teardown(world);
+  test_world_teardown(world);
 }
 
 static void test_changing_collision_layer_removes_all_body_broad_phase_contacts(void) {
@@ -1751,17 +1758,17 @@ static void test_changing_collision_layer_removes_all_body_broad_phase_contacts(
   broad_phase_move_body(world, far_static, (bnd_v3){10, 0, 0});
   broad_phase_refresh(world);
 
-  assert(broad_phase_contacts_for_body(world, changed) == 4);
+  CU_ASSERT(broad_phase_contacts_for_body(world, changed) == 4);
   expect_ok(bnd_set_collision_layer(world, changed, 1));
 
-  assert(broad_phase_contacts_for_body(world, changed) == 0);
-  assert(world->contacts.hash_table_entry_count == 2);
-  assert(broad_phase_contact_for_pair(world, peer, near_static, BND_BODY_STATIC) != NULL);
-  assert(broad_phase_contact_for_pair(world, far_dynamic, far_static, BND_BODY_STATIC) != NULL);
+  CU_ASSERT(broad_phase_contacts_for_body(world, changed) == 0);
+  CU_ASSERT(world->contacts.hash_table_entry_count == 2);
+  CU_ASSERT(broad_phase_contact_for_pair(world, peer, near_static, BND_BODY_STATIC) != NULL);
+  CU_ASSERT(broad_phase_contact_for_pair(world, far_dynamic, far_static, BND_BODY_STATIC) != NULL);
   broad_phase_assert_set_links(&world->contacts.dynamics);
   broad_phase_assert_set_links(&world->contacts.statics);
 
-  bnd_teardown(world);
+  test_world_teardown(world);
 }
 
 static void test_changing_trigger_status_removes_all_body_broad_phase_contacts(void) {
@@ -1774,48 +1781,60 @@ static void test_changing_trigger_status_removes_all_body_broad_phase_contacts(v
   broad_phase_move_body(world, far_static, (bnd_v3){10, 0, 0});
   broad_phase_refresh(world);
 
-  assert(broad_phase_contacts_for_body(world, changed) == 2);
+  CU_ASSERT(broad_phase_contacts_for_body(world, changed) == 2);
   expect_ok(bnd_set_trigger(world, changed, true));
-  assert(broad_phase_contacts_for_body(world, changed) == 0);
-  assert(broad_phase_contact_for_pair(world, far_dynamic, far_static, BND_BODY_STATIC) != NULL);
+  CU_ASSERT(broad_phase_contacts_for_body(world, changed) == 0);
+  CU_ASSERT(broad_phase_contact_for_pair(world, far_dynamic, far_static, BND_BODY_STATIC) != NULL);
 
   broad_phase_refresh(world);
-  assert(broad_phase_contacts_for_body(world, changed) == 2);
+  CU_ASSERT(broad_phase_contacts_for_body(world, changed) == 2);
   expect_ok(bnd_set_trigger(world, changed, false));
 
-  assert(broad_phase_contacts_for_body(world, changed) == 0);
-  assert(world->contacts.hash_table_entry_count == 1);
-  assert(broad_phase_contact_for_pair(world, far_dynamic, far_static, BND_BODY_STATIC) != NULL);
-  assert(broad_phase_contact_for_pair(world, near_dynamic, changed, BND_BODY_STATIC) == NULL);
+  CU_ASSERT(broad_phase_contacts_for_body(world, changed) == 0);
+  CU_ASSERT(world->contacts.hash_table_entry_count == 1);
+  CU_ASSERT(broad_phase_contact_for_pair(world, far_dynamic, far_static, BND_BODY_STATIC) != NULL);
+  CU_ASSERT(broad_phase_contact_for_pair(world, near_dynamic, changed, BND_BODY_STATIC) == NULL);
   broad_phase_assert_set_links(&world->contacts.statics);
 
-  bnd_teardown(world);
+  test_world_teardown(world);
 }
 
-void broad_phase_tests(void) {
-  TESTS_BEGIN("Broad phase")
-    TEST(test_broad_phase_creates_and_deduplicates_contacts)
-    TEST(test_broad_phase_keeps_dynamic_and_static_sets_independent)
-    TEST(test_broad_phase_uses_shape_aabbs_and_inclusive_boundaries)
-    TEST(test_broad_phase_promotes_root_and_removes_final_shape_contact)
-    TEST(test_broad_phase_repairs_body_list_when_middle_pair_is_removed)
-    TEST(test_broad_phase_reuses_contacts_and_resizes_storage)
-    TEST(test_broad_phase_survives_dynamic_inner_reordering)
-    TEST(test_removing_dynamic_body_removes_all_its_broad_phase_contacts)
-    TEST(test_removing_static_body_removes_all_its_broad_phase_contacts)
-    TEST(test_changing_collision_layer_removes_all_body_broad_phase_contacts)
-    TEST(test_changing_trigger_status_removes_all_body_broad_phase_contacts)
-  TESTS_END;
+CU_ErrorCode register_broad_phase_tests(void) {
+  CU_TestInfo tests[] = {
+    {"test_broad_phase_creates_and_deduplicates_contacts", test_broad_phase_creates_and_deduplicates_contacts},
+    {"test_broad_phase_keeps_dynamic_and_static_sets_independent", test_broad_phase_keeps_dynamic_and_static_sets_independent},
+    {"test_broad_phase_uses_shape_aabbs_and_inclusive_boundaries", test_broad_phase_uses_shape_aabbs_and_inclusive_boundaries},
+    {"test_broad_phase_promotes_root_and_removes_final_shape_contact", test_broad_phase_promotes_root_and_removes_final_shape_contact},
+    {"test_broad_phase_repairs_body_list_when_middle_pair_is_removed", test_broad_phase_repairs_body_list_when_middle_pair_is_removed},
+    {"test_broad_phase_reuses_contacts_and_resizes_storage", test_broad_phase_reuses_contacts_and_resizes_storage},
+    {"test_broad_phase_survives_dynamic_inner_reordering", test_broad_phase_survives_dynamic_inner_reordering},
+    {"test_removing_dynamic_body_removes_all_its_broad_phase_contacts", test_removing_dynamic_body_removes_all_its_broad_phase_contacts},
+    {"test_removing_static_body_removes_all_its_broad_phase_contacts", test_removing_static_body_removes_all_its_broad_phase_contacts},
+    {"test_changing_collision_layer_removes_all_body_broad_phase_contacts", test_changing_collision_layer_removes_all_body_broad_phase_contacts},
+    {"test_changing_trigger_status_removes_all_body_broad_phase_contacts", test_changing_trigger_status_removes_all_body_broad_phase_contacts},
+    CU_TEST_INFO_NULL
+  };
+  CU_SuiteInfo suites[] = {
+    {"Broad phase", NULL, NULL, NULL, test_world_cleanup, tests},
+    CU_SUITE_INFO_NULL
+  };
+  return CU_register_suites(suites);
 }
 
-void manifold_tests(void) {
-  TESTS_BEGIN("Contact manifolds")
-    TEST(test_manifold_materializes_local_witnesses)
-    TEST(test_manifold_matches_fresh_points_and_keeps_impulses)
-    TEST(test_manifold_discards_invalid_cached_points)
-    TEST(test_manifold_reduces_to_largest_surface)
-    TEST(test_manifold_inverted_dispatch_and_contact_end)
-  TESTS_END;
+CU_ErrorCode register_manifold_tests(void) {
+  CU_TestInfo tests[] = {
+    {"test_manifold_materializes_local_witnesses", test_manifold_materializes_local_witnesses},
+    {"test_manifold_matches_fresh_points_and_keeps_impulses", test_manifold_matches_fresh_points_and_keeps_impulses},
+    {"test_manifold_discards_invalid_cached_points", test_manifold_discards_invalid_cached_points},
+    {"test_manifold_reduces_to_largest_surface", test_manifold_reduces_to_largest_surface},
+    {"test_manifold_inverted_dispatch_and_contact_end", test_manifold_inverted_dispatch_and_contact_end},
+    CU_TEST_INFO_NULL
+  };
+  CU_SuiteInfo suites[] = {
+    {"Contact manifolds", NULL, NULL, NULL, test_world_cleanup, tests},
+    CU_SUITE_INFO_NULL
+  };
+  return CU_register_suites(suites);
 }
 
 #endif

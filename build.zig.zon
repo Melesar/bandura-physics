@@ -8,4 +8,5 @@
     },
     .benchmarks = .{ .path = "vendor/google_benchmark" },
     .tracy = .{ .path = "vendor/tracy" },
+    .cunit = .{ .path = "vendor/CUnit" },
 }, .paths = .{"vendor"}, .fingerprint = 0xa52d1734ade93f22 }
