@@ -114,6 +114,12 @@ static bnd_m3 contact_space_transform(const broad_phase_contact *contact) {
   return bnd_m3_from_basis(x_axis, y_axis, z_axis);
 }
 
+static void mark_impulse_applied(dynamic_bodies *dynamics, const constraint_state *state) {
+  for (count_t k = 0; k < state->body_count; ++k) {
+    dynamics->flags[state->body_ids[k]] |= BODY_FLAG_IMPULSE_APPLIED;
+  }
+}
+
 static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set *contacts, bnd_body_type type, broad_phase_contact *contact, count_t index, void *custom_data) {
   (void)contacts;
 
@@ -132,12 +138,8 @@ static bnd_error constraints_from_contacts(bnd_world *world, broad_contacts_set 
     dynamics->outer_lookup[contact->body_a].index,
     data_b->outer_lookup[contact->body_b].index,
   };
+
   count_t body_count = type == BND_BODY_DYNAMIC ? 2 : 1;
-
-  for (count_t k = 0; k < body_count; ++k) {
-    dynamics->flags[body_ids[k]] |= BODY_FLAG_IMPULSE_APPLIED;
-  }
-
   contact_constraint *constraint = constraint_ptr.value;
   constraint->type = type;
   constraint->contact_index = index;
@@ -463,6 +465,8 @@ static void solve_contact(solver_context *cx, count_t index) {
   contact_constraint *constraint = &cx->contacts[index];
   constraint_state interim_state = contact_constraint_state(cx->dynamics, constraint);
 
+  mark_impulse_applied(cx->dynamics, &interim_state);
+
   for (count_t p = 0; p < constraint->points_count; ++p) {
     constraint_point *point = &constraint->points[p];
     bnd_v3 local_velocity = contact_point_local_velocity(cx->dynamics, constraint, point, &interim_state);
@@ -517,6 +521,8 @@ static void solve_contact(solver_context *cx, count_t index) {
 static void solve_joint(solver_context *cx, count_t index) {
   joint_constraint *constraint = &cx->joints[index];
   constraint_state state = joint_constraint_state(cx->dynamics, constraint);
+
+  mark_impulse_applied(cx->dynamics, &state);
 
   float bias = constraint->bias * cx->inv_dt;
   float JV = bnd_v3_dot(constraint->Jav, state.velocities[0])
