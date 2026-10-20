@@ -156,14 +156,6 @@ static bnd_error push_collision_events(bnd_world *world, const broad_phase_conta
     .body_b = body_b,
   };
 
-  if (contact->manifold.count == 0) {
-    if (contact->status & CONTACT_FINISHED_TOUCHING && events_subscribed(data, body, BND_EVENT_COLLISION_FINISH)) {
-      PROPAGATE_ERROR(events_push(world, data, body, (bnd_event) { .type = BND_EVENT_COLLISION_FINISH, .collision = contact_data }));
-    }
-    
-    return OK;
-  }
-
   for (count_t i = 0; i < contact->manifold.count; ++i) {
     const contact_point *point = &contact->manifold.points[i];
 
@@ -181,16 +173,17 @@ static bnd_error push_collision_events(bnd_world *world, const broad_phase_conta
   return OK;
 }
 
-static bnd_error push_trigger_events(bnd_world *world, const broad_phase_contact *contact, common_data *data, count_t body, count_t other_body, bnd_body_type other_body_type) {
+static bnd_error push_trigger_events(bnd_world *world, common_data *data, count_t body, count_t other_body, bnd_body_type other_body_type, broad_contact_status accumulated_status) {
   bnd_trigger trigger = { .other = make_body_handle(world, other_body_type, other_body) };
 
-  if (contact->status & CONTACT_BEGAN_TOUCHING && events_subscribed(data, body, BND_EVENT_TRIGGER_ENTER)) {
-    PROPAGATE_ERROR(events_push(world, data, body, (bnd_event) { .type = BND_EVENT_TRIGGER_ENTER, .trigger = trigger }));
-  } else if (contact->status & CONTACT_TOUCHING && events_subscribed(data, body, BND_EVENT_TRIGGER)) {
+  if (accumulated_status & CONTACT_TOUCHING && events_subscribed(data, body, BND_EVENT_TRIGGER)) {
     PROPAGATE_ERROR(events_push(world, data, body, (bnd_event) { .type = BND_EVENT_TRIGGER, .trigger = trigger }));
-  } else if (contact->status & CONTACT_FINISHED_TOUCHING && events_subscribed(data, body, BND_EVENT_TRIGGER_FINISH)) {
+  } else if (accumulated_status & CONTACT_BEGAN_TOUCHING && events_subscribed(data, body, BND_EVENT_TRIGGER_ENTER)) {
+    PROPAGATE_ERROR(events_push(world, data, body, (bnd_event) { .type = BND_EVENT_TRIGGER_ENTER, .trigger = trigger }));
+  } else if (accumulated_status & CONTACT_FINISHED_TOUCHING && events_subscribed(data, body, BND_EVENT_TRIGGER_FINISH)) {
     PROPAGATE_ERROR(events_push(world, data, body, (bnd_event) { .type = BND_EVENT_TRIGGER_FINISH, .trigger = trigger }));
   }
+
   return OK;
 }
 
@@ -215,22 +208,11 @@ bnd_error events_emit_contacts(bnd_world *world) {
       count_t body_a = data_a->outer_lookup[body_contact->body_a].index;
       count_t body_b = data_b->outer_lookup[body_contact->body_b].index;
 
-      if (body_contact->status & CONTACT_TRIGGER_BOTH) {
-        if (events_subscribed(data_a, body_a, TRIGGER_SUBSCRIPTION_MASK)) {
-          PROPAGATE_ERROR(push_trigger_events(world, body_contact, data_a, body_a, body_b, contact_type));
-        }
-
-        if (events_subscribed(data_b, body_b, TRIGGER_SUBSCRIPTION_MASK)) {
-          PROPAGATE_ERROR(push_trigger_events(world, body_contact, data_b, body_b, body_a, BND_BODY_DYNAMIC));
-        }
-
-        body_contact_index = body_contact->next_body;
-        continue;
-      }
-
+      broad_contact_status accumulated_status = CONTACT_NONE;
       count_t shape_contact_index = body_contact_index;
       while (shape_contact_index != UINT32_MAX) {
         broad_phase_contact *shape_contact = &contacts->contacts[shape_contact_index];
+        accumulated_status |= shape_contact->status;
 
         if (events_subscribed(data_a, body_a, COLLISION_SUBSCRIPTION_MASK)) {
           PROPAGATE_ERROR(push_collision_events(world, shape_contact, data_a, body_a, body_b, BND_BODY_DYNAMIC, contact_type));
@@ -241,6 +223,26 @@ bnd_error events_emit_contacts(bnd_world *world) {
         }
 
         shape_contact_index = shape_contact->next;
+      }
+
+      if (body_contact->status & CONTACT_TRIGGER_BOTH) {
+        // Trigger pair. Events only occur for a pair, not on per-shape basis.
+        if (events_subscribed(data_a, body_a, TRIGGER_SUBSCRIPTION_MASK)) {
+          PROPAGATE_ERROR(push_trigger_events(world, data_a, body_a, body_b, contact_type, accumulated_status));
+        }
+
+        if (events_subscribed(data_b, body_b, TRIGGER_SUBSCRIPTION_MASK)) {
+          PROPAGATE_ERROR(push_trigger_events(world, data_b, body_b, body_a, BND_BODY_DYNAMIC, accumulated_status));
+        }
+      } else if ((accumulated_status & ~CONTACT_TRIGGER_BOTH) == CONTACT_FINISHED_TOUCHING) {
+        // Collision pair that stopped touching. Can also occur only once per a pair of bodies.
+        if (events_subscribed(data_a, body_a, BND_EVENT_COLLISION_FINISH)) {
+          PROPAGATE_ERROR(events_push(world, data_a, body_a, (bnd_event) { .type = BND_EVENT_COLLISION_FINISH }))
+        }
+
+        if (events_subscribed(data_b, body_b, BND_EVENT_COLLISION_FINISH)) {
+          PROPAGATE_ERROR(events_push(world, data_b, body_b, (bnd_event) { .type = BND_EVENT_COLLISION_FINISH }))
+        }
       }
 
       body_contact_index = body_contact->next_body;

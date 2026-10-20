@@ -649,7 +649,7 @@ static void update_contact_status(broad_phase_contact *contact, bool is_intersec
     }
   } else if (did_touch) {
     contact->status |= CONTACT_FINISHED_TOUCHING;
-    contact->status &= ~CONTACT_TOUCHING;
+    contact->status &= ~(CONTACT_TOUCHING | CONTACT_BEGAN_TOUCHING);
   } else {
     contact->status &= ~CONTACT_FINISHED_TOUCHING;
   }
