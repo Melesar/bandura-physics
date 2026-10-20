@@ -925,7 +925,7 @@ static bnd_error create_body_contact(bnd_world *world, uint64_t hash_key, broad_
   return OK;
 }
 
-static void remove_body_contact(bnd_world *world, count_t hash_slot, broad_contacts_set *contacts, broad_phase_contact *contact, broad_phase_contact *prev_contact, count_t index, count_t prev_index, bool *body_contact_still_exists) {
+static bnd_error remove_body_contact(bnd_world *world, count_t hash_slot, broad_contacts_set *contacts, broad_phase_contact *contact, broad_phase_contact *prev_contact, count_t index, count_t prev_index, bnd_body_type contact_type, bool *body_contact_still_exists) {
   if (contact->next == UINT32_MAX) {
     // Body contact has no attached shape contacts. Remove it altogether.
     world->contacts.keys[hash_slot] = HASH_TABLE_TOMBSTONE;
@@ -942,6 +942,10 @@ static void remove_body_contact(bnd_world *world, count_t hash_slot, broad_conta
     }
 
     *body_contact_still_exists = false;
+
+    if (contact->status & CONTACT_TOUCHING) {
+      PROPAGATE_ERROR(events_emit_finish(world, contacts, hash_slot, contact_type, contact->status & CONTACT_TRIGGER_BOTH));
+    }
   } else {
     // Make the next attached shape contact the new body contact.
     broad_phase_contact *next_contact = &contacts->contacts[contact->next];
@@ -959,9 +963,11 @@ static void remove_body_contact(bnd_world *world, count_t hash_slot, broad_conta
     world->contacts.indices[hash_slot] = contact->next;
     *body_contact_still_exists = true;
   }
+
+  return OK;
 }
 
-static void remove_all_shape_contacts(bnd_world *world, count_t hash_slot, broad_contacts_set *contacts) {
+static bnd_error remove_all_shape_contacts(bnd_world *world, count_t hash_slot, broad_contacts_set *contacts, bnd_body_type contact_type) {
   world->contacts.keys[hash_slot] = HASH_TABLE_TOMBSTONE;
   world->contacts.hash_table_entry_count -= 1;
 
@@ -993,15 +999,24 @@ static void remove_all_shape_contacts(bnd_world *world, count_t hash_slot, broad
     }
   }
 
+  broad_contact_status accumulated_status = CONTACT_NONE;
   do {
     count_t next_contact = c->next;
     free_list_append(contacts, c, contact_index);
+
+    accumulated_status |= c->status;
 
     contact_index = next_contact;
     if (next_contact != UINT32_MAX) {
       c = &contacts->contacts[next_contact];
     }
   } while (contact_index != UINT32_MAX);
+
+  if (accumulated_status & CONTACT_TOUCHING) {
+    PROPAGATE_ERROR(events_emit_finish(world, contacts, hash_slot, contact_type, accumulated_status & CONTACT_TRIGGER_BOTH));
+  }
+
+  return OK;
 }
 
 static void init_contact(broad_phase_contact *contact, uint64_t key, const collision_detection_context *ctx, count_t shape_a, count_t shape_b, broad_contact_status status) {
@@ -1119,7 +1134,7 @@ static bnd_error run_broad_phase_typed(bnd_world *world, broad_contacts_set *con
                   // Should remove the existing contact.
                   if (prev_contact == NULL || shapes_contact->key != prev_contact->key) {
                     // Prev contact is for a different body or doesn't exist. That means that current contact is a root body contact.
-                    remove_body_contact(world, slot, contact_set, shapes_contact, prev_contact, contact_index, prev_contact_index, &body_contact_exists);
+                    remove_body_contact(world, slot, contact_set, shapes_contact, prev_contact, contact_index, prev_contact_index, type, &body_contact_exists);
                   } else {
                     // Simply remove one of the shape contacts.
                     prev_contact->next = shapes_contact->next;
@@ -1134,7 +1149,7 @@ static bnd_error run_broad_phase_typed(bnd_world *world, broad_contacts_set *con
           }
         }
       } else if (!potential_overlap && body_contact_exists) {
-        remove_all_shape_contacts(world, slot, contact_set);
+        PROPAGATE_ERROR(remove_all_shape_contacts(world, slot, contact_set, type));
       }
     }
   }
@@ -1162,7 +1177,7 @@ void contacts_remove_for_body(bnd_world *world, bnd_body_handle handle) {
       if (static_match || full_dynamic_match || partial_dynamic_match) {
         count_t slot;
         if (hash_table_find_slot_for_key(&world->contacts, contact->key, &slot)) {
-          remove_all_shape_contacts(world, slot, contacts);
+          remove_all_shape_contacts(world, slot, contacts, handle.type);
         }
       }
     }

@@ -591,6 +591,7 @@ void                  events_reset(bnd_world *world);
 bool                  events_subscribed(const common_data *data, count_t index, int mask);
 bnd_error             events_push(bnd_world *world, common_data *data, count_t index, bnd_event event);
 bnd_error             events_emit_contacts(bnd_world *world);
+bnd_error             events_emit_finish(bnd_world *world, broad_contacts_set *contact_set, count_t contact_slot, bnd_body_type contact_type, bool is_trigger);
 
 bnd_quat              integrate_rotation_midpoint(bnd_quat rotation, bnd_v3 angular_momentum, bnd_m3 base_inv_inertia, float dt);
 

@@ -1,5 +1,6 @@
 #include "bandura.h"
 #include "bnd-core.h"
+
 #include <string.h>
 
 #define TRY_REALLOC(buffer, size, old_capacity, new_capacity) \
@@ -176,12 +177,18 @@ static bnd_error push_collision_events(bnd_world *world, const broad_phase_conta
 static bnd_error push_trigger_events(bnd_world *world, common_data *data, count_t body, count_t other_body, bnd_body_type other_body_type, broad_contact_status accumulated_status) {
   bnd_trigger trigger = { .other = make_body_handle(world, other_body_type, other_body) };
 
-  if (accumulated_status & CONTACT_TOUCHING && events_subscribed(data, body, BND_EVENT_TRIGGER)) {
-    PROPAGATE_ERROR(events_push(world, data, body, (bnd_event) { .type = BND_EVENT_TRIGGER, .trigger = trigger }));
-  } else if (accumulated_status & CONTACT_BEGAN_TOUCHING && events_subscribed(data, body, BND_EVENT_TRIGGER_ENTER)) {
-    PROPAGATE_ERROR(events_push(world, data, body, (bnd_event) { .type = BND_EVENT_TRIGGER_ENTER, .trigger = trigger }));
-  } else if (accumulated_status & CONTACT_FINISHED_TOUCHING && events_subscribed(data, body, BND_EVENT_TRIGGER_FINISH)) {
-    PROPAGATE_ERROR(events_push(world, data, body, (bnd_event) { .type = BND_EVENT_TRIGGER_FINISH, .trigger = trigger }));
+  if (accumulated_status & CONTACT_TOUCHING) {
+    if (events_subscribed(data, body, BND_EVENT_TRIGGER)) {
+      PROPAGATE_ERROR(events_push(world, data, body, (bnd_event) { .type = BND_EVENT_TRIGGER, .trigger = trigger }));
+    }
+  } else if (accumulated_status & CONTACT_BEGAN_TOUCHING) {
+    if (events_subscribed(data, body, BND_EVENT_TRIGGER_ENTER)) {
+      PROPAGATE_ERROR(events_push(world, data, body, (bnd_event) { .type = BND_EVENT_TRIGGER_ENTER, .trigger = trigger }));
+    }
+  } else if (accumulated_status & CONTACT_FINISHED_TOUCHING) {
+    if (events_subscribed(data, body, BND_EVENT_TRIGGER_FINISH)) {
+      PROPAGATE_ERROR(events_push(world, data, body, (bnd_event) { .type = BND_EVENT_TRIGGER_FINISH, .trigger = trigger }));
+    }
   }
 
   return OK;
@@ -214,12 +221,14 @@ bnd_error events_emit_contacts(bnd_world *world) {
         broad_phase_contact *shape_contact = &contacts->contacts[shape_contact_index];
         accumulated_status |= shape_contact->status;
 
-        if (events_subscribed(data_a, body_a, COLLISION_SUBSCRIPTION_MASK)) {
-          PROPAGATE_ERROR(push_collision_events(world, shape_contact, data_a, body_a, body_b, BND_BODY_DYNAMIC, contact_type));
-        }
+        if ((body_contact->status & CONTACT_TRIGGER_BOTH) == 0) {
+          if (events_subscribed(data_a, body_a, COLLISION_SUBSCRIPTION_MASK)) {
+            PROPAGATE_ERROR(push_collision_events(world, shape_contact, data_a, body_a, body_b, BND_BODY_DYNAMIC, contact_type));
+          }
 
-        if (events_subscribed(data_b, body_b, COLLISION_SUBSCRIPTION_MASK)) {
-          PROPAGATE_ERROR(push_collision_events(world, shape_contact, data_b, body_b, body_a, contact_type, BND_BODY_DYNAMIC));
+          if (events_subscribed(data_b, body_b, COLLISION_SUBSCRIPTION_MASK)) {
+            PROPAGATE_ERROR(push_collision_events(world, shape_contact, data_b, body_b, body_a, contact_type, BND_BODY_DYNAMIC));
+          }
         }
 
         shape_contact_index = shape_contact->next;
@@ -247,6 +256,31 @@ bnd_error events_emit_contacts(bnd_world *world) {
 
       body_contact_index = body_contact->next_body;
     }
+  }
+
+  return OK;
+}
+
+bnd_error events_emit_finish(bnd_world *world, broad_contacts_set *contact_set, count_t contact_slot, bnd_body_type contact_type, bool is_trigger) {
+  bnd_event_type event_type = is_trigger
+    ? BND_EVENT_TRIGGER_FINISH
+    : BND_EVENT_COLLISION_FINISH;
+
+  count_t contact_index = world->contacts.indices[contact_slot];
+  const broad_phase_contact *contact = &contact_set->contacts[contact_index];
+
+  common_data *data_a = (common_data *) &world->dynamics;
+  common_data *data_b = as_common(world, contact_type);
+
+  count_t body_a = data_a->outer_lookup[contact->body_a].index;
+  count_t body_b = data_b->outer_lookup[contact->body_b].index;
+
+  if (events_subscribed(data_a, body_a, event_type)) {
+    PROPAGATE_ERROR(events_push(world, data_a, body_a, (bnd_event) { .type = event_type }));
+  }
+
+  if (events_subscribed(data_b, body_b, event_type)) {
+    PROPAGATE_ERROR(events_push(world, data_b, body_b, (bnd_event) { .type = event_type }));
   }
 
   return OK;
