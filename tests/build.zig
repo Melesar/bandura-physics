@@ -37,6 +37,9 @@ pub fn createExe(b: *std.Build, module: *std.Build.Module) *std.Build.Step.Compi
 
 pub fn createArtifact(b: *std.Build, options: Options, exe: *std.Build.Step.Compile) *std.Build.Step.Run {
     var artifact = b.addRunArtifact(exe);
+    if (b.args) |args| {
+        artifact.addArgs(args);
+    }
 
     if (options.installBinaries) {
         b.installArtifact(exe);

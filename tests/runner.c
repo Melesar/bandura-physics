@@ -16,7 +16,7 @@ extern CU_ErrorCode register_queries_tests(void);
 extern CU_ErrorCode register_world_tests(void);
 extern CU_ErrorCode register_collision_layers_tests(void);
 
-int main(void) {
+int main(int argc, char **argv) {
   CU_ErrorCode (*register_suites[])(void) = {
     register_shapes_tests, register_joints_tests, register_broad_phase_tests,
     register_manifold_tests, register_collisions_tests, register_allocator_tests,
@@ -40,7 +40,17 @@ int main(void) {
   }
 
   CU_basic_set_mode(CU_BRM_VERBOSE);
-  error = CU_basic_run_tests();
+  if (argc > 1) {
+    CU_pSuite suite = CU_get_suite(argv[1]);
+    if (suite == NULL) {
+      fprintf(stderr, "Unknown test suite: %s\n", argv[1]);
+      CU_cleanup_registry();
+      return 1;
+    }
+    error = CU_basic_run_suite(suite);
+  } else {
+    error = CU_basic_run_tests();
+  }
   unsigned int failures = CU_get_number_of_failures();
   unsigned int failed_suites = CU_get_number_of_suites_failed();
   CU_cleanup_registry();

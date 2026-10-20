@@ -1,4 +1,5 @@
 #include "library_testing.h"
+#include "bnd-core.h"
 #include <CUnit/CUnit.h>
 
 #define expect_single_trigger_event(world, body, other) \
@@ -174,77 +175,342 @@ static void expect_single_event_type_at(bnd_world *world, bnd_body_handle body, 
   CU_assertImplementation(!extra_event, line, message, file, "", CU_FALSE);
 }
 
-static void test_collision_finish_events_cover_narrow_and_broad_phase_separation(void) {
-  bnd_world *world = test_world();
-  bnd_body_handle dynamic = add_dynamic_sphere(world, 1.0f);
-  bnd_body_handle static_body = add_static_sphere(world, 1.0f);
-  expect_ok(bnd_set_position(world, static_body, (bnd_v3){1.5f, 0, 0}));
-  expect_ok(bnd_event_subscribe(world, dynamic, BND_EVENT_COLLISION_ENTER | BND_EVENT_COLLISION | BND_EVENT_COLLISION_FINISH));
+typedef struct {
+  bnd_world *world;
+  bnd_body_handle dynamic;
+  bnd_body_handle other;
+} finish_fixture;
 
-  bnd_simulate(world, 0.0f);
-  expect_single_event_type(world, dynamic, BND_EVENT_COLLISION_ENTER);
-  bnd_simulate(world, 0.0f);
-  expect_single_event_type(world, dynamic, BND_EVENT_COLLISION);
-
-  // The AABBs still overlap, but the spheres do not.
-  expect_ok(bnd_set_position(world, static_body, (bnd_v3){1.5f, 1.5f, 0}));
-  bnd_simulate(world, 0.0f);
-  expect_single_event_type(world, dynamic, BND_EVENT_COLLISION_FINISH);
-  bnd_simulate(world, 0.0f);
-  CU_ASSERT(!bnd_event_any(world, dynamic).value);
-
-  expect_ok(bnd_set_position(world, static_body, (bnd_v3){1.5f, 0, 0}));
-  bnd_simulate(world, 0.0f);
-  expect_single_event_type(world, dynamic, BND_EVENT_COLLISION_ENTER);
-
-  // The broad phase removes the pair entirely.
-  expect_ok(bnd_set_position(world, static_body, (bnd_v3){3.0f, 0, 0}));
-  bnd_simulate(world, 0.0f);
-  expect_single_event_type(world, dynamic, BND_EVENT_COLLISION_FINISH);
-  test_world_teardown(world);
+static finish_fixture finish_fixture_create(bool compound, bool trigger) {
+  finish_fixture fixture = { .world = test_world() };
+  fixture.dynamic = add_dynamic_sphere(fixture.world, 1.0f);
+  if (compound) {
+    bnd_body_shape shapes[] = {
+      { .type = BND_SPHERE, .value.sphere = { .radius = 1.0f }, .offset = {0, 0, -0.5f}, .rotation = bnd_quat_identity() },
+      { .type = BND_SPHERE, .value.sphere = { .radius = 1.0f }, .offset = {0, 0, 0.5f}, .rotation = bnd_quat_identity() },
+    };
+    bnd_result_handle result = bnd_add_compound_body_static(fixture.world, shapes, 2);
+    expect_ok(result.error);
+    fixture.other = result.value;
+  } else {
+    fixture.other = add_static_sphere(fixture.world, 1.0f);
+  }
+  expect_ok(bnd_set_trigger(fixture.world, fixture.other, trigger));
+  bnd_event_type type = trigger ? BND_EVENT_TRIGGER_FINISH : BND_EVENT_COLLISION_FINISH;
+  expect_ok(bnd_event_subscribe(fixture.world, fixture.dynamic, type));
+  expect_ok(bnd_event_subscribe(fixture.world, fixture.other, type));
+  return fixture;
 }
 
-static void test_trigger_finish_events_cover_narrow_and_broad_phase_separation(void) {
-  bnd_world *world = test_world();
-  bnd_body_handle dynamic = add_dynamic_sphere(world, 1.0f);
-  bnd_body_handle trigger = add_static_sphere(world, 1.0f);
-  expect_ok(bnd_set_position(world, trigger, (bnd_v3){1.5f, 0, 0}));
-  expect_ok(bnd_set_trigger(world, trigger, true));
-  expect_ok(bnd_event_subscribe(world, dynamic, BND_EVENT_TRIGGER_ENTER | BND_EVENT_TRIGGER | BND_EVENT_TRIGGER_FINISH));
+#define expect_contact_counts(fixture, broad, narrow) \
+  expect_contact_counts_at((fixture), (broad), (narrow), __FILE__, __LINE__)
 
-  bnd_simulate(world, 0.0f);
-  expect_single_event_type(world, dynamic, BND_EVENT_TRIGGER_ENTER);
-  expect_ok(bnd_set_position(world, trigger, (bnd_v3){1.5f, 1.5f, 0}));
-  bnd_simulate(world, 0.0f);
-  expect_single_event_type(world, dynamic, BND_EVENT_TRIGGER_FINISH);
-
-  expect_ok(bnd_set_position(world, trigger, (bnd_v3){1.5f, 0, 0}));
-  bnd_simulate(world, 0.0f);
-  expect_single_event_type(world, dynamic, BND_EVENT_TRIGGER_ENTER);
-  expect_ok(bnd_set_position(world, trigger, (bnd_v3){3.0f, 0, 0}));
-  bnd_simulate(world, 0.0f);
-  expect_single_event_type(world, dynamic, BND_EVENT_TRIGGER_FINISH);
-  test_world_teardown(world);
+static void expect_contact_counts_at(finish_fixture fixture, count_t broad, count_t narrow,
+                                     const char *file, unsigned int line) {
+  const broad_contacts_set *set = &fixture.world->contacts.statics;
+  count_t broad_count = 0;
+  count_t narrow_count = 0;
+  for (count_t root = set->first; root != UINT32_MAX; root = set->contacts[root].next_body) {
+    for (count_t index = root; index != UINT32_MAX; index = set->contacts[index].next) {
+      const broad_phase_contact *contact = &set->contacts[index];
+      broad_count += 1;
+      narrow_count += contact->manifold.count > 0;
+    }
+  }
+  char message[192];
+  snprintf(message, sizeof(message), "broad contacts: expected %u, got %u", broad, broad_count);
+  CU_assertImplementation(broad_count == broad, line, message, file, "", CU_TRUE);
+  snprintf(message, sizeof(message), "contacts with manifold.count > 0: expected %u, got %u", narrow, narrow_count);
+  CU_assertImplementation(narrow_count == narrow, line, message, file, "", CU_TRUE);
 }
 
-static void test_compound_trigger_emits_one_finish_event_per_body_pair(void) {
-  bnd_world *world = test_world();
-  bnd_body_handle dynamic = add_dynamic_sphere(world, 1.0f);
-  bnd_body_shape shapes[] = {
-    { .type = BND_SPHERE, .value.sphere = { .radius = 1.0f }, .offset = {0, 0, -0.5f}, .rotation = bnd_quat_identity() },
-    { .type = BND_SPHERE, .value.sphere = { .radius = 1.0f }, .offset = {0, 0, 0.5f}, .rotation = bnd_quat_identity() },
-  };
-  bnd_result_handle result = bnd_add_compound_body_static(world, shapes, 2);
-  expect_ok(result.error);
-  bnd_body_handle trigger = result.value;
-  expect_ok(bnd_set_trigger(world, trigger, true));
-  expect_ok(bnd_event_subscribe(world, dynamic, BND_EVENT_TRIGGER_FINISH));
+#define expect_no_finish_events(fixture) do { \
+  CU_ASSERT(!bnd_event_any((fixture).world, (fixture).dynamic).value); \
+  CU_ASSERT(!bnd_event_any((fixture).world, (fixture).other).value); \
+} while (0)
 
-  bnd_simulate(world, 0.0f);
-  expect_ok(bnd_set_position(world, trigger, (bnd_v3){5.0f, 0, 0}));
-  bnd_simulate(world, 0.0f);
-  expect_single_event_type(world, dynamic, BND_EVENT_TRIGGER_FINISH);
-  test_world_teardown(world);
+static void test_simple_collision_finish_when_narrow_contacts_disappear_with_broad_contacts_remaining(void) {
+  finish_fixture fixture = finish_fixture_create(false, false);
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){1.0f, 0.0f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 1, 1);
+  expect_no_finish_events(fixture);
+
+  // AABBs still overlap, but no sphere pair intersects.
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){1.5f, 1.5f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 1, 0);
+  expect_single_event_type(fixture.world, fixture.dynamic, BND_EVENT_COLLISION_FINISH);
+  expect_single_event_type(fixture.world, fixture.other, BND_EVENT_COLLISION_FINISH);
+
+  // The same separated state must not emit another finish event.
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 1, 0);
+  expect_no_finish_events(fixture);
+
+  // Removing the remaining empty broad contacts must not finish again.
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){4.0f, 0.0f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 0, 0);
+  expect_no_finish_events(fixture);
+  test_world_teardown(fixture.world);
+}
+
+static void test_simple_collision_finish_when_broad_contacts_disappear_after_touching(void) {
+  finish_fixture fixture = finish_fixture_create(false, false);
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){1.0f, 0.0f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 1, 1);
+  expect_no_finish_events(fixture);
+
+  // Remove the entire body pair from the broad phase.
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){4.0f, 0.0f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 0, 0);
+  expect_single_event_type(fixture.world, fixture.dynamic, BND_EVENT_COLLISION_FINISH);
+  expect_single_event_type(fixture.world, fixture.other, BND_EVENT_COLLISION_FINISH);
+
+  // The same separated state must not emit another finish event.
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 0, 0);
+  expect_no_finish_events(fixture);
+  test_world_teardown(fixture.world);
+}
+
+static void test_simple_collision_finish_is_not_emitted_when_broad_contacts_disappear_without_touching(void) {
+  finish_fixture fixture = finish_fixture_create(false, false);
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){1.5f, 1.5f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 1, 0);
+  expect_no_finish_events(fixture);
+
+  // Remove the entire body pair from the broad phase.
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){4.0f, 0.0f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 0, 0);
+  expect_no_finish_events(fixture);
+
+  // The same separated state must not emit another finish event.
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 0, 0);
+  expect_no_finish_events(fixture);
+  test_world_teardown(fixture.world);
+}
+
+static void test_compound_collision_finish_when_narrow_contacts_disappear_with_broad_contacts_remaining(void) {
+  finish_fixture fixture = finish_fixture_create(true, false);
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){1.0f, 0.0f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 2, 2);
+  expect_no_finish_events(fixture);
+
+  // One manifold becomes empty while both broad contacts remain.
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){1.5f, 1.0f, 0.5f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 2, 1);
+  expect_no_finish_events(fixture);
+
+  // AABBs still overlap, but no sphere pair intersects.
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){1.5f, 1.5f, 0.5f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 2, 0);
+  expect_single_event_type(fixture.world, fixture.dynamic, BND_EVENT_COLLISION_FINISH);
+  expect_single_event_type(fixture.world, fixture.other, BND_EVENT_COLLISION_FINISH);
+
+  // The same separated state must not emit another finish event.
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 2, 0);
+  expect_no_finish_events(fixture);
+
+  // Removing the remaining empty broad contacts must not finish again.
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){4.0f, 0.0f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 0, 0);
+  expect_no_finish_events(fixture);
+  test_world_teardown(fixture.world);
+}
+
+static void test_compound_collision_finish_when_broad_contacts_disappear_after_touching(void) {
+  finish_fixture fixture = finish_fixture_create(true, false);
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){1.0f, 0.0f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 2, 2);
+  expect_no_finish_events(fixture);
+
+  // Remove the entire body pair from the broad phase.
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){4.0f, 0.0f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 0, 0);
+  expect_single_event_type(fixture.world, fixture.dynamic, BND_EVENT_COLLISION_FINISH);
+  expect_single_event_type(fixture.world, fixture.other, BND_EVENT_COLLISION_FINISH);
+
+  // The same separated state must not emit another finish event.
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 0, 0);
+  expect_no_finish_events(fixture);
+  test_world_teardown(fixture.world);
+}
+
+static void test_compound_collision_finish_is_not_emitted_when_broad_contacts_disappear_without_touching(void) {
+  finish_fixture fixture = finish_fixture_create(true, false);
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){1.5f, 1.5f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 2, 0);
+  expect_no_finish_events(fixture);
+
+  // Remove the entire body pair from the broad phase.
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){4.0f, 0.0f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 0, 0);
+  expect_no_finish_events(fixture);
+
+  // The same separated state must not emit another finish event.
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 0, 0);
+  expect_no_finish_events(fixture);
+  test_world_teardown(fixture.world);
+}
+
+static void test_simple_trigger_finish_when_narrow_contacts_disappear_with_broad_contacts_remaining(void) {
+  finish_fixture fixture = finish_fixture_create(false, true);
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){1.0f, 0.0f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 1, 1);
+  expect_no_finish_events(fixture);
+
+  // AABBs still overlap, but no sphere pair intersects.
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){1.5f, 1.5f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 1, 0);
+  expect_single_event_type(fixture.world, fixture.dynamic, BND_EVENT_TRIGGER_FINISH);
+  expect_single_event_type(fixture.world, fixture.other, BND_EVENT_TRIGGER_FINISH);
+
+  // The same separated state must not emit another finish event.
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 1, 0);
+  expect_no_finish_events(fixture);
+
+  // Removing the remaining empty broad contacts must not finish again.
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){4.0f, 0.0f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 0, 0);
+  expect_no_finish_events(fixture);
+  test_world_teardown(fixture.world);
+}
+
+static void test_simple_trigger_finish_when_broad_contacts_disappear_after_touching(void) {
+  finish_fixture fixture = finish_fixture_create(false, true);
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){1.0f, 0.0f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 1, 1);
+  expect_no_finish_events(fixture);
+
+  // Remove the entire body pair from the broad phase.
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){4.0f, 0.0f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 0, 0);
+  expect_single_event_type(fixture.world, fixture.dynamic, BND_EVENT_TRIGGER_FINISH);
+  expect_single_event_type(fixture.world, fixture.other, BND_EVENT_TRIGGER_FINISH);
+
+  // The same separated state must not emit another finish event.
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 0, 0);
+  expect_no_finish_events(fixture);
+  test_world_teardown(fixture.world);
+}
+
+static void test_simple_trigger_finish_is_not_emitted_when_broad_contacts_disappear_without_touching(void) {
+  finish_fixture fixture = finish_fixture_create(false, true);
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){1.5f, 1.5f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 1, 0);
+  expect_no_finish_events(fixture);
+
+  // Remove the entire body pair from the broad phase.
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){4.0f, 0.0f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 0, 0);
+  expect_no_finish_events(fixture);
+
+  // The same separated state must not emit another finish event.
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 0, 0);
+  expect_no_finish_events(fixture);
+  test_world_teardown(fixture.world);
+}
+
+static void test_compound_trigger_finish_when_narrow_contacts_disappear_with_broad_contacts_remaining(void) {
+  finish_fixture fixture = finish_fixture_create(true, true);
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){1.0f, 0.0f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 2, 2);
+  expect_no_finish_events(fixture);
+
+  // One manifold becomes empty while both broad contacts remain.
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){1.5f, 1.0f, 0.5f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 2, 1);
+  expect_no_finish_events(fixture);
+
+  // AABBs still overlap, but no sphere pair intersects.
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){1.5f, 1.5f, 0.5f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 2, 0);
+  expect_single_event_type(fixture.world, fixture.dynamic, BND_EVENT_TRIGGER_FINISH);
+  expect_single_event_type(fixture.world, fixture.other, BND_EVENT_TRIGGER_FINISH);
+
+  // The same separated state must not emit another finish event.
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 2, 0);
+  expect_no_finish_events(fixture);
+
+  // Removing the remaining empty broad contacts must not finish again.
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){4.0f, 0.0f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 0, 0);
+  expect_no_finish_events(fixture);
+  test_world_teardown(fixture.world);
+}
+
+static void test_compound_trigger_finish_when_broad_contacts_disappear_after_touching(void) {
+  finish_fixture fixture = finish_fixture_create(true, true);
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){1.0f, 0.0f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 2, 2);
+  expect_no_finish_events(fixture);
+
+  // Remove the entire body pair from the broad phase.
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){4.0f, 0.0f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 0, 0);
+  expect_single_event_type(fixture.world, fixture.dynamic, BND_EVENT_TRIGGER_FINISH);
+  expect_single_event_type(fixture.world, fixture.other, BND_EVENT_TRIGGER_FINISH);
+
+  // The same separated state must not emit another finish event.
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 0, 0);
+  expect_no_finish_events(fixture);
+  test_world_teardown(fixture.world);
+}
+
+static void test_compound_trigger_finish_is_not_emitted_when_broad_contacts_disappear_without_touching(void) {
+  finish_fixture fixture = finish_fixture_create(true, true);
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){1.5f, 1.5f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 2, 0);
+  expect_no_finish_events(fixture);
+
+  // Remove the entire body pair from the broad phase.
+  expect_ok(bnd_set_position(fixture.world, fixture.other, (bnd_v3){4.0f, 0.0f, 0.0f}));
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 0, 0);
+  expect_no_finish_events(fixture);
+
+  // The same separated state must not emit another finish event.
+  bnd_simulate(fixture.world, 0.0f);
+  expect_contact_counts(fixture, 0, 0);
+  expect_no_finish_events(fixture);
+  test_world_teardown(fixture.world);
 }
 
 CU_ErrorCode register_events_tests(void) {
@@ -254,9 +520,18 @@ CU_ErrorCode register_events_tests(void) {
     {"test_trigger_events_respect_collision_layers", test_trigger_events_respect_collision_layers},
     {"test_compound_trigger_emits_one_event_per_body_pair", test_compound_trigger_emits_one_event_per_body_pair},
     {"test_generic_static_plane_can_be_a_trigger", test_generic_static_plane_can_be_a_trigger},
-    {"test_collision_finish_events_cover_narrow_and_broad_phase_separation", test_collision_finish_events_cover_narrow_and_broad_phase_separation},
-    {"test_trigger_finish_events_cover_narrow_and_broad_phase_separation", test_trigger_finish_events_cover_narrow_and_broad_phase_separation},
-    {"test_compound_trigger_emits_one_finish_event_per_body_pair", test_compound_trigger_emits_one_finish_event_per_body_pair},
+    {"test_simple_collision_finish_when_narrow_contacts_disappear_with_broad_contacts_remaining", test_simple_collision_finish_when_narrow_contacts_disappear_with_broad_contacts_remaining},
+    {"test_simple_collision_finish_when_broad_contacts_disappear_after_touching", test_simple_collision_finish_when_broad_contacts_disappear_after_touching},
+    {"test_simple_collision_finish_is_not_emitted_when_broad_contacts_disappear_without_touching", test_simple_collision_finish_is_not_emitted_when_broad_contacts_disappear_without_touching},
+    {"test_compound_collision_finish_when_narrow_contacts_disappear_with_broad_contacts_remaining", test_compound_collision_finish_when_narrow_contacts_disappear_with_broad_contacts_remaining},
+    {"test_compound_collision_finish_when_broad_contacts_disappear_after_touching", test_compound_collision_finish_when_broad_contacts_disappear_after_touching},
+    {"test_compound_collision_finish_is_not_emitted_when_broad_contacts_disappear_without_touching", test_compound_collision_finish_is_not_emitted_when_broad_contacts_disappear_without_touching},
+    {"test_simple_trigger_finish_when_narrow_contacts_disappear_with_broad_contacts_remaining", test_simple_trigger_finish_when_narrow_contacts_disappear_with_broad_contacts_remaining},
+    {"test_simple_trigger_finish_when_broad_contacts_disappear_after_touching", test_simple_trigger_finish_when_broad_contacts_disappear_after_touching},
+    {"test_simple_trigger_finish_is_not_emitted_when_broad_contacts_disappear_without_touching", test_simple_trigger_finish_is_not_emitted_when_broad_contacts_disappear_without_touching},
+    {"test_compound_trigger_finish_when_narrow_contacts_disappear_with_broad_contacts_remaining", test_compound_trigger_finish_when_narrow_contacts_disappear_with_broad_contacts_remaining},
+    {"test_compound_trigger_finish_when_broad_contacts_disappear_after_touching", test_compound_trigger_finish_when_broad_contacts_disappear_after_touching},
+    {"test_compound_trigger_finish_is_not_emitted_when_broad_contacts_disappear_without_touching", test_compound_trigger_finish_is_not_emitted_when_broad_contacts_disappear_without_touching},
     CU_TEST_INFO_NULL
   };
   CU_SuiteInfo suites[] = {
