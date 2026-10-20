@@ -11,8 +11,13 @@
 #define MAX_CONTACTS_PER_PAIR 4
 #define MAX_COLLISION_LAYERS 64
 
+#define HASH_TABLE_TOMBSTONE 0x7FFFFFFFFFFFFFFF
+#define HASH_TABLE_EMPTY 0
+
 #define OK (bnd_error){BND_OK, NULL}
 #define OOM_ERROR (bnd_error){BND_ERROR_OUT_OF_MEMORY, "Allocator.malloc failed to allocate memory"}
+
+#define MUST_BE_TRUE(expr) bool expr_result_rrr = (expr); (void)expr_result_rrr; assert(expr_result_rrr);
 
 #define IS_ERROR(e) ((e).type != BND_OK)
 #define IS_OK(e) ((e).type == BND_OK)
@@ -65,28 +70,63 @@
     return (bnd_result_##suffix) { e, dummy_value }; \
   }\
 
+#define MIN(A, B) ((A) < (B) ? (A) : (B))
+#define MAX(A, B) ((A) > (B) ? (A) : (B))
+
 typedef uint32_t count_t;
 
-typedef struct {
-  bnd_v3 witness_a, witness_b;
-  bnd_v3 normal;
-} contact_features;
+typedef enum {
+  CONTACT_NONE                = 0x0,
+  CONTACT_TOUCHING            = 0x1,
+  CONTACT_BEGAN_TOUCHING      = 0x2,
+  CONTACT_FINISHED_TOUCHING   = 0x4,
+
+  CONTACT_TRIGGER_A           = 0x8,
+  CONTACT_TRIGGER_B           = 0x10,
+  CONTACT_TRIGGER_BOTH        = CONTACT_TRIGGER_A | CONTACT_TRIGGER_B,
+} broad_contact_status;
 
 typedef struct {
   bnd_v3 point;
-  bnd_v3 normal;
   float depth;
-  count_t index_a, index_b;
+
+  // World-space for narrow phase contacts.
+  // Local-sapce for cached contacts.
+  bnd_v3 witness_a, witness_b;
+
+  float normal_impulse;
+  float tangential_impulse[2];
+} contact_point;
+
+typedef struct {
+  count_t count;
+  bnd_v3 normal;
+  bnd_v3 local_normal;
+  contact_point points[MAX_CONTACTS_PER_PAIR];
+} contact_manifold;
+
+typedef struct {
+  uint64_t key;
+  count_t body_a, body_b;
+  count_t shape_a, shape_b;
+
+  count_t next;
+  count_t next_body;
+
   float friction, restitution;
-  contact_features features;
 
-  bnd_m3 basis;
-  bnd_v3 relative_position[2];
-  bnd_v3 local_velocity;
-  float desired_delta_velocity;
+  broad_contact_status status;
+  contact_manifold manifold;
+} broad_phase_contact;
 
-  bool from_cache;
-} contact;
+typedef struct {
+  bnd_joint_type type;
+  bnd_body_handle bodies[2];           
+  bnd_v3 anchors[2];
+  float min_distance;
+  float max_distance;                     
+  float impulse;
+} bnd_joint;
 
 typedef struct {
   bnd_joint *values;
@@ -98,15 +138,6 @@ typedef struct {
   count_t next_id;
   count_t dynamic_count;
 } joints;
-
-typedef struct cache_entry cache_entry;
-
-struct cache_entry {
-  uint64_t key;
-  count_t feature_count;
-  count_t access_time;
-  contact_features features[MAX_CONTACTS_PER_PAIR];
-};
 
 typedef struct {
   float restitution;
@@ -121,22 +152,29 @@ typedef struct {
 } body_materials;
 
 typedef struct {
-  count_t *hash_table;
-  count_t hash_table_capacity;
-
-  cache_entry *entries;
-
-  count_t entry_count;
-  count_t buffer_capacity;
-} contacts_cache;
-
-typedef struct {
-  contact *values;
+  uint64_t *keys;
+  count_t  *values;
 
   count_t capacity;
-  count_t count;
+  count_t entry_count;
+} hash_table;
 
-  count_t dynamic_count;
+typedef struct {
+  broad_phase_contact *contacts;
+  count_t capacity;
+
+  count_t first, last, next;
+  count_t free_list;
+} broad_contacts_set;
+
+typedef struct {
+  uint64_t *keys;
+  count_t  *indices;
+  count_t hash_table_capacity;
+  count_t hash_table_entry_count;
+
+  broad_contacts_set dynamics;
+  broad_contacts_set statics;
 } contacts;
 
 typedef struct {
@@ -197,9 +235,23 @@ typedef struct {
 } collision_matrix;
 
 typedef enum {
+  HASH_TABLE_SLOT_EMPTY,
+  HASH_TABLE_SLOT_TAKEN,
+  HASH_TABLE_SLOT_UNAVAILABLE,
+} hash_table_slot_status;
+
+typedef enum {
+  ALIGNMENT_BROAD_CONTACT = 8,
+  ALIGNMENT_BODY_MATERIAL = 4,
+} common_alignments;
+
+typedef enum {
   BODY_FLAG_NONE = 0,
   BODY_FLAG_TRIGGER = 1,
+  BODY_FLAG_DIRTY = 2,
+  BODY_FLAG_IMPULSE_APPLIED = 4,
 } body_flags;
+
 
 #define COMMON_FIELDS                                                                                                  \
   count_t capacity;                                                                                                    \
@@ -383,8 +435,6 @@ typedef struct {
 
 typedef struct {
   COMMON_FIELDS
-
-  bool dirty;
 }static_bodies;
 
 struct bnd_world_t {
@@ -395,7 +445,6 @@ struct bnd_world_t {
   joints joints;
   mesh_storage meshes;
   events_storage events;
-  contacts_cache contacts_cache;
   body_materials materials;
   collision_matrix matrix;
 
@@ -453,6 +502,8 @@ typedef enum {
   DEBUG_EPA_NORMAL_NEAREST = 16,
 } bnd_debug_epa_flags;
 
+typedef bnd_error (*broad_contact_iterator)(bnd_world *world, broad_contacts_set *contacts, bnd_body_type type, broad_phase_contact *contact, count_t index, void *custom_data);
+
 typedef void (*bnd_debug_draw_epa_face_fn)(bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_debug_epa_flags flags, void *user_data);
 typedef void (*bnd_debug_draw_epa_normal_fn)(bnd_v3 origin, bnd_v3 unit_normal, bnd_debug_epa_flags flags, void *user_data);
 typedef void (*bnd_debug_draw_epa_support_fn)(bnd_v3 point, void *user_data);
@@ -470,6 +521,9 @@ typedef support_point (*support_func)(const shape_context *, bnd_v3);
 
 bnd_allocator         bnd_default_allocator(void);
 
+bnd_error             resize_if_needed(bnd_allocator allocator, void **array, count_t element_size, uint64_t alignment, count_t count, count_t additional_count, count_t *capacity);
+bnd_error             resize_force(bnd_allocator allocator, void **array, count_t element_size, uint64_t alignment, count_t capacity_factor, count_t *capacity);
+
 bnd_error             arena_init(bnd_allocator allocator, uint64_t capacity, bnd_arena *arena);
 bnd_result_ptr        arena_alloc(bnd_arena *arena, uint64_t alignment, uint64_t size);
 bnd_arena_stack_frame arena_new_stack_frame(bnd_arena *arena);
@@ -486,17 +540,21 @@ common_data          *as_common(bnd_world *world, bnd_body_type type);
 const common_data    *as_common_const(const bnd_world *world, bnd_body_type type);
 
 bnd_error             contacts_init(bnd_world *world);
-void                  contacts_teardown(bnd_world *world);
 void                  contacts_reset(bnd_world *world);
-bnd_error             contacts_ensure_capacity(bnd_world *world, count_t contacts_offset, count_t count);
-void                  contacts_filter_largest_surface_area(contact *contacts, count_t contact_count, count_t *selected_indices);
-void                  contacts_generate(bnd_world *world);
-void                  contacts_resolve(bnd_world *world, float dt);
+void                  contacts_teardown(bnd_world *world);
+void                  contacts_remove_for_body(bnd_world *world, bnd_body_handle handle);
+void                  contacts_filter_largest_surface_area(contact_point *contacts, count_t contact_count, bnd_v3 normal, count_t *selected_indices);
+bnd_error             resolve_constraints(bnd_world *world, float dt);
 
-bnd_error             contacts_cache_init(bnd_world *world);
-cache_entry          *contacts_cache_query(bnd_world *world, contact *contact, bnd_body_type type);
-void                  contacts_cache_prune(bnd_world *world);
-void                  contacts_cache_reset(bnd_world *world);
+bnd_error             for_each_broad_contact(bnd_world *world, broad_contact_iterator func, void *custom_data);
+
+uint64_t              hash_table_create_key(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b, bnd_body_type type);
+bool                  hash_table_find_slot_for_key(const contacts *contacts, uint64_t key, count_t *slot);
+bool                  hash_table_find_empty_slot(const contacts *contacts, uint64_t key, count_t *slot);
+bnd_error             hash_table_resize_if_needed(bnd_world *world, count_t additional_count);
+
+bnd_error             run_broad_phase(bnd_world *world);
+bnd_error             run_narrow_phase(bnd_world *world);
 
 void                  collision_detection_init(void);
 count_t               collisions_detect(bnd_world *world, count_t contacts_offset, bnd_body_type type);
@@ -505,7 +563,6 @@ bnd_error             collision_detection_epa_context(const bnd_world *world, bn
 bnd_error             joints_init(bnd_world *world);
 void                  joints_teardown(bnd_world *world);
 void                  joints_reset(bnd_world *world);
-count_t               joints_generate_contacts(bnd_world *world, count_t contacts_offset, bnd_body_type type);
 void                  joints_remove_stale_if_needed(bnd_world *world, bnd_body_handle removed_body);
 
 bnd_error             meshes_init(bnd_world *world);
@@ -531,15 +588,17 @@ count_t               ephemeral_body_index(const common_data *data);
 bnd_error             events_init(bnd_world *world);
 void                  events_teardown(bnd_world *world);
 void                  events_reset(bnd_world *world);
-bool                  events_subscribed(const common_data *data, count_t index, bnd_event_type event_type);
+bool                  events_subscribed(const common_data *data, count_t index, int mask);
 bnd_error             events_push(bnd_world *world, common_data *data, count_t index, bnd_event event);
+bnd_error             events_emit_contacts(bnd_world *world);
+bnd_error             events_emit_finish(bnd_world *world, broad_contacts_set *contact_set, count_t contact_slot, bnd_body_type contact_type, bool is_trigger);
 
 bnd_quat              integrate_rotation_midpoint(bnd_quat rotation, bnd_v3 angular_momentum, bnd_m3 base_inv_inertia, float dt);
 
 bool                  gjk_check_intersection(const bnd_world *world, const collision_detection_context *ctx, simplex *simplex);
 
 uint32_t              polytope_memory_size(uint16_t max_nodes);
-count_t               epa_get_contact(bnd_world *world, const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact *contact);
+count_t               epa_get_contact(const collision_detection_context *ctx, const simplex *simplex, float tolerance, contact_manifold *manifold);
 body_support          support(const collision_detection_context *ctx, bnd_v3 direction);
 
 #if defined(BND_DEBUG)
@@ -550,10 +609,11 @@ bool                  epa_debug_draw(bnd_world *world, const epa_debug_status *d
 
 float                 sqr_distance_to_triangle(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 c, bnd_v3 *closest);
 float                 sqr_distance_to_line_segment(bnd_v3 from, bnd_v3 a, bnd_v3 b, bnd_v3 *closest);
-bool                  aabb_intersect(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b);
+bool                  body_aabb_intersect(const common_data *data_a, const common_data *data_b, count_t index_a, count_t index_b);
 
 bnd_v3                body_center(const shape_context *ctx);
 bnd_quat              body_rotation(const shape_context *ctx);
+bnd_v3                bounding_box_extents(const bnd_world *world, bnd_shape_type type, bnd_shape shape, bnd_quat rotation);
 
 bnd_m3                quat_as_matrix(bnd_quat q);
 

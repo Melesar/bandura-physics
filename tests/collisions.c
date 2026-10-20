@@ -1,16 +1,15 @@
 #include "bandura.h"
-#include "testing.h"
+#include <CUnit/CUnit.h>
 
 #include "bnd-core.h"
 #include "bnd-math.h"
 
-#include <stdlib.h>
+#include <stdio.h>
 
-void collisions_are_detected_correctly() {
+static void collisions_are_detected_correctly(void) {
   collision_test_suite *tests = collision_tests_load();
   if (tests == NULL) {
-    printf("Failed to load collision tests");
-    exit(1);
+    CU_FAIL("Failed to load collision tests");
     return;
   }
 
@@ -18,6 +17,11 @@ void collisions_are_detected_correctly() {
   config.simulation.gravity = bnd_v3_zero();
 
   bnd_world *world = bnd_init(config);
+  if (world == NULL) {
+    CU_FAIL("Failed to initialize collision test world");
+    collision_tests_free(tests);
+    return;
+  }
 
   for (count_t i = 0; i < tests->num_pairs; i++) {
     const collision_test_pair *pair = &tests->pairs[i];
@@ -41,20 +45,29 @@ void collisions_are_detected_correctly() {
       bool expected = test_case->intersection;
       bool got = bnd_event_any(world, handles[0]).value;
       if (expected != got) {
-        fprintf(stderr, "Pair %u, case %u failed. Expected %d, got %d\n", i, j, expected, got);
-        exit(1);
+        char message[128];
+        snprintf(message, sizeof(message), "Pair %u, case %u: expected %d, got %d", i, j, expected, got);
+        CU_assertImplementation(CU_FALSE, __LINE__, message, __FILE__, "", CU_FALSE);
+        goto cleanup;
       }
     }
 
     bnd_reset_world(world);
   }
 
+cleanup:
   bnd_teardown(world);
   collision_tests_free(tests);
 }
 
-void collisions_tests() {
-  TESTS_BEGIN("Collisions")
-    TEST(collisions_are_detected_correctly)
-  TESTS_END;
+CU_ErrorCode register_collisions_tests(void) {
+  CU_TestInfo tests[] = {
+    {"collisions_are_detected_correctly", collisions_are_detected_correctly},
+    CU_TEST_INFO_NULL
+  };
+  CU_SuiteInfo suites[] = {
+    {"Collisions", NULL, NULL, NULL, NULL, tests},
+    CU_SUITE_INFO_NULL
+  };
+  return CU_register_suites(suites);
 }

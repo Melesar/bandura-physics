@@ -57,7 +57,7 @@ void scenario_configure(program_config *config, bnd_config *physics) {
   config->draw_ground = false;
 
   physics->simulation.gravity = bnd_v3_zero();
-  physics->advanced.resolution_attempts_factor = 0;
+  physics->solver.iterations_count = 0;
 }
 
 void scenario_initialize(bnd_world *world) {
@@ -80,8 +80,8 @@ void scenario_setup_scene(bnd_world *world) {
     }
   }
 
-  pair_index = 3;
-  case_index = 0;
+  pair_index = 0;
+  case_index = 30;
   update_pair(world);
 }
 

@@ -14,12 +14,14 @@ const MaxFileCount: u32 = 32;
 const IncludeStatement = "#include";
 const IncludeStatementLen: u32 = IncludeStatement.len;
 
-const IgnoreIncludes: [5][]const u8 = .{
+const IgnoreIncludes: [7][]const u8 = .{
     "#include \"bandura.h\"",
     "#include \"bnd-core.h\"",
     "#include \"bnd-math.h\"",
     "#include \"profiler.h\"",
     "#include \"testing.h\"",
+    "#include \"library_testing.h\"",
+    "#include <CUnit/CUnit.h>",
 };
 
 const Headers = enum(u32) {
@@ -27,7 +29,6 @@ const Headers = enum(u32) {
     bnd_core,
     bnd_math,
     profiler,
-    testing,
 
     count,
 };
@@ -66,13 +67,6 @@ pub fn amalgamate(b: *std.Build) ![]u8 {
     }
 
     {
-        const testingDit = try cwd.openDir(iop, "tests", .{});
-        defer testingDit.close(iop);
-
-        sources[@intFromEnum(Headers.testing)] = try readFile(arena, iop, testingDit, "testing.h");
-    }
-
-    {
         var set = std.BufSet.init(b.allocator);
         defer set.deinit();
 
@@ -87,10 +81,6 @@ pub fn amalgamate(b: *std.Build) ![]u8 {
     try writeHeaderFile(sources[@intFromEnum(Headers.profiler)], &output, b.allocator);
     try writeHeaderFile(sources[@intFromEnum(Headers.bnd_core)], &output, b.allocator);
     try writeHeaderFile(sources[@intFromEnum(Headers.bnd_math)], &output, b.allocator);
-
-    try output.appendSlice(b.allocator, "\n#if defined(BND_TESTS)\n");
-    try writeHeaderFile(sources[@intFromEnum(Headers.testing)], &output, b.allocator);
-    try output.appendSlice(b.allocator, "#endif\n");
 
     for (@intFromEnum(Headers.count)..fileCount) |i| {
         try writeSourceFile(sources[i], &output, b.allocator);
@@ -272,9 +262,24 @@ fn writeFile(contents: []u8, startPos: *u64, name: ?[]const u8, output: *ArrayLi
         try fileHeaderStart(output, allocator, n);
     }
 
+    var insideTests = false;
     while (readLine(startPos, contents)) |line| {
         if (line.len == 0) {
             _ = try output.append(allocator, '\n');
+            continue;
+        }
+
+        if (!insideTests and lineEq(line, "#ifdef BND_TESTS")) {
+            insideTests = true;
+            continue;
+        }
+
+        if (insideTests and lineEq(line, "#endif")) {
+            insideTests = false;
+            continue;
+        }
+
+        if (insideTests) {
             continue;
         }
 

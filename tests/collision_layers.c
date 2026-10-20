@@ -1,14 +1,14 @@
 #include "library_testing.h"
-#include "testing.h"
+#include <CUnit/CUnit.h>
 
 static void test_world_starts_with_one_collision_layer(void) {
   bnd_world *world = test_world();
 
-  assert(bnd_get_layers_count(world) == 1);
-  assert(bnd_get_all_layers_mask(world) == UINT64_C(1));
-  assert(bnd_get_layers_collision(world, 0, 0));
+  CU_ASSERT(bnd_get_layers_count(world) == 1);
+  CU_ASSERT(bnd_get_all_layers_mask(world) == UINT64_C(1));
+  CU_ASSERT(bnd_get_layers_collision(world, 0, 0));
 
-  bnd_teardown(world);
+  test_world_teardown(world);
 }
 
 static void test_adding_collision_layers_enables_collisions_with_every_layer(void) {
@@ -18,17 +18,17 @@ static void test_adding_collision_layers_enables_collisions_with_every_layer(voi
 
   expect_ok(bnd_set_layers_count(world, 4));
 
-  assert(bnd_get_layers_count(world) == 4);
-  assert(bnd_get_all_layers_mask(world) == UINT64_C(0xf));
-  assert(!bnd_get_layers_collision(world, 0, 1));
+  CU_ASSERT(bnd_get_layers_count(world) == 4);
+  CU_ASSERT(bnd_get_all_layers_mask(world) == UINT64_C(0xf));
+  CU_ASSERT(!bnd_get_layers_collision(world, 0, 1));
   for (bnd_collision_layer layer = 0; layer < 4; ++layer) {
-    assert(bnd_get_layers_collision(world, layer, 2));
-    assert(bnd_get_layers_collision(world, 2, layer));
-    assert(bnd_get_layers_collision(world, layer, 3));
-    assert(bnd_get_layers_collision(world, 3, layer));
+    CU_ASSERT(bnd_get_layers_collision(world, layer, 2));
+    CU_ASSERT(bnd_get_layers_collision(world, 2, layer));
+    CU_ASSERT(bnd_get_layers_collision(world, layer, 3));
+    CU_ASSERT(bnd_get_layers_collision(world, 3, layer));
   }
 
-  bnd_teardown(world);
+  test_world_teardown(world);
 }
 
 static void test_setting_collision_between_layers_is_symmetrical(void) {
@@ -36,14 +36,14 @@ static void test_setting_collision_between_layers_is_symmetrical(void) {
   expect_ok(bnd_set_layers_count(world, 3));
 
   expect_ok(bnd_set_layers_collision(world, 0, 2, false));
-  assert(!bnd_get_layers_collision(world, 0, 2));
-  assert(!bnd_get_layers_collision(world, 2, 0));
+  CU_ASSERT(!bnd_get_layers_collision(world, 0, 2));
+  CU_ASSERT(!bnd_get_layers_collision(world, 2, 0));
 
   expect_ok(bnd_set_layers_collision(world, 2, 0, true));
-  assert(bnd_get_layers_collision(world, 0, 2));
-  assert(bnd_get_layers_collision(world, 2, 0));
+  CU_ASSERT(bnd_get_layers_collision(world, 0, 2));
+  CU_ASSERT(bnd_get_layers_collision(world, 2, 0));
 
-  bnd_teardown(world);
+  test_world_teardown(world);
 }
 
 static void test_collision_layer_count_rejects_zero_and_values_above_64(void) {
@@ -51,9 +51,9 @@ static void test_collision_layer_count_rejects_zero_and_values_above_64(void) {
 
   expect_error(bnd_set_layers_count(world, 0), BND_ERROR_INVALID_INPUT);
   expect_error(bnd_set_layers_count(world, 65), BND_ERROR_INVALID_INPUT);
-  assert(bnd_get_layers_count(world) == 1);
+  CU_ASSERT(bnd_get_layers_count(world) == 1);
 
-  bnd_teardown(world);
+  test_world_teardown(world);
 }
 
 static void test_setting_collision_for_undefined_layers_is_rejected(void) {
@@ -62,10 +62,10 @@ static void test_setting_collision_for_undefined_layers_is_rejected(void) {
 
   expect_error(bnd_set_layers_collision(world, 0, 2, false), BND_ERROR_INVALID_COLLISION_LAYER);
   expect_error(bnd_set_layers_collision(world, 2, 1, false), BND_ERROR_INVALID_COLLISION_LAYER);
-  assert(bnd_get_layers_collision(world, 0, 1));
-  assert(!bnd_get_layers_collision(world, 0, 2));
+  CU_ASSERT(bnd_get_layers_collision(world, 0, 1));
+  CU_ASSERT(!bnd_get_layers_collision(world, 0, 2));
 
-  bnd_teardown(world);
+  test_world_teardown(world);
 }
 
 static void test_collision_response_respects_collision_layers(void) {
@@ -79,27 +79,33 @@ static void test_collision_response_respects_collision_layers(void) {
   expect_ok(bnd_event_subscribe(world, dynamic, BND_EVENT_COLLISION));
 
   expect_ok(bnd_set_layers_collision(world, 0, 1, false));
-  bnd_simulate(world, 0.0f);
-  assert(bnd_collisions_count(world) == 0);
-  assert(!bnd_event_any(world, dynamic).value);
+  bnd_simulate(world, 0.008f);
+  CU_ASSERT(bnd_collisions_count(world) == 0);
+  CU_ASSERT(!bnd_event_any(world, dynamic).value);
   expect_v3_near(bnd_get_position(world, dynamic).value, bnd_v3_zero());
 
   expect_ok(bnd_set_layers_collision(world, 0, 1, true));
-  bnd_simulate(world, 0.0f);
-  assert(bnd_collisions_count(world) > 0);
-  assert(bnd_event_any(world, dynamic).value);
-  assert(bnd_get_position(world, dynamic).value.z < 0.0f);
+  bnd_simulate(world, 0.008f);
+  CU_ASSERT(bnd_collisions_count(world) > 0);
+  CU_ASSERT(bnd_event_any(world, dynamic).value);
+  CU_ASSERT(bnd_get_position(world, dynamic).value.z < 0.0f);
 
-  bnd_teardown(world);
+  test_world_teardown(world);
 }
 
-void collision_layers_tests(void) {
-  TESTS_BEGIN("Collision layers")
-    TEST(test_world_starts_with_one_collision_layer)
-    TEST(test_adding_collision_layers_enables_collisions_with_every_layer)
-    TEST(test_setting_collision_between_layers_is_symmetrical)
-    TEST(test_collision_layer_count_rejects_zero_and_values_above_64)
-    TEST(test_setting_collision_for_undefined_layers_is_rejected)
-    TEST(test_collision_response_respects_collision_layers)
-  TESTS_END;
+CU_ErrorCode register_collision_layers_tests(void) {
+  CU_TestInfo tests[] = {
+    {"test_world_starts_with_one_collision_layer", test_world_starts_with_one_collision_layer},
+    {"test_adding_collision_layers_enables_collisions_with_every_layer", test_adding_collision_layers_enables_collisions_with_every_layer},
+    {"test_setting_collision_between_layers_is_symmetrical", test_setting_collision_between_layers_is_symmetrical},
+    {"test_collision_layer_count_rejects_zero_and_values_above_64", test_collision_layer_count_rejects_zero_and_values_above_64},
+    {"test_setting_collision_for_undefined_layers_is_rejected", test_setting_collision_for_undefined_layers_is_rejected},
+    {"test_collision_response_respects_collision_layers", test_collision_response_respects_collision_layers},
+    CU_TEST_INFO_NULL
+  };
+  CU_SuiteInfo suites[] = {
+    {"Collision layers", NULL, NULL, NULL, test_world_cleanup, tests},
+    CU_SUITE_INFO_NULL
+  };
+  return CU_register_suites(suites);
 }

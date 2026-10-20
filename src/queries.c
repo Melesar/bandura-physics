@@ -465,7 +465,7 @@ static count_t overlap_typed(const bnd_world *world, bnd_v3 origin, float radius
       continue;
     }
 
-    if (!aabb_intersect(data, data, ephemeral_index, i)) {
+    if (!body_aabb_intersect(data, data, ephemeral_index, i)) {
       continue;
     }
 

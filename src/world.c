@@ -15,6 +15,13 @@
 
 #define INVALID_BODY_TYPE ((bnd_result_handle) { .error = (bnd_error) { .type = BND_ERROR_INVALID_BODY_TYPE, .message = "Unknown body type" } })
 
+#define BODY_MASK_WIDE(flags) (0x0101010101010101ULL * (flags))
+
+#define TEMP_BODY_MASK (BODY_FLAG_DIRTY | BODY_FLAG_IMPULSE_APPLIED)
+#define TEMP_BODY_MASK_WIDE BODY_MASK_WIDE(TEMP_BODY_MASK)
+#define DIRTY_MASK_WIDE BODY_MASK_WIDE(BODY_FLAG_DIRTY)
+#define CHUNK_SIZE sizeof(uint64_t)
+
 #define ASSERT_BODY_DYNAMIC(handle) \
   if (handle.type != BND_BODY_DYNAMIC) { \
     return (bnd_error) { BND_ERROR_BODY_HANDLE_INVALID , "Operation is not valid for static bodies" }; \
@@ -119,6 +126,32 @@ static bnd_v3 rotated_box_half_extents(bnd_m3 rotation_matrix, bnd_v3 local_half
   return half_extents;
 }
 
+bnd_v3 bounding_box_extents(const bnd_world *world, bnd_shape_type type, bnd_shape shape, bnd_quat rotation) {
+  bnd_m3 rotation_matrix;
+  bnd_v3 half_extents;
+  switch (type) {
+    case BND_BOX:
+      rotation_matrix = quat_as_matrix(rotation);
+      return rotated_box_half_extents(rotation_matrix, bnd_v3_scale(shape.box.size, 0.5f));
+
+    case BND_SPHERE:
+      return bnd_v3_scale(bnd_v3_one(), shape.sphere.radius);
+
+    case BND_CAPSULE:
+      rotation_matrix = quat_as_matrix(rotation);
+      half_extents = (bnd_v3){ shape.capsule.radius, 0.5f * shape.capsule.height + shape.capsule.radius, shape.capsule.radius };
+      return rotated_box_half_extents(rotation_matrix, half_extents);
+
+    case BND_MESH:
+      rotation_matrix = quat_as_matrix(rotation);
+      half_extents = world->meshes.aabbs[shape.mesh].half_extents;
+      return rotated_box_half_extents(rotation_matrix, half_extents);
+
+    default:
+      return (bnd_v3){FLT_MAX, FLT_MAX, FLT_MAX};
+  }
+}
+
 static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
   bnd_v3 position = data->positions[index];
   bnd_quat rotation = data->rotations[index];
@@ -134,39 +167,8 @@ static void calculate_aabb(bnd_world *world, common_data *data, count_t index) {
     bnd_quat shape_rotation = bnd_quat_mul(rotation, shape.rotation);
     bnd_v3 shape_center = bnd_v3_add(position, bnd_v3_rotate(shape.offset, rotation));
 
-    bnd_m3 rotation_matrix;
     bnd_v3 shape_min, shape_max;
-    bnd_v3 half_extents;
-    bnd_aabb local_aabb;
-    switch (shape.type) {
-      case BND_BOX:
-        rotation_matrix = quat_as_matrix(shape_rotation);
-        half_extents = rotated_box_half_extents(rotation_matrix, bnd_v3_scale(shape.value.box.size, 0.5f));
-        break;
-
-      case BND_SPHERE:
-        half_extents = bnd_v3_scale(bnd_v3_one(), shape.value.sphere.radius);
-        break;
-
-      case BND_CAPSULE:
-        rotation_matrix = quat_as_matrix(shape_rotation);
-        local_aabb = (bnd_aabb) {
-          .center = shape_center,
-          .half_extents = { shape.value.capsule.radius, 0.5f * shape.value.capsule.height + shape.value.capsule.radius, shape.value.capsule.radius }
-        };
-        half_extents = rotated_box_half_extents(rotation_matrix, local_aabb.half_extents);
-        break;
-
-      case BND_MESH:
-        rotation_matrix = quat_as_matrix(shape_rotation);
-        local_aabb = world->meshes.aabbs[shape.value.mesh];
-        half_extents = rotated_box_half_extents(rotation_matrix, local_aabb.half_extents);
-        break;
-
-      default:
-        half_extents = (bnd_v3){FLT_MAX, FLT_MAX, FLT_MAX};
-        break;
-    }
+    bnd_v3 half_extents = bounding_box_extents(world, shape.type, shape.value, shape_rotation);
 
     shape_min = bnd_v3_add(shape_center, bnd_v3_negate(half_extents));
     shape_max = bnd_v3_add(shape_center, half_extents);
@@ -192,6 +194,27 @@ static void clear_forces(bnd_world *world) {
   memset(dynamics->accelerations, 0, size);
 }
 
+static void clear_flags(bnd_world *world) {
+  common_data *bodies[] = { (common_data *)&world->dynamics, (common_data *)&world->statics };
+  for (count_t k = 0; k < 2; ++k) {
+    common_data *data = bodies[k];
+
+    count_t i = 0;
+    for (; i + CHUNK_SIZE <= data->count; i += CHUNK_SIZE) {
+      uint64_t flags;
+      memcpy(&flags, &data->flags[i], CHUNK_SIZE);
+
+      flags &= ~TEMP_BODY_MASK_WIDE;
+
+      memcpy(&data->flags[i], &flags, CHUNK_SIZE);
+    }
+
+    for (; i < data->count; ++i) {
+      data->flags[i] &= ~TEMP_BODY_MASK;
+    }
+  }
+}
+
 static void awaken_body(bnd_world *world, count_t index) {
   dynamic_bodies *dynamics = &world->dynamics;
   if (index < dynamics->awake_count) {
@@ -212,7 +235,10 @@ static void update_awake_statuses(bnd_world *world, float dt) {
 
   const float sleep_threshold = world->config.simulation.sleep_threshold;
   count_t awake_count = dynamics->awake_count;
-  for (count_t i = 0; i < awake_count; ++i) {
+  for (count_t i = 0; i < dynamics->count; ++i) {
+    if (i >= awake_count && (dynamics->flags[i] & BODY_FLAG_IMPULSE_APPLIED) == 0) {
+      continue;
+    }
     bnd_v3 angular_velocity = bnd_m3_rotate(dynamics->angular_momenta[i], dynamics->inv_intertias[i]);
 
     float current_motion = dynamics->motion_avgs[i];
@@ -228,11 +254,11 @@ static void update_awake_statuses(bnd_world *world, float dt) {
   count_t left = 0;
   count_t right = dynamics->count - 1;
   while (left < awake_count && right >= awake_count) {
-    while (dynamics->motion_avgs[left] > sleep_threshold) {
+    while (left < awake_count && dynamics->motion_avgs[left] > sleep_threshold) {
       left += 1;
     }
 
-    while (dynamics->motion_avgs[right] <= sleep_threshold && right >= awake_count) {
+    while (right >= awake_count && dynamics->motion_avgs[right] <= sleep_threshold) {
       right -= 1;
     }
 
@@ -499,7 +525,6 @@ static bnd_result_handle add_primitive_body_static(bnd_world *world, bnd_body_sh
   data->inner_lookup[index] = outer_index;
 
   world->generation += 1;
-  world->statics.dirty = true;
 
   return BND_RESULT_OK(handle, make_body_handle(world, BND_BODY_STATIC, index));
 }
@@ -575,7 +600,6 @@ bnd_result_handle bnd_add_compound_body_static(bnd_world *world, bnd_body_shape 
   data->inner_lookup[index] = outer_index;
 
   world->generation += 1;
-  world->statics.dirty = true;
 
   return BND_RESULT_OK(handle, make_body_handle(world, BND_BODY_STATIC, index));
 }
@@ -634,6 +658,9 @@ bnd_result_handle bnd_add_compound_body(bnd_world *world, bnd_body_type type, bn
 bnd_error bnd_remove_body(bnd_world *world, bnd_body_handle handle) {
   PROPAGATE_ERROR(bnd_handle_valid(world, handle))
 
+  joints_remove_stale_if_needed(world, handle);
+  contacts_remove_for_body(world, handle);
+
   common_data *data = as_common(world, handle.type);
   data->generations[handle.index] += 1;
   data->free_list[data->free_count++] = handle.index; // We keep the outer index in the free list
@@ -661,8 +688,6 @@ bnd_error bnd_remove_body(bnd_world *world, bnd_body_handle handle) {
   }
 
   data->count -= 1;
-
-  joints_remove_stale_if_needed(world, handle);
 
   outer_lookup_node *outer_node = &data->outer_lookup[handle.index];
   outer_node->index = max_body_index;
@@ -786,7 +811,7 @@ count_t bnd_awake_count(const bnd_world *world) {
 }
 
 count_t bnd_collisions_count(const bnd_world *world) {
-  return world->contacts.count;
+  return world->stats.contacts_count;
 }
 
 bnd_result_v3 bnd_get_position(const bnd_world *world, bnd_body_handle handle) {
@@ -881,6 +906,7 @@ bnd_error bnd_set_position(bnd_world *world, bnd_body_handle handle, bnd_v3 posi
   common_data *data = as_common(world, handle.type);
   count_t index = handle_to_inner_index(world, handle);
   data->positions[index] = position;
+  data->flags[index] |= BODY_FLAG_DIRTY;
 
   return OK;
 }
@@ -891,6 +917,7 @@ bnd_error bnd_set_rotation(bnd_world *world, bnd_body_handle handle, bnd_quat ro
   common_data *data = as_common(world, handle.type);
   count_t index = handle_to_inner_index(world, handle);
   data->rotations[index] = rotation;
+  data->flags[index] |= BODY_FLAG_DIRTY;
 
   return OK;
 }
@@ -935,6 +962,8 @@ bnd_error bnd_set_collision_layer(bnd_world *world, bnd_body_handle handle, bnd_
     return (bnd_error) { BND_ERROR_INVALID_COLLISION_LAYER, "Provided layer doesn't exist" };
   }
 
+  contacts_remove_for_body(world, handle);
+
   common_data *data = as_common(world, handle.type);
   count_t index = handle_to_inner_index(world, handle);
 
@@ -944,20 +973,55 @@ bnd_error bnd_set_collision_layer(bnd_world *world, bnd_body_handle handle, bnd_
 }
 
 count_t bnd_get_contacts(const bnd_world *world, bnd_contact *contacts, count_t max_contacts) {
-  count_t count = world->contacts.count < max_contacts ? world->contacts.count : max_contacts;
-  for (count_t i = 0; i < count; ++i) {
-    contact full_contact = world->contacts.values[i];
-    bnd_body_type type = i < world->contacts.dynamic_count ? BND_BODY_DYNAMIC : BND_BODY_STATIC;
-
-    contacts[i] = (bnd_contact){
-      .point = full_contact.point,
-      .normal = full_contact.normal,
-      .depth = full_contact.depth,
-      .body_a = make_body_handle(world, BND_BODY_DYNAMIC, full_contact.index_a),
-      .body_b = make_body_handle(world, type, full_contact.index_b)
-    };
+  if (contacts == NULL || max_contacts == 0) {
+    return 0;
   }
 
+  count_t count = 0;
+
+  const broad_contacts_set *sets[] = { &world->contacts.dynamics, &world->contacts.statics };
+  for (count_t k = 0; k < 2; ++k) {
+    const broad_contacts_set *contact_set = sets[k];
+
+    bnd_body_type contact_type = (bnd_body_type) k;
+    const common_data *data_a = as_common_const(world, BND_BODY_DYNAMIC);
+    const common_data *data_b = as_common_const(world, contact_type);
+
+    count_t body_index = contact_set->first;
+    while (body_index != UINT32_MAX) {
+      const broad_phase_contact *body_contact = &contact_set->contacts[body_index];
+
+      count_t shape_index = body_index;
+      while (shape_index != UINT32_MAX) {
+        const broad_phase_contact *shape_contact = &contact_set->contacts[shape_index];
+        if (shape_contact->manifold.count == 0) {
+          shape_index = shape_contact->next;
+          continue;
+        }
+
+        for (count_t i = 0; i < shape_contact->manifold.count; ++i) {
+          const contact_point *p = &shape_contact->manifold.points[i];
+
+          contacts[count++] = (bnd_contact){
+            .point = p->point,
+            .normal = shape_contact->manifold.normal,
+            .depth = p->depth,
+            .body_a = (bnd_body_handle) { .type = BND_BODY_DYNAMIC, .world_id = world->id, .index = shape_contact->body_a, .generation = data_a->generations[shape_contact->body_a] },
+            .body_b = (bnd_body_handle) { .type = contact_type,     .world_id = world->id, .index = shape_contact->body_b, .generation = data_b->generations[shape_contact->body_b] },
+          };
+
+          if (count >= max_contacts) {
+            return count;
+          }
+        }
+
+        shape_index = shape_contact->next;
+      }
+
+      body_index = body_contact->next_body;
+    }
+  }
+  
   return count;
 }
 
@@ -994,24 +1058,58 @@ bool bnd_body_next_typed(const bnd_world *world, bnd_body_enumerator_typed *enum
 }
 
 static void update_aabbs(bnd_world *world) {
+  count_t i = 0; 
+
   dynamic_bodies *dynamics = &world->dynamics;
-  for (count_t i = 0; i < dynamics->awake_count; ++i) {
+  for (; i < dynamics->awake_count; ++i) {
     calculate_aabb(world, (common_data *) dynamics, i);
   }
 
-  if (!world->statics.dirty) {
-    return;
+  for (i = dynamics->awake_count; i + CHUNK_SIZE <= dynamics->count; i += CHUNK_SIZE) {
+    uint64_t flags;
+    memcpy(&flags, &dynamics->flags[i], CHUNK_SIZE);
+
+    if ((flags & DIRTY_MASK_WIDE) == 0) {
+      continue;
+    }
+
+    for (count_t j = 0; j < CHUNK_SIZE; ++j) {
+      if (dynamics->flags[i + j] & BODY_FLAG_DIRTY) {
+        calculate_aabb(world, (common_data *)dynamics, i + j);
+      }
+    }
   }
 
-  common_data *statics = as_common(world, BND_BODY_STATIC);
-  for (count_t i = 0; i < statics->count; ++i) {
-    calculate_aabb(world, statics, i);
+  for (; i < dynamics->count; ++i) {
+    if (dynamics->flags[i] & BODY_FLAG_DIRTY) {
+      calculate_aabb(world, (common_data *)dynamics, i);
+    }
   }
 
-  world->statics.dirty = false;
+  common_data *statics = (common_data *)&world->statics;
+  for (i = 0; i + CHUNK_SIZE <= statics->count; i += CHUNK_SIZE) {
+    uint64_t flags;
+    memcpy(&flags, &statics->flags[i], CHUNK_SIZE);
+
+    if ((flags & DIRTY_MASK_WIDE) == 0) {
+      continue;
+    }
+
+    for (count_t j = 0; j < CHUNK_SIZE; ++j) {
+      if (statics->flags[i + j] & BODY_FLAG_DIRTY) {
+        calculate_aabb(world, statics, i + j);
+      }
+    }
+  }
+
+  for (; i < statics->count; ++i) {
+    if (statics->flags[i] & BODY_FLAG_DIRTY) {
+      calculate_aabb(world, statics, i);
+    }
+  }
 }
 
-static void integrate_bodies(bnd_world *world, float dt) {
+static void integrate_velocities(bnd_world *world, float dt) {
   PROFILER_FUNCTION_START
 
   bnd_v3 gravity_acc = world->config.simulation.gravity;
@@ -1032,9 +1130,6 @@ static void integrate_bodies(bnd_world *world, float dt) {
     velocity = bnd_v3_add(velocity, impulse);
     velocity = bnd_v3_scale(velocity, linear_damping);
 
-    bnd_quat rotation = dynamics->rotations[i];
-    bnd_m3 base_inv_inertia = dynamics->inv_inertia_tensors[i];
-
     bnd_v3 momentum_delta = bnd_v3_scale(dynamics->torques[i], dt);
     momentum_delta = bnd_v3_add(momentum_delta, dynamics->angular_impulses[i]);
 
@@ -1042,55 +1137,75 @@ static void integrate_bodies(bnd_world *world, float dt) {
     angular_momentum = bnd_v3_add(angular_momentum, momentum_delta);
     angular_momentum = bnd_v3_scale(angular_momentum, angular_damping);
 
-    rotation = integrate_rotation_midpoint(rotation, angular_momentum, base_inv_inertia, dt);
-
     dynamics->accelerations[i] = acceleration;
     dynamics->velocities[i] = velocity;
     dynamics->angular_momenta[i] = angular_momentum;
-    dynamics->inv_intertias[i] = bnd_m3_inertia(base_inv_inertia, rotation);
-    dynamics->rotations[i] = rotation;
-    dynamics->positions[i] = bnd_v3_add(dynamics->positions[i], bnd_v3_scale(velocity, dt));
   }
 
   PROFILER_FUNCTION_END
-
 }
+
+static void integrate_positions(bnd_world *world, float dt) {
+  PROFILER_FUNCTION_START
+
+  dynamic_bodies *dynamics = &world->dynamics;
+  for (count_t i = 0; i < dynamics->awake_count; ++i) {
+    bnd_v3 velocity = dynamics->velocities[i];
+    bnd_v3 position = dynamics->positions[i];
+    bnd_quat rotation = dynamics->rotations[i];
+
+    bnd_m3 base_inv_inertia = dynamics->inv_inertia_tensors[i];
+    bnd_v3 angular_momentum = dynamics->angular_momenta[i];
+
+    rotation = integrate_rotation_midpoint(rotation, angular_momentum, base_inv_inertia, dt);
+    position = bnd_v3_add(position, bnd_v3_scale(velocity, dt));
+
+    dynamics->inv_intertias[i] = bnd_m3_inertia(base_inv_inertia, rotation);
+    dynamics->rotations[i] = rotation;
+    dynamics->positions[i] = position;
+  }
+
+  PROFILER_FUNCTION_END
+}
+
 
 void bnd_simulate(bnd_world *world, float dt) {
   PROFILER_FUNCTION_START
 
+  world->age += 1;
   world->stats.body_count = world->dynamics.count + world->statics.count;
   world->stats.world_age = world->age;
 
   arena_reset(&world->arena);
-
-  // TODO before changing the order of integration and collision detection,
-  // revisit aabb generation.
-  integrate_bodies(world, dt);
+  integrate_velocities(world, dt);
   update_aabbs(world);
-  contacts_reset(world);
   events_reset(world);
+
+  // TODO Check for errors
+  run_broad_phase(world);
+  run_narrow_phase(world);
+  events_emit_contacts(world);
+
 #if defined(BND_DEBUG)
   epa_debug_capture(world);
 #endif
-  contacts_generate(world);
-  contacts_resolve(world, dt);
+  resolve_constraints(world, dt);
+
   update_awake_statuses(world, dt);
+  integrate_positions(world, dt);
+  clear_flags(world);
   clear_forces(world);
-  contacts_cache_prune(world);
-
-  world->age += 1;
-
-  PROFILER_FUNCTION_END
 
   if (world->arena.offset > world->stats.max_internal_buffer_size) {
     world->stats.max_internal_buffer_size = world->arena.offset;
   }
 
+  PROFILER_FUNCTION_END
+
   PROFILER_REPORT_METRIC_INT("Dynamic bodies", world->dynamics.count);
   PROFILER_REPORT_METRIC_INT("Static bodies", world->statics.count);
   PROFILER_REPORT_METRIC_INT("Total bodies", world->dynamics.count + world->statics.count);
-  PROFILER_REPORT_METRIC_INT("Contacts count", world->contacts.count);
+  PROFILER_REPORT_METRIC_INT("Contacts count", world->stats.contacts_count);
   PROFILER_REPORT_METRIC_INT("EPA nodes", world->stats.used_epa_nodes);
   PROFILER_REPORT_METRIC_INT("Max internal buffer size", world->arena.max_offset);
   PROFILER_REPORT_METRIC_INT("Internal buffer capacity", world->arena.capacity);
@@ -1157,13 +1272,11 @@ void bnd_reset_world(bnd_world *world) {
   world->statics.free_count = 0;
   world->statics.first_outer_node = max_body_index;
 
-  world->stats.incomplete_resolutions = 0;
   world->stats.incomplete_collision_detections = 0;
 
   contacts_reset(world);
   shapes_reset(world);
   joints_reset(world);
-  contacts_cache_reset(world);
 }
 
 static void swap_bodies(bnd_world *world, bnd_body_type type, count_t index_a, count_t index_b) {
@@ -1358,21 +1471,8 @@ bnd_material_handle  bnd_default_material(void) {
 
 bnd_result_material bnd_create_material(bnd_world *world, float bounciness, float friction) {
   count_t count = world->materials.count;
-  count_t capacity = world->materials.capacity;
-  body_material *values = world->materials.values;
 
-  if (count >= capacity) {
-    if (world->allocator.realloc == NULL) {
-      return (bnd_result_material) { { .type = BND_ERROR_NO_SPACE_AVAILABLE, "Failed to realloc materials buffer. Re-alloc function not provided" }, 0 };
-    }
-
-    count_t new_capacity = capacity << 1;
-    world->materials.values = world->allocator.realloc(values, 4, sizeof(body_material) * capacity, sizeof(body_material) * new_capacity);
-    if (world->materials.values == NULL) {
-      return (bnd_result_material) { { .type = BND_ERROR_NO_SPACE_AVAILABLE, "Failed to realloc materials buffer. Re-alloc function returned null" }, 0 };
-    }
-    world->materials.capacity = new_capacity;
-  }
+  PROPAGATE_RESULT(material, resize_if_needed(world->allocator, (void **)&world->materials.values, sizeof(body_material), ALIGNMENT_BODY_MATERIAL, count, 1, &world->materials.capacity))
 
   bnd_material_handle handle = world->materials.count++;
   body_material *material = &world->materials.values[handle];
@@ -1483,6 +1583,8 @@ bnd_error bnd_set_trigger(bnd_world *world, bnd_body_handle handle, bool is_trig
   } else {
     data->flags[index] &= ~BODY_FLAG_TRIGGER;
   }
+
+  contacts_remove_for_body(world, handle);
 
   return OK;
 }

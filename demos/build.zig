@@ -22,6 +22,10 @@ pub const Scenario = struct {
             installStep.dependOn(&install.step);
 
             const run = b.addRunArtifact(self.default);
+            if (b.args) |args| {
+                run.addArgs(args);
+            }
+
             const runStep = b.step(b.fmt("run-{s}", .{self.name}), b.fmt("Run {s} scenario", .{self.name}));
             runStep.dependOn(&run.step);
 

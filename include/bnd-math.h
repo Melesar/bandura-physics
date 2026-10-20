@@ -122,9 +122,9 @@ static inline bnd_v3 bnd_v3_max(bnd_v3 a, bnd_v3 b) {
   return (bnd_v3){fmaxf(a.x, b.x), fmaxf(a.y, b.y), fmaxf(a.z, b.z)};
 }
 
-static inline bnd_quat bnd_quat_add(bnd_quat x, bnd_quat y) {
-  return (bnd_quat){x.x + y.x, x.y + y.y, x.z + y.z, x.w + y.w};
-}
+// static inline bnd_quat bnd_quat_add(bnd_quat x, bnd_quat y) {
+//   return (bnd_quat){x.x + y.x, x.y + y.y, x.z + y.z, x.w + y.w};
+// }
 
 static inline bnd_quat bnd_quat_scale(bnd_quat x, float y) {
   return (bnd_quat){x.x * y, x.y * y, x.z * y, x.w * y};

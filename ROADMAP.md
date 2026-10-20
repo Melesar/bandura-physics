@@ -13,7 +13,7 @@ These are the main pillars of the future *v1.0*:
 5) Determinism.
 
 ## v0.2
-  * **Better solver**. The original solver in *v0.1* is quite slow on the large number of contacts and doesn't provide stable resting contacts.
+  * ✅ **Better solver**. The original solver in *v0.1* is quite slow on the large number of contacts and doesn't provide stable resting contacts.
   * **Hinge joint**. Allows to constraint the bodies to only rotate around one axis.
 
 ## v0.3

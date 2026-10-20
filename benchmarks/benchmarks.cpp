@@ -107,6 +107,14 @@ bool AddStaticEnclosure(SceneInstance *instance, float half_extent,
 
 unsigned int RoundUpTo64(unsigned int value) { return (value + 63U) & ~63U; }
 
+unsigned int RoundUpToPowerOfTwo(unsigned int value) {
+  unsigned int result = 1;
+  while (result < value) {
+    result <<= 1;
+  }
+  return result;
+}
+
 bnd_config MakeConfig(const SceneDefinition &definition) {
   bnd_config config = bnd_default_config();
   const unsigned int dynamic_count =
@@ -140,14 +148,14 @@ bnd_config MakeConfig(const SceneDefinition &definition) {
   config.memory.statics_capacity = static_count + 16U;
   config.memory.contacts_capacity = contacts_capacity;
   config.memory.joints_capacity = joint_count + 16U;
-  config.advanced.shapes_brackets_capacity[0] =
+  config.memory.shapes_brackets_capacity[0] =
       RoundUpTo64(dynamic_count + static_count + 16U);
-  config.advanced.shapes_brackets_capacity[2] =
+  config.memory.shapes_brackets_capacity[2] =
       definition.kind == SceneKind::CompoundCrowd
           ? RoundUpTo64(dynamic_count + 16U)
           : 64U;
-  config.advanced.contacts_cache.buffer_capacity = contacts_capacity;
-  config.advanced.contacts_cache.hash_table_capacity = contacts_capacity * 2U;
+  config.memory.hash_table_capacity = RoundUpToPowerOfTwo(contacts_capacity * 2U);
+  config.memory.internal_allocator_capacity_bytes = 1 << 20;
 
   if (definition.kind == SceneKind::SparseAwakeGrid ||
       definition.kind == SceneKind::DrivenJointLattice) {
@@ -183,7 +191,7 @@ bool BuildCompoundCrowd(SceneInstance *instance, const SceneDefinition &definiti
 }
 
 bool BuildDrivenJointLattice(SceneInstance *instance, unsigned int side) {
-  instance->anchors.reserve(side);
+  instance->anchors.resize(side);
 
   joints_lattice(instance->world, side, instance->anchors.data());
 
@@ -295,7 +303,6 @@ void AddCounters(benchmark::State &state, const SceneInstance &instance) {
   state.counters["contacts_after_batch"] = bnd_collisions_count(instance.world);
   state.counters["awake_after_warmup"] = instance.warmup_awake;
   state.counters["awake_after_batch"] = bnd_awake_count(instance.world);
-  state.counters["incomplete_resolutions"] = stats.incomplete_resolutions;
   state.counters["incomplete_collision_detections"] =
       stats.incomplete_collision_detections;
   state.counters["steps_per_batch"] = kStepsPerBatch;

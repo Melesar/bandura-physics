@@ -120,9 +120,18 @@ typedef enum {
 
 /** Event categories a body may receive. Values can be ORed together. */
 typedef enum {
-  BND_EVENT_COLLISION = 1,  /**< The body touches another body. */
-  BND_EVENT_TRIGGER = 2,    /**< The body intersects a trigger. */
+  BND_EVENT_COLLISION_ENTER  = 1,  /**< The body started touching another body. */
+  BND_EVENT_COLLISION        = 2,  /**< The body stays in contact with another body. */
+  BND_EVENT_COLLISION_FINISH = 4,  /**< The body stopped touching another body */
+
+  BND_EVENT_TRIGGER_ENTER  = 8,    /**< The body started intersecting a trigger. */
+  BND_EVENT_TRIGGER        = 16,   /**< The body intersects a trigger */
+  BND_EVENT_TRIGGER_FINISH = 32,   /**< The body stopped intersecting a trigger */
 } bnd_event_type;
+
+typedef enum {
+  BND_JOINT_TYPE_DISTANCE,
+} bnd_joint_type;
 
 /** Set of allocation callbacks used by a world. */
 typedef struct {
@@ -160,6 +169,19 @@ typedef uint8_t    bnd_collision_layer;
 /** Bit mask of collision layers. */
 typedef uint64_t   bnd_collision_mask;
 
+typedef struct {
+  bnd_joint_type type;
+  uint32_t world_id;
+  uint32_t id;
+} bnd_joint_handle;
+
+typedef struct {
+  bnd_v3 local_anchor_a;
+  bnd_v3 local_anchor_b;
+  float min_distance;
+  float max_distance;
+} bnd_distance_joint_config;
+ 
 /** Box dimensions along the local x, y, and z axes. */
 typedef struct {
   bnd_v3 size; /**< Full dimensions. */
@@ -234,14 +256,16 @@ typedef struct {
  * @note The buffers may grow above these capacities during simulation or as a result of body addition.
  */
 typedef struct {
-  uint32_t dynamics_capacity;            /**< Initial dynamic-body capacity. */
-  uint32_t statics_capacity;             /**< Initial static-body capacity. */
-  uint32_t contacts_capacity;            /**< Initial contact capacity. */
-  uint32_t joints_capacity;              /**< Initial joint capacity. */
-  uint32_t meshes_capacity;              /**< Initial imported-mesh capacity. */
-  uint32_t events_capacity;              /**< Initial event capacity. */
-  uint32_t materials_capacity;           /**< Initial material capacity. */
-  uint64_t internal_allocation_budget;   /**< How much memory the engine can allocate internally */
+  uint32_t dynamics_capacity;                  /**< Initial dynamic-body capacity. */
+  uint32_t statics_capacity;                   /**< Initial static-body capacity. */
+  uint32_t contacts_capacity;                  /**< Initial contact capacity. */
+  uint32_t joints_capacity;                    /**< Initial joint capacity. */
+  uint32_t meshes_capacity;                    /**< Initial imported-mesh capacity. */
+  uint32_t events_capacity;                    /**< Initial event capacity. */
+  uint32_t materials_capacity;                 /**< Initial material capacity. */
+  uint32_t hash_table_capacity;                /**< Initial capacity of the broad-phase hash table */
+  uint32_t shapes_brackets_capacity[5];        /**< Capacities for compound-shape storage brackets. */
+  uint64_t internal_allocator_capacity_bytes;  /**< How much memory the engine can allocate internally */
 } bnd_config_memory;
 
 /** Parameters controlling integration, damping, contacts, and sleeping. */
@@ -253,35 +277,30 @@ typedef struct {
   float friction;              /**< Default friction coefficient. */
   float sleep_base_bias;       /**< Bias used when averaging motion for sleeping. */
   float sleep_threshold;       /**< Motion threshold below which a body sleeps. */
-  float min_bounce_velocity;   /**< Minimum impact speed for restitution. */
 } bnd_config_simulation;
 
-/** Parameters controlling the persistent contact cache. */
 typedef struct {
-  uint32_t max_age;                   /**< Number of simulation frames a cached feature may remain unused. */
-  uint32_t hash_table_capacity;       /**< Contact-cache hash table capacity. */
-  uint32_t buffer_capacity;           /**< Number of cached contact features. */
-  float feature_distance_threshold;   /**< Maximum witness-point movement for feature reuse. */
-  float separation_threshold;         /**< Separation at which a cached contact is discarded. */
-} bnd_config_contacts_cache;
+  uint32_t iterations_count;           /**< Higher number means higher precision and stability but more time spent by the solver. */
+  float    baumgarde_coefficient;      /**< How hard the solver tryies to push away penetrating bodies. */
+  float    linear_slop;                /**< Minimum penetration depth for the solver to act upon. */
+  float    max_baumgarde_velocity;     /**< Maximum separation velocity to apply to penetrating bodies. */
+  bool     warm_start;                 /**< Whether the solver should apply impulses from previous ticks (improves stability). */
+} bnd_config_solver;
 
-/** Advanced collision-detection and solver parameters. */
 typedef struct {
-  uint32_t shapes_brackets_capacity[5]; /**< Capacities for compound-shape storage brackets. */
-  uint32_t max_gjk_iterations;          /**< Maximum GJK iterations per collision test. */
-  float epa_tolerance;                  /**< EPA convergence tolerance. */
-  uint32_t resolution_attempts_factor;  /**< Solver iteration multiplier. */
-  float penetration_epsilon;             /**< Positional-resolution tolerance. */
-  float velocity_epsilon;                /**< Velocity-resolution tolerance. */
-  bnd_config_contacts_cache contacts_cache; /**< Persistent contact-cache settings. */
-  uint16_t epa_max_nodes;                /**< Maximum EPA polytope nodes. */
-} bnd_config_advanced;
+  uint32_t max_gjk_iterations;              /**< Maximum GJK iterations per collision test. */
+  float epa_tolerance;                      /**< EPA convergence tolerance. */
+  uint16_t epa_max_nodes;                   /**< Maximum EPA polytope nodes. */
+  float feature_distance_threshold;        /**< Maximum cached witness matching distance and tangential drift. */
+  float separation_threshold;              /**< Maximum separation for retaining a cached contact point. */
+} bnd_config_collision_detection;
 
 /** Complete world configuration. */
 typedef struct {
-  bnd_config_memory memory;          /**< Memory capacities. */
-  bnd_config_simulation simulation;  /**< Simulation parameters. */
-  bnd_config_advanced advanced;      /**< Collision and solver parameters. */
+  bnd_config_memory memory;                              /**< Memory capacities. */
+  bnd_config_simulation simulation;                      /**< Simulation parameters. */
+  bnd_config_solver solver;                              /**< Constraint solver parameters. */
+  bnd_config_collision_detection collision_detection;    /**< Collision detection parameters. */
 } bnd_config;
 
 /** Counters collected during simulation. */
@@ -289,7 +308,6 @@ typedef struct {
   uint64_t max_internal_buffer_size;         /**< Maximum size of the internal memory buffer */
   uint32_t body_count;                       /**< Total body count. */
   uint32_t contacts_count;                   /**< Contacts generated in the latest simulation. */
-  uint32_t incomplete_resolutions;           /**< Solver passes that did not converge. */
   uint32_t incomplete_collision_detections;  /**< Collision tests that exceeded their budget. */
   uint32_t world_age;                        /**< Number of completed simulation steps. */
   uint16_t used_epa_nodes;                   /**< Nodes used for collision detection */
@@ -302,13 +320,6 @@ typedef struct {
   float depth;                       /**< Penetration depth. */
   bnd_body_handle body_a, body_b;    /**< Bodies participating in the contact. */
 } bnd_contact;
-
-/** Maximum-distance constraint between two body-local contact points. */
-typedef struct {
-  bnd_body_handle bodies[2];             /**< The two constrained bodies. */
-  bnd_v3 relative_contact_positions[2];  /**< Body-local anchor points. */
-  float max_error;                       /**< Maximum allowed distance error. */
-} bnd_joint;
 
 /**
  *  Draw one collision contact.
@@ -383,6 +394,7 @@ BND_RESULT_TYPE(material, bnd_material_handle)
 BND_RESULT_TYPE(layer, bnd_collision_layer)
 BND_RESULT_TYPE(bool, bool)
 BND_RESULT_TYPE(handle, bnd_body_handle)
+BND_RESULT_TYPE(joint, bnd_joint_handle)
 
 #undef BND_RESULT_TYPE
 
@@ -607,16 +619,16 @@ BNDAPI bool bnd_get_layers_collision(const bnd_world *world, bnd_collision_layer
 BNDAPI bnd_error bnd_remove_body(bnd_world *world, bnd_body_handle handle);
 
 /**
- * Add a maximum-distance joint and return its numeric identifier.
+ * Add a maximum-distance joint and return its handle.
  *
  * @retval BND_ERROR_BODY_HANDLE_INVALID Either body handle is invalid.
  * @retval BND_ERROR_INVALID_JOINT Both bodies are static.
  * @retval BND_ERROR_OUT_OF_MEMORY A joint buffer could not be grown.
  */
-BNDAPI bnd_result_u32 bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_v3 contact_offset_a, bnd_v3 contact_offset_b, float max_distance);
+BNDAPI bnd_result_joint bnd_add_distance_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_distance_joint_config config);
 
-/** Remove a joint by its identifier. */
-BNDAPI void bnd_remove_joint(bnd_world *world, uint32_t id);
+/** Remove a joint by its handle. */
+BNDAPI void bnd_remove_joint(bnd_world *world, bnd_joint_handle handle);
 
 /**
  * Apply a force at the body's center of mass.

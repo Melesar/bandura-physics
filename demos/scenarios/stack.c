@@ -1,9 +1,10 @@
 #include "raylib.h"
-#include "raymath.h"
 #include "rlgl.h"
 #include "scenario-core.h"
 #include "bnd-core.h"
 #include "bnd-math.h"
+
+#include <stdio.h>
 
 int target_age;
 int target_iteration;
@@ -24,7 +25,8 @@ void scenario_configure(program_config *config, bnd_config *physics_config) {
   config->camera_position = (bnd_v3){0, 5, -10};
   config->camera_target = (bnd_v3){0, 2, 10};
 
-  // config->draw_ground = false;
+  physics_config->simulation.bounciness = 0.4f;
+  physics_config->solver.iterations_count = 16;
 }
 
 void scenario_initialize(bnd_world *world) {
@@ -34,6 +36,7 @@ void scenario_initialize(bnd_world *world) {
 void scenario_setup_scene(bnd_world *world) {
   const float floor_thikness = 0.5;
   const float box_size = 1;
+  const float gap = 0.2;
   const int stack_height = 5;
 
   bnd_add_box_static(world, (bnd_v3) { 30, floor_thikness, 30 });
@@ -43,7 +46,7 @@ void scenario_setup_scene(bnd_world *world) {
     bnd_body_handle box = bnd_add_box_dynamic(world, 3, (bnd_v3) { box_size, box_size, box_size }).value;
     bnd_set_position(world, box, center);
 
-    center = bnd_v3_add(center, (bnd_v3) { 0, box_size, 0 });
+    center = bnd_v3_add(center, (bnd_v3) { 0, box_size + gap, 0 });
 
     switch(i) {
       case 0: box_bottom = box;      break;

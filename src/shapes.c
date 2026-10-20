@@ -7,8 +7,10 @@
 #define SHAPE_BRACKET_BLOCK_CAPACITY 64
 
 void shapes_get_bracket_properties(const bnd_config *config, count_t bracket_index, count_t *blocks, count_t *shapes, count_t *capacity) {
-  count_t blocks_count = config->advanced.shapes_brackets_capacity[bracket_index] / SHAPE_BRACKET_BLOCK_CAPACITY +
-                          ((config->advanced.shapes_brackets_capacity[bracket_index] & (SHAPE_BRACKET_BLOCK_CAPACITY - 1)) > 0);
+  const uint32_t *brackets_capacity_config = config->memory.shapes_brackets_capacity;
+
+  count_t blocks_count = brackets_capacity_config[bracket_index] / SHAPE_BRACKET_BLOCK_CAPACITY +
+                          ((brackets_capacity_config[bracket_index] & (SHAPE_BRACKET_BLOCK_CAPACITY - 1)) > 0);
   count_t bracket_capacity = blocks_count * SHAPE_BRACKET_BLOCK_CAPACITY;
 
   count_t bracket_dimension = 1 << bracket_index;
@@ -156,12 +158,12 @@ bnd_body_shape *shapes_get(const bnd_world *world, body_shapes shapes) {
 
 #ifdef BND_TESTS
 
-#include "testing.h"
+#include <CUnit/CUnit.h>
 
 void test_shapes_write_primitive_bracket_uses_second_block(void) {
   bnd_world world = {0};
   world.allocator = bnd_default_allocator();
-  world.config.advanced.shapes_brackets_capacity[BRACKET_PRIMITIVE] = 65;
+  world.config.memory.shapes_brackets_capacity[BRACKET_PRIMITIVE] = 65;
 
   shapes_init(&world);
 
@@ -173,16 +175,16 @@ void test_shapes_write_primitive_bracket_uses_second_block(void) {
     body_shapes written = shapes_write(&world, BRACKET_PRIMITIVE, &shape, 1);
     bnd_body_shape *stored = shapes_get(&world, written);
 
-    assert(written.bracket == BRACKET_PRIMITIVE);
-    assert(written.count == 1);
-    assert(written.offset == i);
-    assert(memcmp(stored, &shape, sizeof(bnd_body_shape)) == 0);
+    CU_ASSERT(written.bracket == BRACKET_PRIMITIVE);
+    CU_ASSERT(written.count == 1);
+    CU_ASSERT(written.offset == i);
+    CU_ASSERT(memcmp(stored, &shape, sizeof(bnd_body_shape)) == 0);
   }
 
-  assert(world.shape_brackets[BRACKET_PRIMITIVE].capacity == 128);
-  assert(world.shape_brackets[BRACKET_PRIMITIVE].slots[0] == (uint64_t)~0);
-  assert(world.shape_brackets[BRACKET_PRIMITIVE].slots[1] == 1);
-  assert(shapes_any_slot_available(&world, BRACKET_PRIMITIVE));
+  CU_ASSERT(world.shape_brackets[BRACKET_PRIMITIVE].capacity == 128);
+  CU_ASSERT(world.shape_brackets[BRACKET_PRIMITIVE].slots[0] == (uint64_t)~0);
+  CU_ASSERT(world.shape_brackets[BRACKET_PRIMITIVE].slots[1] == 1);
+  CU_ASSERT(shapes_any_slot_available(&world, BRACKET_PRIMITIVE));
 
   shapes_teardown(&world);
 }
@@ -190,7 +192,7 @@ void test_shapes_write_primitive_bracket_uses_second_block(void) {
 void test_shapes_write_four_bracket_keeps_alignment_across_blocks(void) {
   bnd_world world = {0};
   world.allocator = bnd_default_allocator();
-  world.config.advanced.shapes_brackets_capacity[BRACKET_FOUR] = 65;
+  world.config.memory.shapes_brackets_capacity[BRACKET_FOUR] = 65;
 
   shapes_init(&world);
 
@@ -207,15 +209,15 @@ void test_shapes_write_four_bracket_keeps_alignment_across_blocks(void) {
     body_shapes written = shapes_write(&world, BRACKET_FOUR, shapes, count);
     bnd_body_shape *stored = shapes_get(&world, written);
 
-    assert(written.bracket == BRACKET_FOUR);
-    assert(written.count == count);
-    assert(written.offset == i * 4);
-    assert(memcmp(stored, shapes, count * sizeof(bnd_body_shape)) == 0);
+    CU_ASSERT(written.bracket == BRACKET_FOUR);
+    CU_ASSERT(written.count == count);
+    CU_ASSERT(written.offset == i * 4);
+    CU_ASSERT(memcmp(stored, shapes, count * sizeof(bnd_body_shape)) == 0);
   }
 
-  assert(world.shape_brackets[BRACKET_FOUR].capacity == 128);
-  assert(world.shape_brackets[BRACKET_FOUR].slots[0] == (uint64_t)~0);
-  assert(world.shape_brackets[BRACKET_FOUR].slots[1] == 1);
+  CU_ASSERT(world.shape_brackets[BRACKET_FOUR].capacity == 128);
+  CU_ASSERT(world.shape_brackets[BRACKET_FOUR].slots[0] == (uint64_t)~0);
+  CU_ASSERT(world.shape_brackets[BRACKET_FOUR].slots[1] == 1);
 
   shapes_teardown(&world);
 }
@@ -223,7 +225,7 @@ void test_shapes_write_four_bracket_keeps_alignment_across_blocks(void) {
 void test_shapes_expand_bracket_preserves_existing_data_after_two_blocks(void) {
   bnd_world world = {0};
   world.allocator = bnd_default_allocator();
-  world.config.advanced.shapes_brackets_capacity[BRACKET_TWO] = 65;
+  world.config.memory.shapes_brackets_capacity[BRACKET_TWO] = 65;
 
   shapes_init(&world);
 
@@ -235,13 +237,13 @@ void test_shapes_expand_bracket_preserves_existing_data_after_two_blocks(void) {
     shapes[1].value.sphere.radius = (float)(i + 200);
 
     body_shapes written = shapes_write(&world, BRACKET_TWO, shapes, 2);
-    assert(written.offset == i * 2);
+    CU_ASSERT(written.offset == i * 2);
   }
 
-  assert(world.shape_brackets[BRACKET_TWO].capacity == 128);
-  assert(world.shape_brackets[BRACKET_TWO].slots[0] == (uint64_t)~0);
-  assert(world.shape_brackets[BRACKET_TWO].slots[1] == (uint64_t)~0);
-  assert(!shapes_any_slot_available(&world, BRACKET_TWO));
+  CU_ASSERT(world.shape_brackets[BRACKET_TWO].capacity == 128);
+  CU_ASSERT(world.shape_brackets[BRACKET_TWO].slots[0] == (uint64_t)~0);
+  CU_ASSERT(world.shape_brackets[BRACKET_TWO].slots[1] == (uint64_t)~0);
+  CU_ASSERT(!shapes_any_slot_available(&world, BRACKET_TWO));
 
   bnd_body_shape extra_shapes[2] = {0};
   extra_shapes[0].type = BND_CAPSULE;
@@ -255,23 +257,23 @@ void test_shapes_expand_bracket_preserves_existing_data_after_two_blocks(void) {
   bnd_body_shape *middle = world.shape_brackets[BRACKET_TWO].shapes + 64 * 2;
   bnd_body_shape *stored_extra = shapes_get(&world, extra);
 
-  assert(world.shape_brackets[BRACKET_TWO].capacity == 192);
-  assert(extra.offset == 128 * 2);
-  assert(world.shape_brackets[BRACKET_TWO].slots[0] == (uint64_t)~0);
-  assert(world.shape_brackets[BRACKET_TWO].slots[1] == (uint64_t)~0);
-  assert(world.shape_brackets[BRACKET_TWO].slots[2] == 1);
+  CU_ASSERT(world.shape_brackets[BRACKET_TWO].capacity == 192);
+  CU_ASSERT(extra.offset == 128 * 2);
+  CU_ASSERT(world.shape_brackets[BRACKET_TWO].slots[0] == (uint64_t)~0);
+  CU_ASSERT(world.shape_brackets[BRACKET_TWO].slots[1] == (uint64_t)~0);
+  CU_ASSERT(world.shape_brackets[BRACKET_TWO].slots[2] == 1);
 
-  assert(first[0].type == BND_BOX);
-  assert(first[0].value.box.size.x == 1.0f);
-  assert(first[1].type == BND_SPHERE);
-  assert(first[1].value.sphere.radius == 200.0f);
+  CU_ASSERT(first[0].type == BND_BOX);
+  CU_ASSERT(first[0].value.box.size.x == 1.0f);
+  CU_ASSERT(first[1].type == BND_SPHERE);
+  CU_ASSERT(first[1].value.sphere.radius == 200.0f);
 
-  assert(middle[0].type == BND_BOX);
-  assert(middle[0].value.box.size.x == 65.0f);
-  assert(middle[1].type == BND_SPHERE);
-  assert(middle[1].value.sphere.radius == 264.0f);
+  CU_ASSERT(middle[0].type == BND_BOX);
+  CU_ASSERT(middle[0].value.box.size.x == 65.0f);
+  CU_ASSERT(middle[1].type == BND_SPHERE);
+  CU_ASSERT(middle[1].value.sphere.radius == 264.0f);
 
-  assert(memcmp(stored_extra, extra_shapes, sizeof(extra_shapes)) == 0);
+  CU_ASSERT(memcmp(stored_extra, extra_shapes, sizeof(extra_shapes)) == 0);
 
   shapes_teardown(&world);
 }
@@ -279,7 +281,7 @@ void test_shapes_expand_bracket_preserves_existing_data_after_two_blocks(void) {
 void test_shapes_clear_slot_reuses_second_block_slot_with_bracket_alignment(void) {
   bnd_world world = {0};
   world.allocator = bnd_default_allocator();
-  world.config.advanced.shapes_brackets_capacity[BRACKET_EIGHT] = 65;
+  world.config.memory.shapes_brackets_capacity[BRACKET_EIGHT] = 65;
 
   shapes_init(&world);
 
@@ -293,14 +295,14 @@ void test_shapes_clear_slot_reuses_second_block_slot_with_bracket_alignment(void
     }
 
     entries[i] = shapes_write(&world, BRACKET_EIGHT, shapes, 6);
-    assert(entries[i].offset == i * 8);
-    assert(entries[i].count == 6);
+    CU_ASSERT(entries[i].offset == i * 8);
+    CU_ASSERT(entries[i].count == 6);
   }
 
-  assert(entries[64].offset == 64 * 8);
-  assert(entries[65].offset == 65 * 8);
-  assert(world.shape_brackets[BRACKET_EIGHT].slots[0] == (uint64_t)~0);
-  assert(world.shape_brackets[BRACKET_EIGHT].slots[1] == 3);
+  CU_ASSERT(entries[64].offset == 64 * 8);
+  CU_ASSERT(entries[65].offset == 65 * 8);
+  CU_ASSERT(world.shape_brackets[BRACKET_EIGHT].slots[0] == (uint64_t)~0);
+  CU_ASSERT(world.shape_brackets[BRACKET_EIGHT].slots[1] == 3);
 
   shapes_clear_slot(&world, BRACKET_EIGHT, entries[65].offset);
 
@@ -314,23 +316,27 @@ void test_shapes_clear_slot_reuses_second_block_slot_with_bracket_alignment(void
   bnd_body_shape *stored_replacement = shapes_get(&world, replacement);
   bnd_body_shape *preserved_neighbor = world.shape_brackets[BRACKET_EIGHT].shapes + entries[64].offset;
 
-  assert(replacement.offset == entries[65].offset);
-  assert(replacement.count == 5);
-  assert(memcmp(stored_replacement, replacement_shapes, 5 * sizeof(bnd_body_shape)) == 0);
-  assert(preserved_neighbor[0].type == BND_SPHERE);
-  assert(preserved_neighbor[0].value.sphere.radius == 641.0f);
+  CU_ASSERT(replacement.offset == entries[65].offset);
+  CU_ASSERT(replacement.count == 5);
+  CU_ASSERT(memcmp(stored_replacement, replacement_shapes, 5 * sizeof(bnd_body_shape)) == 0);
+  CU_ASSERT(preserved_neighbor[0].type == BND_SPHERE);
+  CU_ASSERT(preserved_neighbor[0].value.sphere.radius == 641.0f);
 
   shapes_teardown(&world);
 }
 
-void shapes_tests() {
-  TESTS_BEGIN("Body shapes")
-
-  TEST(test_shapes_write_primitive_bracket_uses_second_block)
-  TEST(test_shapes_write_four_bracket_keeps_alignment_across_blocks)
-  TEST(test_shapes_expand_bracket_preserves_existing_data_after_two_blocks)
-  TEST(test_shapes_clear_slot_reuses_second_block_slot_with_bracket_alignment)
-
-  TESTS_END
+CU_ErrorCode register_shapes_tests(void) {
+  CU_TestInfo tests[] = {
+    {"test_shapes_write_primitive_bracket_uses_second_block", test_shapes_write_primitive_bracket_uses_second_block},
+    {"test_shapes_write_four_bracket_keeps_alignment_across_blocks", test_shapes_write_four_bracket_keeps_alignment_across_blocks},
+    {"test_shapes_expand_bracket_preserves_existing_data_after_two_blocks", test_shapes_expand_bracket_preserves_existing_data_after_two_blocks},
+    {"test_shapes_clear_slot_reuses_second_block_slot_with_bracket_alignment", test_shapes_clear_slot_reuses_second_block_slot_with_bracket_alignment},
+    CU_TEST_INFO_NULL
+  };
+  CU_SuiteInfo suites[] = {
+    {"Body shapes", NULL, NULL, NULL, NULL, tests},
+    CU_SUITE_INFO_NULL
+  };
+  return CU_register_suites(suites);
 }
 #endif

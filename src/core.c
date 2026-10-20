@@ -1,7 +1,6 @@
 #include "bandura.h"
 #include "bnd-core.h"
 
-#include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,6 +33,7 @@ BND_RESULT_FUNC_DECL(handle, bnd_body_handle)
 BND_RESULT_FUNC_DECL(material, bnd_material_handle)
 BND_RESULT_FUNC_DECL(layer, bnd_collision_layer)
 BND_RESULT_FUNC_DECL(ptr, void*)
+BND_RESULT_FUNC_DECL(joint, bnd_joint_handle)
 
 const count_t max_body_index = (count_t)~0 >> 9;
 count_t next_world_id;
@@ -63,6 +63,49 @@ bnd_allocator bnd_default_allocator(void) {
   };
 }
 
+bnd_error resize_force(bnd_allocator allocator, void **array, count_t element_size, uint64_t alignment, count_t capacity_factor, count_t *capacity) {
+  if (allocator.realloc == NULL) {
+    return (bnd_error) { BND_ERROR_NO_SPACE_AVAILABLE, "Allocator.realloc is NULL" };
+  }
+  
+  count_t new_capacity = *capacity * capacity_factor;
+
+  void *new_buffer = allocator.realloc(*array, alignment, *capacity * element_size, new_capacity * element_size);
+  if (new_buffer == NULL) {
+    return (bnd_error) { BND_ERROR_OUT_OF_MEMORY, "Failed to reallocate memory" };
+  }
+
+  *array = new_buffer;
+  *capacity = new_capacity;
+
+  return OK;
+}
+
+bnd_error resize_if_needed(bnd_allocator allocator, void **array, count_t element_size, uint64_t alignment, count_t count, count_t additional_count, count_t *capacity) {
+  if (count + additional_count <= *capacity) {
+    return OK;
+  }
+
+  if (allocator.realloc == NULL) {
+    return (bnd_error) { BND_ERROR_NO_SPACE_AVAILABLE, "Allocator.realloc is NULL" };
+  }
+
+  count_t new_capacity = *capacity;
+  while(new_capacity < count + additional_count) {
+    new_capacity <<= 1;
+  }
+
+  void *new_buffer = allocator.realloc(*array, alignment, *capacity * element_size, new_capacity * element_size);
+  if (new_buffer == NULL) {
+    return (bnd_error) { BND_ERROR_OUT_OF_MEMORY, "Failed to reallocate memory" };
+  }
+
+  *array = new_buffer;
+  *capacity = new_capacity;
+
+  return OK;
+}
+
 uint64_t bnd_required_memory(const bnd_config *config) {
   uint64_t size = sizeof(bnd_world);
 
@@ -89,7 +132,6 @@ uint64_t bnd_required_memory(const bnd_config *config) {
     + sizeof(bnd_m3)
     + sizeof(float);
 
-  uint64_t contact_size = sizeof(contact);
   uint64_t joint_size = sizeof(bnd_joint) + sizeof(count_t);
   uint64_t mesh_size = sizeof(bnd_v3) * DEFAULT_VERTEX_PER_MESH
     + sizeof(uint32_t) * DEFAULT_FACE_PER_MESH * 3
@@ -110,29 +152,25 @@ uint64_t bnd_required_memory(const bnd_config *config) {
       + blocks_count * sizeof(uint64_t);
   }
 
-  uint64_t arena_size = config->memory.internal_allocation_budget;
+  uint64_t contacts_size =
+    sizeof(uint64_t)            * config->memory.hash_table_capacity +
+    sizeof(count_t)             * config->memory.hash_table_capacity +
+    sizeof(broad_phase_contact) * config->memory.contacts_capacity;
 
-  uint64_t cache_hash_table_capacity = 1;
-  while (cache_hash_table_capacity < config->advanced.contacts_cache.hash_table_capacity) {
-    cache_hash_table_capacity *= 2;
-  }
-
-  uint64_t contacts_cache_size = cache_hash_table_capacity * sizeof(uint32_t)
-    + config->advanced.contacts_cache.buffer_capacity * sizeof(cache_entry);
+  uint64_t arena_size = config->memory.internal_allocator_capacity_bytes;
 
   size += (config->memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT) * dynamic_size
     + (config->memory.statics_capacity + EPHEMERAL_BODIES_COUNT) * common_size
-    + config->memory.contacts_capacity * contact_size
     + config->memory.joints_capacity * joint_size
     + config->memory.meshes_capacity * mesh_size
     + config->memory.events_capacity * event_size
     + config->memory.materials_capacity * material_size
+    + contacts_size
     + shapes_size
-    + arena_size
-    + contacts_cache_size;
+    + arena_size;
 
   // Alignment
-  size += 9 * 7; // 8-bytes for world, shapes slots, EPA polytope, custom data and the cache entries buffer
+  size += 10 * 7; // 8-bytes for world, shapes slots, EPA polytope, custom data and the broad phase contacts
   size += 46 * 3; // 4-bytes for the rest of the buffers
 
   return size;
@@ -192,7 +230,6 @@ bnd_config bnd_default_config(void) {
       .friction = 0.9f,
       .sleep_base_bias = 0.5f,
       .sleep_threshold = 0.3f,
-      .min_bounce_velocity = 0.25f,
     },
     .memory = {
       .dynamics_capacity = 32,
@@ -202,28 +239,42 @@ bnd_config bnd_default_config(void) {
       .meshes_capacity = 32,
       .events_capacity = 128,
       .materials_capacity = 8,
-      .internal_allocation_budget = 8 << 10, // 8 Kb
+      .hash_table_capacity = 512,
+      .shapes_brackets_capacity = {64, 1, 1, 1, 1},
+      .internal_allocator_capacity_bytes = 8 << 10, // 8 Kb
     },
-    .advanced = {
+    .solver = {
+      .iterations_count = 8,
+      .baumgarde_coefficient = 0.2f,
+      .linear_slop = 0.005f,
+      .max_baumgarde_velocity = 4.0f,  
+      .warm_start = true,
+    },
+    .collision_detection = {
       .max_gjk_iterations = 100,
       .epa_tolerance = 0.01f,
       .epa_max_nodes = 128,
-      .resolution_attempts_factor = 15,
-      .penetration_epsilon = 0.01f,
-      .velocity_epsilon = 0.01f,
-      .shapes_brackets_capacity = {64, 1, 1, 1, 1},
-      .contacts_cache = {
-        .max_age = 3,
-        .hash_table_capacity = 256,
-        .buffer_capacity = 64,
-        .feature_distance_threshold = 0.02f,
-        .separation_threshold = 0.05f,
-      }
-    },
+      .feature_distance_threshold = 0.02f,
+      .separation_threshold = 0.05f,
+    
+    }
   };
 }
 
+static void sanitize_config(bnd_config *config) {
+  bnd_config_solver *solver = &config->solver;
+
+  solver->linear_slop = MAX(solver->linear_slop, 0.0f);
+  solver->baumgarde_coefficient = MAX(0.0f, MIN(solver->baumgarde_coefficient, 1.0f));
+  solver->iterations_count = MAX(solver->iterations_count, 0);
+  solver->max_baumgarde_velocity = MAX(solver->max_baumgarde_velocity, 0.0f);
+
+  // TODO: other categories.
+}
+
 static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allocator allocator) {
+  sanitize_config(&config);
+
   world->allocator = allocator;
   world->config = config;
   world->id = next_world_id++; // TODO: make this thread-safe.
@@ -235,8 +286,6 @@ static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allo
   const count_t vectors = sizeof(bnd_v3) * (config.memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT);
   const count_t floats = sizeof(float) * (config.memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT);
   const count_t matrices = sizeof(bnd_m3) * (config.memory.dynamics_capacity + EPHEMERAL_BODIES_COUNT);
-
-  world->statics.dirty = false;
 
   ALLOC(world->dynamics.forces, vectors);
   ALLOC(world->dynamics.torques, vectors);
@@ -251,7 +300,7 @@ static bnd_error bnd_init_internal(bnd_world *world, bnd_config config, bnd_allo
   ALLOC(world->dynamics.inv_intertias, matrices);
   ALLOC(world->dynamics.motion_avgs, floats);
 
-  INVOKE(arena_init(allocator, config.memory.internal_allocation_budget, &world->arena))
+  INVOKE(arena_init(allocator, config.memory.internal_allocator_capacity_bytes, &world->arena))
 
   world->matrix.matrix[0] = 1;
   for(count_t i = 1; i < MAX_COLLISION_LAYERS; ++i) {

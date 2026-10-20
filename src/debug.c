@@ -6,15 +6,34 @@
 #include <stdlib.h>
 #include <string.h>
 
+typedef struct {
+  bnd_debug_draw_contact_fn callback;
+  void *user_data;
+} draw_contact_data;
+
+static bnd_error draw_contact(bnd_world *world, broad_contacts_set *contacts, bnd_body_type type, broad_phase_contact *contact, count_t index, void *custom_data) {
+  (void)world;
+  (void)contacts;
+  (void)type;
+  (void)index;
+  draw_contact_data *data = (draw_contact_data *) custom_data;
+
+  for (count_t i = 0; i < contact->manifold.count; ++i) {
+    const contact_point *p = &contact->manifold.points[i];
+
+    data->callback(p->point, contact->manifold.normal, p->depth, data->user_data);
+  }
+ 
+  return OK;
+}
+
 static void draw_contacts(const bnd_world *world, bnd_debug_draw_callbacks callbacks, void *user_data) {
   if (callbacks.draw_contact == NULL) {
     return;
   }
+  draw_contact_data data = { callbacks.draw_contact, user_data };
 
-  for (count_t i = 0; i < world->contacts.count; i++) {
-    const contact *contact = &world->contacts.values[i];
-    callbacks.draw_contact(contact->point, contact->normal, contact->depth, user_data);
-  }
+  for_each_broad_contact((bnd_world *)world, draw_contact, &data);
 }
 
 static void draw_shapes(const bnd_world *world, bnd_body_type type, bnd_debug_draw_callbacks callbacks, void *user_data) {
@@ -73,7 +92,7 @@ void draw_joints(const bnd_world *world, bnd_debug_draw_callbacks callbacks, voi
       count_t body_index = handle_to_inner_index(world, j->bodies[k]);
       const common_data *data = as_common_const(world, j->bodies[k].type);
 
-      points[k] = bnd_v3_rotate(j->relative_contact_positions[k], data->rotations[body_index]);
+      points[k] = bnd_v3_rotate(j->anchors[k], data->rotations[body_index]);
       points[k] = bnd_v3_add(points[k], data->positions[body_index]);
     }
    
@@ -144,13 +163,12 @@ void epa_debug_capture(bnd_world *world) {
     return;
   }
 
-  contact c;
+  contact_manifold manifold = {0};
   count_t iterations_count = epa_get_contact(
-    world,
     &world->epa_debug->ctx,
     &world->epa_debug->s,
-    world->config.advanced.epa_tolerance,
-    &c);
+    world->config.collision_detection.epa_tolerance,
+    &manifold);
 
   world->epa_debug->target_iteration = 0;
   world->epa_debug->iterations_count_result = (bnd_result_u32) { OK, iterations_count };

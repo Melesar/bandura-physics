@@ -1,9 +1,9 @@
+#include "bandura.h"
 #include "bnd-core.h"
-#include "bnd-math.h"
 
 #include <string.h>
 
-static bnd_error resize_if_needed(bnd_allocator allocator, joints *joints) {
+static bnd_error joints_resize_if_needed(bnd_allocator allocator, joints *joints) {
   if (joints->count < joints->capacity) {
     return OK;
   }
@@ -19,12 +19,12 @@ static bnd_error resize_if_needed(bnd_allocator allocator, joints *joints) {
   return OK;
 }
 
-bnd_result_u32 bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_v3 contact_offset_a, bnd_v3 contact_offset_b, float max_distance) {
-  PROPAGATE_RESULT(u32, bnd_handle_valid(world, body_a));
-  PROPAGATE_RESULT(u32, bnd_handle_valid(world, body_b));
+bnd_result_joint bnd_add_distance_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_distance_joint_config config) {
+  PROPAGATE_RESULT(joint, bnd_handle_valid(world, body_a));
+  PROPAGATE_RESULT(joint, bnd_handle_valid(world, body_b));
 
   if (body_a.type == BND_BODY_STATIC && body_b.type == BND_BODY_STATIC) {
-    return BND_RESULT_ERR(u32, BND_ERROR_INVALID_JOINT, "Two static bodies cannot be bound together");
+    return BND_RESULT_ERR(joint, BND_ERROR_INVALID_JOINT, "Two static bodies cannot be bound together");
   }
 
   // Let body_a always be dynamic - same as with contacts.
@@ -33,14 +33,14 @@ bnd_result_u32 bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_
     body_b = body_a;
     body_a = tmp_body;
 
-    bnd_v3 tmp_pos = contact_offset_b;
-    contact_offset_b = contact_offset_a;
-    contact_offset_a = tmp_pos;
+    bnd_v3 tmp_pos = config.local_anchor_a;
+    config.local_anchor_a = config.local_anchor_b;
+    config.local_anchor_b = tmp_pos;
   }
 
   joints *joints = &world->joints;
 
-  PROPAGATE_RESULT(u32, resize_if_needed(world->allocator, joints));
+  PROPAGATE_RESULT(joint, joints_resize_if_needed(world->allocator, joints));
 
   count_t last_index = joints->count++;
   bool is_dynamic = body_b.type == BND_BODY_DYNAMIC;
@@ -61,22 +61,29 @@ bnd_result_u32 bnd_add_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_
   }
 
   joints->values[index] = (bnd_joint){
+    .type = BND_JOINT_TYPE_DISTANCE,
     .bodies = {body_a, body_b},
-    .relative_contact_positions = {contact_offset_a, contact_offset_b},
-    .max_error = max_distance,
+    .anchors = {config.local_anchor_a, config.local_anchor_b},
+    .min_distance = MAX(config.min_distance, 0.0f),
+    .max_distance = MAX(config.max_distance, 0.0f),
   };
   joints->ids[index] = id;
 
-  return BND_RESULT_OK(u32, id);
+  bnd_joint_handle handle = { BND_JOINT_TYPE_DISTANCE, world->id, id };
+  return BND_RESULT_OK(joint, handle);
 }
 
-void bnd_remove_joint(bnd_world *world, count_t id) {
+void bnd_remove_joint(bnd_world *world, bnd_joint_handle handle) {
+  if (world->id != handle.world_id) {
+    return;
+  }
+
   joints *joints = &world->joints;
 
   count_t count = joints->count;
   count_t dynamic_count = joints->dynamic_count;
   for (count_t i = 0; i < count; ++i) {
-    if (joints->ids[i] != id) {
+    if (joints->ids[i] != handle.id) {
       continue;
     }
 
@@ -146,57 +153,6 @@ void joints_remove_stale_if_needed(bnd_world *world, bnd_body_handle removed_bod
 
   joints->dynamic_count = new_dynamic_count;
   joints->count = write;
-}
-
-count_t joints_generate_contacts(bnd_world *world, count_t contacts_offset, bnd_body_type type) {
-  const joints *joints = &world->joints;
-
-  const count_t start = type == BND_BODY_DYNAMIC ? 0 : joints->dynamic_count;
-  const count_t end = type == BND_BODY_DYNAMIC ? joints->dynamic_count : joints->count;
-  const count_t max_count = end - start;
-
-  if (IS_ERROR(contacts_ensure_capacity(world, contacts_offset, max_count))) {
-    return 0;
-  }
-
-  contact *contacts = world->contacts.values;
-
-  count_t spawned_count = 0;
-  for (count_t i = start; i < end; ++i) {
-    bnd_joint j = joints->values[i];
-
-    const common_data *data[2];
-    data[0] = as_common(world, BND_BODY_DYNAMIC);
-    data[1] = as_common(world, type);
-
-    bnd_v3 world_points[2];
-    count_t indices[2];
-    for (count_t k = 0; k < 2; ++k) {
-      count_t index = handle_to_inner_index(world, j.bodies[k]);
-      world_points[k] = bnd_v3_rotate(j.relative_contact_positions[k], data[k]->rotations[index]);
-      world_points[k] = bnd_v3_add(world_points[k], data[k]->positions[index]);
-      indices[k] = index;
-    }
-
-    bnd_v3 offset = bnd_v3_sub(world_points[1], world_points[0]);
-    float distance = bnd_v3_len(offset);
-    if (distance <= j.max_error) {
-      continue;
-    }
-
-    contact *contact = contacts + contacts_offset + spawned_count;
-    contact->index_a = indices[0];
-    contact->index_b = indices[1];
-    contact->point = bnd_v3_scale(bnd_v3_add(world_points[0], world_points[1]), 0.5f);
-    contact->normal = bnd_v3_scale(offset, 1.0f / distance);
-    contact->depth = distance - j.max_error;
-    contact->friction = 1.0f;
-    contact->restitution = 0.0f;
-
-    spawned_count += 1;
-  }
-
-  return spawned_count;
 }
 
 bnd_error joints_init(bnd_world *world) {
