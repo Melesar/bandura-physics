@@ -19,31 +19,23 @@ static bnd_error joints_resize_if_needed(bnd_allocator allocator, joints *joints
   return OK;
 }
 
-bnd_result_joint bnd_add_distance_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_distance_joint_config config) {
-  PROPAGATE_RESULT(joint, bnd_handle_valid(world, body_a));
-  PROPAGATE_RESULT(joint, bnd_handle_valid(world, body_b));
+static bnd_error validate_bodies_for_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b) {
+  PROPAGATE_ERROR(bnd_handle_valid(world, body_a));
+  PROPAGATE_ERROR(bnd_handle_valid(world, body_b));
 
   if (body_a.type == BND_BODY_STATIC && body_b.type == BND_BODY_STATIC) {
-    return BND_RESULT_ERR(joint, BND_ERROR_INVALID_JOINT, "Two static bodies cannot be bound together");
+    return (bnd_error){ BND_ERROR_INVALID_JOINT, "Two static bodies cannot be bound together" };
   }
 
-  // Let body_a always be dynamic - same as with contacts.
-  if (body_a.type == BND_BODY_STATIC && body_b.type == BND_BODY_DYNAMIC) {
-    bnd_body_handle tmp_body = body_b;
-    body_b = body_a;
-    body_a = tmp_body;
+  return OK;
+}
 
-    bnd_v3 tmp_pos = config.local_anchor_a;
-    config.local_anchor_a = config.local_anchor_b;
-    config.local_anchor_b = tmp_pos;
-  }
-
+static bnd_result_u32 insert_joint(bnd_world *world, bnd_joint joint, bool is_dynamic) {
   joints *joints = &world->joints;
 
-  PROPAGATE_RESULT(joint, joints_resize_if_needed(world->allocator, joints));
+  PROPAGATE_RESULT(u32, joints_resize_if_needed(world->allocator, joints));
 
   count_t last_index = joints->count++;
-  bool is_dynamic = body_b.type == BND_BODY_DYNAMIC;
   count_t id = joints->next_id++;
 
   count_t index;
@@ -60,16 +52,60 @@ bnd_result_joint bnd_add_distance_joint(bnd_world *world, bnd_body_handle body_a
     index = last_index;
   }
 
-  joints->values[index] = (bnd_joint){
+  joints->ids[index]    = id;
+  joints->values[index] = joint;
+
+  return BND_RESULT_OK(u32, id);
+}
+
+bnd_result_joint bnd_add_hinge_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_hinge_joint_config config) {
+  PROPAGATE_RESULT(joint, validate_bodies_for_joint(world, body_a, body_b))
+
+  if (body_a.type == BND_BODY_STATIC && body_b.type == BND_BODY_DYNAMIC) {
+    bnd_body_handle tmp_body = body_b;
+    body_b = body_a;
+    body_a = tmp_body;
+  }
+
+  bnd_joint joint = {
+    .type = BND_JOINT_TYPE_HINGE,
+    .bodies = {body_a, body_b},
+  };
+
+  bnd_result_u32 insertion_result = insert_joint(world, joint, body_b.type == BND_BODY_DYNAMIC);
+  PROPAGATE_RESULT(joint, insertion_result.error);
+
+  bnd_joint_handle handle = { BND_JOINT_TYPE_HINGE, world->id, insertion_result.value };
+
+  return BND_RESULT_OK(joint, handle);
+}
+
+bnd_result_joint bnd_add_distance_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_distance_joint_config config) {
+  PROPAGATE_RESULT(joint, validate_bodies_for_joint(world, body_a, body_b));
+
+  // Let body_a always be dynamic - same as with contacts.
+  if (body_a.type == BND_BODY_STATIC && body_b.type == BND_BODY_DYNAMIC) {
+    bnd_body_handle tmp_body = body_b;
+    body_b = body_a;
+    body_a = tmp_body;
+
+    bnd_v3 tmp_pos = config.local_anchor_a;
+    config.local_anchor_a = config.local_anchor_b;
+    config.local_anchor_b = tmp_pos;
+  }
+
+  bnd_joint joint = {
     .type = BND_JOINT_TYPE_DISTANCE,
     .bodies = {body_a, body_b},
     .anchors = {config.local_anchor_a, config.local_anchor_b},
     .min_distance = MAX(config.min_distance, 0.0f),
     .max_distance = MAX(config.max_distance, 0.0f),
   };
-  joints->ids[index] = id;
 
-  bnd_joint_handle handle = { BND_JOINT_TYPE_DISTANCE, world->id, id };
+  bnd_result_u32 insertion_result = insert_joint(world, joint, body_b.type == BND_BODY_DYNAMIC);
+  PROPAGATE_RESULT(joint, insertion_result.error);
+
+  bnd_joint_handle handle = { BND_JOINT_TYPE_DISTANCE, world->id, insertion_result.value };
   return BND_RESULT_OK(joint, handle);
 }
 
