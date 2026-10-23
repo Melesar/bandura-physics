@@ -17,7 +17,7 @@ const int ui_font_size = 14;
 const int screen_width = 1920;
 const int screen_height = 1080;
 const int frame_rate = 60;
-const int simulation_rate = 120;
+const int simulation_rate = 60;
 
 const float simulation_step = 1.0 / simulation_rate;
 
