@@ -16,7 +16,7 @@ void scenario_initialize(bnd_world *world) {
 
 void scenario_setup_scene(bnd_world *world) {
   // sparse_awake_grid(world, 8, 8, 8);
-  // dense_settling_pile(world, 8);
+  // dense_settling_pile(world, 4);
   // compound_crowd(world, 4, 8, 4);
   joints_lattice(world, NUM_ANCHORS, anchors);
 }

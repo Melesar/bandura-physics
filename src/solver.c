@@ -252,9 +252,10 @@ static bnd_result_u32 constraints_from_joints(bnd_world *world) {
     bnd_v3 offset_a = bnd_v3_sub(pa, position_a);
     bnd_v3 offset_b = bnd_v3_sub(pb, position_b);
 
+    bnd_v3 offset = bnd_v3_sub(pb, pa);
+
     switch (j->type) {
       case BND_JOINT_TYPE_DISTANCE: {
-        bnd_v3 offset = bnd_v3_sub(pb, pa);
         float distance_sqr = bnd_v3_lensqr(offset);
         float threshold_min = j->min_distance * j->min_distance;
         float threshold_max = j->max_distance * j->max_distance;
@@ -330,6 +331,73 @@ static bnd_result_u32 constraints_from_joints(bnd_world *world) {
          ? MIN(constraint->bias, config.max_baumgarde_velocity)
          : MAX(constraint->bias, -config.max_baumgarde_velocity);
 
+      } break;
+
+      case BND_JOINT_TYPE_HINGE: {
+        enum {
+          HINGE_JOINT_CONSTRAINT_COUNT = 3
+        };
+
+        count += HINGE_JOINT_CONSTRAINT_COUNT;
+        
+        bnd_result_ptr allocation = arena_alloc(&world->arena, ALIGNMENT_JOINT_CONSTRAINT, HINGE_JOINT_CONSTRAINT_COUNT * sizeof(joint_constraint));
+        PROPAGATE_RESULT(u32, allocation.error);
+
+        bnd_v3 axis[3] = { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 1, 0 } };
+        for (count_t k = 0; k < 3; k++) {
+          bnd_v3 ra_n = bnd_v3_cross(offset_a, axis[k]);
+          bnd_v3 rb_n = bnd_v3_cross(offset_b, axis[k]);
+
+          joint_constraint *constraint = (joint_constraint *) allocation.value + k;
+          constraint->type = is_dynamic ? BND_BODY_DYNAMIC : BND_BODY_STATIC;
+          constraint->joint_index = i;
+          constraint->body_a = index_a;
+          constraint->body_b = index_b;
+
+          constraint->relative_positions[0] = offset_a;
+          constraint->relative_positions[1] = offset_b;
+
+          constraint->Jav = axis[k];
+          constraint->Jaw = ra_n;
+
+          if (is_dynamic) {
+            constraint->Jbv = bnd_v3_negate(axis[k]);
+            constraint->Jbw = bnd_v3_negate(rb_n);
+          } else {
+            constraint->Jbv = constraint->Jbw = bnd_v3_zero();
+          }
+
+          bnd_m3 inv_inertia_a = bnd_m3_inertia(dynamics->inv_inertia_tensors[index_a], rotation_a);
+
+          float K = dynamics->inv_masses[index_a];
+          K += bnd_v3_dot(ra_n, bnd_m3_rotate(ra_n, inv_inertia_a));
+
+          if (is_dynamic) {
+            bnd_m3 inv_inertia_b = bnd_m3_inertia(dynamics->inv_inertia_tensors[index_b], rotation_b);
+
+            K += dynamics->inv_masses[index_b];
+            K += bnd_v3_dot(rb_n, bnd_m3_rotate(rb_n, inv_inertia_b));
+          }
+
+          constraint->effective_mass = K > EPSILON ? 1.0f / K : 0.0f;
+          constraint->lambda = j->impulse;
+
+
+          float error = bnd_v3_dot(offset, axis[k]);
+          constraint->bias = error * config.baumgarde_coefficient;
+
+          if (error > config.linear_slop) {
+            constraint->min_lambda = 0.0;
+            constraint->max_lambda = INFINITY;
+            constraint->bias = MIN(constraint->bias, config.max_baumgarde_velocity);
+          } else if (error < -config.linear_slop) {
+            constraint->min_lambda = -INFINITY;
+            constraint->max_lambda = 0.0f;
+            constraint->bias = MAX(constraint->bias, -config.max_baumgarde_velocity);
+          } else {
+            constraint->min_lambda = constraint->max_lambda = constraint->bias = 0.0f;
+          }
+        }
       } break;
 
       default:

@@ -65,11 +65,16 @@ bnd_result_joint bnd_add_hinge_joint(bnd_world *world, bnd_body_handle body_a, b
     bnd_body_handle tmp_body = body_b;
     body_b = body_a;
     body_a = tmp_body;
+
+    bnd_v3 tmp_pos = config.local_anchor_a;
+    config.local_anchor_a = config.local_anchor_b;
+    config.local_anchor_b = tmp_pos;
   }
 
   bnd_joint joint = {
     .type = BND_JOINT_TYPE_HINGE,
     .bodies = {body_a, body_b},
+    .anchors = { config.local_anchor_a, config.local_anchor_b }
   };
 
   bnd_result_u32 insertion_result = insert_joint(world, joint, body_b.type == BND_BODY_DYNAMIC);
