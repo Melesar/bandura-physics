@@ -1,3 +1,4 @@
+#include "raylib.h"
 #include "scenario-core.h"
 #include "bnd-math.h"
 #include "raymath.h"
@@ -17,24 +18,22 @@ void scenario_initialize(bnd_world *world) {
 }
 
 void scenario_setup_scene(bnd_world *world) {
-  bnd_add_box_static(world, (bnd_v3) { 20, 0.5, 20 });
-  
-  bnd_body_handle box = bnd_add_box_dynamic(world, 5, bnd_v3_one()).value;
-  bnd_set_position(world, box, (bnd_v3){ -3, 5, 0 });
-  bnd_set_rotation(world, box, QuaternionFromEuler(PI / 6, 0, 0));
+  bnd_add_plane(world, bnd_v3_zero(), (bnd_v3) { 0, 1, 0 });
 
-  bnd_body_handle ball = bnd_add_sphere_dynamic(world, 5, 1).value;
-  bnd_set_position(world, ball, (bnd_v3) { 0, 5, 0 });
+  bnd_body_handle box = bnd_add_box_static(world, (bnd_v3) { 3, 0.5, 3 }).value;
+  bnd_set_position(world, box, (bnd_v3) { 0, 5, 0 });
 
   bnd_body_handle capsule = bnd_add_capsule_dynamic(world, 5, 0.5, 1).value;
-  bnd_set_position(world, capsule, (bnd_v3) { 3, 5, 0 });
-  bnd_set_rotation(world, capsule, QuaternionFromEuler(PI / 3 , 0, 0));
+  bnd_set_position(world, capsule, (bnd_v3) { 1.5f, 3.75f, 1.5f });
 
-  if (rgd) {
-    free(rgd);
+  bnd_result_joint result = bnd_add_hinge_joint(world, box, capsule, (bnd_hinge_joint_config) {
+    .local_anchor_a = { 1.5f, -0.25f, 1.5f },
+    .local_anchor_b = { 0, 1, 0 },
+  });
+
+  if (result.error.type != BND_OK) {
+    TraceLog(LOG_ERROR, "Failed to add joint: %s", result.error.message);
   }
-
-  // rgd = ragdoll_create(world, (bnd_v3) { 0, 5, -5 });
 }
 
 void scenario_handle_input(bnd_world *world, Camera *camera) {
