@@ -26,7 +26,7 @@ void scenario_setup_scene(bnd_world *world) {
   bnd_body_handle capsule = bnd_add_capsule_dynamic(world, 5, 0.5, 1).value;
   bnd_set_position(world, capsule, (bnd_v3) { 1.5f, 3.75f, 1.5f });
 
-  bnd_result_joint result = bnd_add_hinge_joint(world, box, capsule, (bnd_hinge_joint_config) {
+  bnd_result_joint result = bnd_add_ball_socket_joint(world, box, capsule, (bnd_ball_socket_joint_config) {
     .local_anchor_a = { 1.5f, -0.25f, 1.5f },
     .local_anchor_b = { 0, 1, 0 },
   });

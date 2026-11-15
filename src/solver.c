@@ -333,14 +333,14 @@ static bnd_result_u32 constraints_from_joints(bnd_world *world) {
 
       } break;
 
-      case BND_JOINT_TYPE_HINGE: {
+      case BND_JOINT_TYPE_BALL_SOCKET: {
         enum {
-          HINGE_JOINT_CONSTRAINT_COUNT = 3
+          BALL_SOCKET_JOINT_CONSTRAINT_COUNT = 3
         };
 
-        count += HINGE_JOINT_CONSTRAINT_COUNT;
+        count += BALL_SOCKET_JOINT_CONSTRAINT_COUNT;
         
-        bnd_result_ptr allocation = arena_alloc(&world->arena, ALIGNMENT_JOINT_CONSTRAINT, HINGE_JOINT_CONSTRAINT_COUNT * sizeof(joint_constraint));
+        bnd_result_ptr allocation = arena_alloc(&world->arena, ALIGNMENT_JOINT_CONSTRAINT, BALL_SOCKET_JOINT_CONSTRAINT_COUNT * sizeof(joint_constraint));
         PROPAGATE_RESULT(u32, allocation.error);
 
         bnd_v3 axis[3] = { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 1, 0 } };
