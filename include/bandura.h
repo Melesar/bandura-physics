@@ -131,7 +131,7 @@ typedef enum {
 
 typedef enum {
   BND_JOINT_TYPE_DISTANCE,
-  BND_JOINT_TYPE_HINGE,
+  BND_JOINT_TYPE_BALL_SOCKET,
 } bnd_joint_type;
 
 /** Set of allocation callbacks used by a world. */
@@ -186,8 +186,7 @@ typedef struct {
 typedef struct {
   bnd_v3 local_anchor_a;
   bnd_v3 local_anchor_b;
-  bnd_v3 local_axis_a;
-} bnd_hinge_joint_config;
+} bnd_ball_socket_joint_config;
 
 /** Box dimensions along the local x, y, and z axes. */
 typedef struct {
@@ -641,7 +640,7 @@ BNDAPI bnd_result_joint bnd_add_distance_joint(bnd_world *world, bnd_body_handle
  * @retval BND_ERROR_INVALID_JOINT Both bodies are static.
  * @retval BND_ERROR_OUT_OF_MEMORY A joint buffer could not be grown.
  */
-BNDAPI bnd_result_joint bnd_add_hinge_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_hinge_joint_config config);
+BNDAPI bnd_result_joint bnd_add_ball_socket_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_ball_socket_joint_config config);
 
 /** Remove a joint by its handle. */
 BNDAPI void bnd_remove_joint(bnd_world *world, bnd_joint_handle handle);

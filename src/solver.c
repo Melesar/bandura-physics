@@ -270,7 +270,7 @@ static bnd_result_u32 constraints_from_joints(bnd_world *world) {
 
         bnd_v3 normal = distance_sqr > EPSILON * EPSILON
           ? bnd_v3_scale(offset, 1.0f / distance)
-          : bnd_v3_normalize(bnd_v3_sub(position_b, position_b));
+          : bnd_v3_normalize(bnd_v3_sub(position_a, position_b));
 
         bnd_v3 ra_n = bnd_v3_cross(offset_a, normal);
         bnd_v3 rb_n = bnd_v3_cross(offset_b, normal);
@@ -333,17 +333,17 @@ static bnd_result_u32 constraints_from_joints(bnd_world *world) {
 
       } break;
 
-      case BND_JOINT_TYPE_HINGE: {
+      case BND_JOINT_TYPE_BALL_SOCKET: {
         enum {
-          HINGE_JOINT_CONSTRAINT_COUNT = 3
+          BALL_SOCKET_JOINT_CONSTRAINT_COUNT = 3
         };
 
-        count += HINGE_JOINT_CONSTRAINT_COUNT;
+        count += BALL_SOCKET_JOINT_CONSTRAINT_COUNT;
         
-        bnd_result_ptr allocation = arena_alloc(&world->arena, ALIGNMENT_JOINT_CONSTRAINT, HINGE_JOINT_CONSTRAINT_COUNT * sizeof(joint_constraint));
+        bnd_result_ptr allocation = arena_alloc(&world->arena, ALIGNMENT_JOINT_CONSTRAINT, BALL_SOCKET_JOINT_CONSTRAINT_COUNT * sizeof(joint_constraint));
         PROPAGATE_RESULT(u32, allocation.error);
 
-        bnd_v3 axis[3] = { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 1, 0 } };
+        bnd_v3 axis[3] = { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } };
         for (count_t k = 0; k < 3; k++) {
           bnd_v3 ra_n = bnd_v3_cross(offset_a, axis[k]);
           bnd_v3 rb_n = bnd_v3_cross(offset_b, axis[k]);
@@ -353,6 +353,7 @@ static bnd_result_u32 constraints_from_joints(bnd_world *world) {
           constraint->joint_index = i;
           constraint->body_a = index_a;
           constraint->body_b = index_b;
+          constraint->axis = axis[k];
 
           constraint->relative_positions[0] = offset_a;
           constraint->relative_positions[1] = offset_b;
@@ -383,19 +384,15 @@ static bnd_result_u32 constraints_from_joints(bnd_world *world) {
           constraint->lambda = j->impulse;
 
 
-          float error = bnd_v3_dot(offset, axis[k]);
+          float error = -bnd_v3_dot(offset, axis[k]);
           constraint->bias = error * config.baumgarde_coefficient;
+          constraint->min_lambda = -INFINITY;
+          constraint->max_lambda = INFINITY;
 
-          if (error > config.linear_slop) {
-            constraint->min_lambda = 0.0;
-            constraint->max_lambda = INFINITY;
+          if (error > 0) {
             constraint->bias = MIN(constraint->bias, config.max_baumgarde_velocity);
-          } else if (error < -config.linear_slop) {
-            constraint->min_lambda = -INFINITY;
-            constraint->max_lambda = 0.0f;
-            constraint->bias = MAX(constraint->bias, -config.max_baumgarde_velocity);
           } else {
-            constraint->min_lambda = constraint->max_lambda = constraint->bias = 0.0f;
+            constraint->bias = MAX(constraint->bias, -config.max_baumgarde_velocity);
           }
         }
       } break;
@@ -426,7 +423,7 @@ static constraint_state joint_constraint_state(const dynamic_bodies *dynamics, c
     .normal = constraint->axis,
   };
   
-  for (count_t k = 0; k < 2; ++k) {
+  for (count_t k = 0; k < s.body_count; ++k) {
     count_t id = s.body_ids[k];
     s.velocities[k] = dynamics->velocities[id];
     s.momenta[k] = dynamics->angular_momenta[id];
@@ -449,7 +446,7 @@ static constraint_state contact_constraint_state(const dynamic_bodies *dynamics,
     .tangent_b = { constraint->basis.m0[2], constraint->basis.m1[2], constraint->basis.m2[2] },
   };
 
-  for (count_t k = 0; k < 2; ++k) {
+  for (count_t k = 0; k < s.body_count; ++k) {
     s.velocities[k] = dynamics->velocities[s.body_ids[k]];
     s.momenta[k] = dynamics->angular_momenta[s.body_ids[k]];
     s.inv_masses[k] = dynamics->inv_masses[s.body_ids[k]];

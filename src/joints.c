@@ -58,7 +58,7 @@ static bnd_result_u32 insert_joint(bnd_world *world, bnd_joint joint, bool is_dy
   return BND_RESULT_OK(u32, id);
 }
 
-bnd_result_joint bnd_add_hinge_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_hinge_joint_config config) {
+bnd_result_joint bnd_add_ball_socket_joint(bnd_world *world, bnd_body_handle body_a, bnd_body_handle body_b, bnd_ball_socket_joint_config config) {
   PROPAGATE_RESULT(joint, validate_bodies_for_joint(world, body_a, body_b))
 
   if (body_a.type == BND_BODY_STATIC && body_b.type == BND_BODY_DYNAMIC) {
@@ -72,7 +72,7 @@ bnd_result_joint bnd_add_hinge_joint(bnd_world *world, bnd_body_handle body_a, b
   }
 
   bnd_joint joint = {
-    .type = BND_JOINT_TYPE_HINGE,
+    .type = BND_JOINT_TYPE_BALL_SOCKET,
     .bodies = {body_a, body_b},
     .anchors = { config.local_anchor_a, config.local_anchor_b }
   };
@@ -80,7 +80,7 @@ bnd_result_joint bnd_add_hinge_joint(bnd_world *world, bnd_body_handle body_a, b
   bnd_result_u32 insertion_result = insert_joint(world, joint, body_b.type == BND_BODY_DYNAMIC);
   PROPAGATE_RESULT(joint, insertion_result.error);
 
-  bnd_joint_handle handle = { BND_JOINT_TYPE_HINGE, world->id, insertion_result.value };
+  bnd_joint_handle handle = { BND_JOINT_TYPE_BALL_SOCKET, world->id, insertion_result.value };
 
   return BND_RESULT_OK(joint, handle);
 }

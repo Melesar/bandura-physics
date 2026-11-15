@@ -147,51 +147,47 @@ ragdoll ragdoll_create(bnd_world *world, bnd_v3 position) {
   bnd_set_position(world, right_lower_arm, bnd_v3_add(position, (Vector3){-0.43, 2.63, -0.3}));
   bnd_set_rotation(world, right_lower_arm, QuaternionFromEuler(PI / 6, 0, 0));
 
-  const float joint_margin = 0.1;
-
-  bnd_distance_joint_config joint_config = {
-    .max_distance = joint_margin,
-  };
+  bnd_ball_socket_joint_config joint_config = {0};
 
   joint_config.local_anchor_a = (Vector3){0, -0.4, 0};
   joint_config.local_anchor_b = (Vector3){0, 0.5, 0};
-  bnd_add_distance_joint(world, head, torso, joint_config);
+  bnd_add_ball_socket_joint(world, head, torso, joint_config);
 
   joint_config.local_anchor_a = (Vector3){0, -0.5, 0};
   joint_config.local_anchor_b = (Vector3){0, 0.5, 0};
-  bnd_add_distance_joint(world, torso, pelvis, joint_config);
+  bnd_add_ball_socket_joint(world, torso, pelvis, joint_config);
 
   joint_config.local_anchor_a = (Vector3){0.3, 0.45, 0};
   joint_config.local_anchor_b = (Vector3){-0.1, 0.6, 0};
-  bnd_add_distance_joint(world, torso, left_upper_arm, joint_config);
+  bnd_add_ball_socket_joint(world, torso, left_upper_arm, joint_config);
 
   joint_config.local_anchor_a = (Vector3){0, -0.6, 0};
   joint_config.local_anchor_b = (Vector3){0, 0.6, 0};
-  bnd_add_distance_joint(world, left_upper_arm, left_lower_arm, joint_config);
+  bnd_add_ball_socket_joint(world, left_upper_arm, left_lower_arm, joint_config);
 
   joint_config.local_anchor_a = (Vector3){-0.3, 0.45, 0};
   joint_config.local_anchor_b = (Vector3){0.1, 0.6, 0};
-  bnd_add_distance_joint(world, torso, right_upper_arm, joint_config);
+  bnd_add_ball_socket_joint(world, torso, right_upper_arm, joint_config);
 
   joint_config.local_anchor_a = (Vector3){0, -0.6, 0};
   joint_config.local_anchor_b = (Vector3){0, 0.6, 0};
-  bnd_add_distance_joint(world, right_upper_arm, right_lower_arm, joint_config);
+  bnd_add_ball_socket_joint(world, right_upper_arm, right_lower_arm, joint_config);
 
   joint_config.local_anchor_a = (Vector3){0.23, -0.5, 0};
   joint_config.local_anchor_b = (Vector3){0, 0.6, 0};
-  bnd_add_distance_joint(world, pelvis, left_upper_leg, joint_config);
+  bnd_add_ball_socket_joint(world, pelvis, left_upper_leg, joint_config);
 
   joint_config.local_anchor_a = (Vector3){0, -0.6, 0};
   joint_config.local_anchor_b = (Vector3){0, 0.6, 0};
-  bnd_add_distance_joint(world, left_upper_leg, left_lower_leg, joint_config);
+  bnd_add_ball_socket_joint(world, left_upper_leg, left_lower_leg, joint_config);
 
   joint_config.local_anchor_a = (Vector3){-0.23, -0.5, 0};
   joint_config.local_anchor_b = (Vector3){0, 0.6, 0};
-  bnd_add_distance_joint(world, pelvis, right_upper_leg, joint_config);
+  bnd_add_ball_socket_joint(world, pelvis, right_upper_leg, joint_config);
 
   joint_config.local_anchor_a = (Vector3){0, -0.6, 0};
   joint_config.local_anchor_b = (Vector3){0, 0.6, 0};
-  bnd_add_distance_joint(world, right_upper_leg, right_lower_leg, joint_config);
+  bnd_add_ball_socket_joint(world, right_upper_leg, right_lower_leg, joint_config);
 
   ragdoll doll = malloc(BONE_COUNT * sizeof(bnd_body_handle));
   doll[HEAD] = head;
